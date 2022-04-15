@@ -822,7 +822,7 @@ def getConfig():
     # Try to get the values from the config file, otherwise use the defaults
     global LINK_EXCLUSIONS, CONTENTTYPE_EXCLUSIONS, LINK_REGEX_FILES
     try:
-        config = yaml.safe_load(open("config.yml"))
+        config = yaml.safe_load(open(os.path.dirname(__file__)+"/config.yml"))
         try:
             LINK_EXCLUSIONS = config.get("linkExclude")
         except:
