@@ -859,6 +859,9 @@ def getConfig():
     except:
         if vverbose():
             print(colored("Unable to read config.yml; defaults set", "red"))
+            LINK_EXCLUSIONS = DEFAULT_LINK_EXCLUSIONS
+            CONTENTTYPE_EXCLUSIONS = DEFAULT_CONTENTTYPE_EXCLUSIONS
+            LINK_REGEX_FILES = DEFAULT_LINK_REGEX_FILES
 
 
 # Print iterations progress
