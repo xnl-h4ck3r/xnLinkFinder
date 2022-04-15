@@ -829,7 +829,7 @@ def getConfig():
             if verbose():
                 print(
                     colored(
-                        'Unable to read "linkExclude" from config.yaml; defaults set',
+                        'Unable to read "linkExclude" from config.yml; defaults set',
                         "red",
                     )
                 )
@@ -840,7 +840,7 @@ def getConfig():
             if verbose():
                 print(
                     colored(
-                        'Unable to read "contentExclude" from config.yaml; defaults set',
+                        'Unable to read "contentExclude" from config.yml; defaults set',
                         "red",
                     )
                 )
@@ -851,14 +851,14 @@ def getConfig():
             if verbose():
                 print(
                     colored(
-                        'Unable to read "regexFiles" from config.yaml; defaults set',
+                        'Unable to read "regexFiles" from config.yml; defaults set',
                         "red",
                     )
                 )
             LINK_REGEX_FILES = DEFAULT_LINK_REGEX_FILES
     except:
         if vverbose():
-            print(colored("Unable to read config.yaml; defaults set", "red"))
+            print(colored("Unable to read config.yml; defaults set", "red"))
 
 
 # Print iterations progress
