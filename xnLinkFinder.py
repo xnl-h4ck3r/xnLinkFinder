@@ -42,6 +42,7 @@ import subprocess
 import random
 import math
 import enum
+from urllib3.exceptions import InsecureRequestWarning
 
 # Try to import psutil to show memory usage
 try:
@@ -586,12 +587,18 @@ def processUrl(url):
                     requestUrl = url
                     if not url.startswith("http"):
                         requestUrl = "http://" + url
+                    
+                    # Suppress insecure request warnings if using insecure mode
+                    if args.insecure:
+                        requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
 
+                    # Make the request
                     resp = requests.get(
                         requestUrl,
                         headers=requestHeaders,
                         timeout=args.timeout,
                         allow_redirects=True,
+                        verify = not args.insecure
                     )
                     if resp.status_code == 200:
                         if verbose():
@@ -822,7 +829,12 @@ def getConfig():
     # Try to get the values from the config file, otherwise use the defaults
     global LINK_EXCLUSIONS, CONTENTTYPE_EXCLUSIONS, LINK_REGEX_FILES
     try:
-        config = yaml.safe_load(open(os.path.dirname(__file__)+"/config.yml"))
+        configPath = os.path.dirname(__file__)
+        if configPath == '':
+            configPath = 'config.yml'
+        else:
+            configPath = configPath + '/config.yml'
+        config = yaml.safe_load(open(configPath))
         try:
             LINK_EXCLUSIONS = config.get("linkExclude")
         except:
@@ -856,9 +868,9 @@ def getConfig():
                     )
                 )
             LINK_REGEX_FILES = DEFAULT_LINK_REGEX_FILES
-    except:
+    except Exception as e:
         if vverbose():
-            print(colored("Unable to read config.yml; defaults set", "red"))
+            print(colored("Unable to read config.yml; defaults set: "+str(e), "red"))
             LINK_EXCLUSIONS = DEFAULT_LINK_EXCLUSIONS
             CONTENTTYPE_EXCLUSIONS = DEFAULT_CONTENTTYPE_EXCLUSIONS
             LINK_REGEX_FILES = DEFAULT_LINK_REGEX_FILES
@@ -1050,6 +1062,10 @@ def showOptions():
             if args.headers != "":
                 print(colored("-H: " + args.headers, "magenta"), "Custom headers passed with requests.")
 
+            print(
+                colored("-insecure: " + str(args.insecure), "magenta"),
+                "Whether TLS certificate checks should be disabled when making requests.",
+            )
             print(
                 colored("-s429: " + str(args.s429), "magenta"),
                 "Whether the program will stop if > 95 requests return Status 429: Too Many Requests.",
@@ -1575,6 +1591,11 @@ if __name__ == "__main__":
         ],
         default=["desktop"],
         metavar="",
+    )
+    parser.add_argument(
+        "-insecure",
+        action="store_true",
+        help="Whether TLS certificate checks should be made disabled making requests (default: false)"
     )
     parser.add_argument(
         "-s429",
