@@ -89,6 +89,14 @@ Specifying the User Agent (`-u desktop mobile`) will first search for all links 
 python3 xnLinkFinder.py -i target.com -sp target_prefix.txt -sf target_scope.txt -spo -inc -vv -H 'Authorization: Bearer XXXXXXXXXXXXXX' -c 'SessionId=MYSESSIONID' -u desktop mobile -d 10
 ```
 
+### Find Links from a list of URLs - Basic
+
+If you have a file of JS file URLs for example, you can look for links in those:
+
+```
+python3 xnLinkFinder.py -i target_js.txt
+```
+
 ## Recommendations and Notes
 
 - Always use the Scope Prefix argument `-sp`. This can be one scope domain, or a file containing multiple scope domains.
