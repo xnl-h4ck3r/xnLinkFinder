@@ -62,7 +62,7 @@ class StopProgram(enum.Enum):
     TOO_MANY_CONNECTION_ERRORS = 5
     MEMORY_THRESHOLD = 6
 stopProgram = None
-
+ 
 # Yaml config values
 LINK_EXCLUSIONS = ""
 CONTENTTYPE_EXCLUSIONS = ""
@@ -201,7 +201,7 @@ def includeLink(link):
         except Exception as e:
             if vverbose():
                 print("ERROR includeLink 2: " + str(e))
-
+        
         if include:
             # Go through lstExclusions and see if finding contains any. If not then continue
             # If it fails then try URL encoding and then checking
@@ -272,7 +272,7 @@ def includeContentType(header):
     global burpFile
 
     include = True
-
+    
     try:
         # Get the content-type from the response
         try:
@@ -283,7 +283,7 @@ def includeContentType(header):
                     re.IGNORECASE,
                 )[0]
             else:
-                contentType = header["Content-Type"]
+                contentType = header["content-type"]
             contentType = contentType.split(";")[0]
         except Exception as e:
             contentType = ""
@@ -336,7 +336,7 @@ def getResponseLinks(response, url):
             body = str(response.headers) + "\r\n\r\n" + response.text
             header = response.headers
             responseUrl = response.url
-
+ 
         # Some URLs may be displayed in the body within strings that have escaped /, so replace any \/ with /
         body = body.replace("\/", "/")
 
@@ -347,25 +347,28 @@ def getResponseLinks(response, url):
         for ext in lstFileExt:
             if len(ext) > 4 or any(chr.isdigit() for chr in ext):
                 LINK_REGEX_NONSTANDARD_FILES = LINK_REGEX_NONSTANDARD_FILES + "|" + ext
-
+        
         try:
             # If it is content-type we want to process then carry on
             if includeContentType(header):
-
+                
                 reString = (
-                    r"(?:\"|'|\\n|\\r|\n|\r)(((?:[a-zA-Z]{1,10}:\/\/|\/\/)([^\"'\/]{1,}\.[a-zA-Z]{2,}|localhost)[^\"']{0,})|((?:\/|\.\.\/|\.\/)[^\"'><,;| *()(%%$^\/\\\[\]][^\"'><,;|()]{1,})|([a-zA-Z0-9_\-\/]{1,}\/[a-zA-Z0-9_\-\/]{1,}\.(?:[a-zA-Z]{1,4}"
+                    r"(?:\"|'|\\n|\\r|\n|\r|\s)(((?:[a-zA-Z]{1,10}:\/\/|\/\/)([^\"'\/]{1,}\.[a-zA-Z]{2,}|localhost)[^\"'\n]{0,})|((?:\/|\.\.\/|\.\/)[^\"'><,;| *()(%%$^\/\\\[\]][^\"'><,;|()]{1,})|([a-zA-Z0-9_\-\/]{1,}\/[a-zA-Z0-9_\-\/]{1,}\.(?:[a-zA-Z]{1,4}"
                     + LINK_REGEX_NONSTANDARD_FILES
                     + ")(?:[\?|\/][^\"|']{0,}|))|([a-zA-Z0-9_\-]{1,}\.(?:"
                     + LINK_REGEX_FILES
-                    + ")(?:\?[^\"|^']{0,}|)))(?:\"|'|\\n|\\r|\n|\r|$)|(?<=^Disallow:\s)[^\$\n]*|(?<=^Allow:\s)[^\$\n]*"
+                    + ")(?:\?[^\"|^']{0,}|)))(?:\"|'|\\n|\\r|\n|\r|\s|$)|(?<=^Disallow:\s)[^\$\n]*|(?<=^Allow:\s)[^\$\n]*|(?<= Domain\=)[^\";']*|(?<=\<)http[^>\n]*"
                 )
                 link_keys = re.finditer(reString, body, re.IGNORECASE)
-
+                
                 for key in link_keys:
-
+                    
                     if key is not None and key.group() != "":
                         link = key.group()
-
+                        link = link.strip("\"\'\n\r( ")
+                        link = link.replace("\\n","")
+                        link = link.replace("\\r","")
+                        
                         try:
                             first = link[:1]
                             last = link[-1]
@@ -406,10 +409,10 @@ def getResponseLinks(response, url):
                                         "ERROR getResponseLinks 2: " + str(e), "red"
                                     )
                                 )
-
+                        
                         # Only add the finding if it should be included
                         if includeLink(link):
-
+                            
                             # If the link found is for a .js.map file then put the full .map URL in the list
                             if link.find("//# sourceMappingURL") >= 0:
                                 # Get .map link after the =
@@ -469,7 +472,7 @@ def getResponseLinks(response, url):
                         r"(?<=SourceMap\:\s).*?(?=\n)", header, re.IGNORECASE
                     )[0]
                 else:
-                    mapFile = header["SourceMap"]
+                    mapFile = header["sourcemap"]
             except:
                 mapFile = ""
             # If not found, try the deprecated X-SourceMap header
@@ -480,7 +483,7 @@ def getResponseLinks(response, url):
                             r"(?<=X-SourceMap\:\s).*?(?=\n)", header, re.IGNORECASE
                         )[0]
                     else:
-                        mapFile = header["X-SourceMap"]
+                        mapFile = header["x-sourcemap"]
                 except:
                     mapFile = ""
             # If a map file was found in the response, then add a link for it
