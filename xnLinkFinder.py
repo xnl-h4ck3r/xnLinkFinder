@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # Python 3
 
-VERSION = "0.1"
+VERSION = "0.2"
 inScopePrefixDomains = None
 inScopeFilterDomains = None
 burpFile = False
@@ -152,13 +152,13 @@ UA_GAMECONSOLE = [
 
 def showBanner():
     print("")
-    print(colored("         o           o    o--o           o         ", "red"))
-    print(colored("         |    o      | /  |    o         |         ", "yellow"))
-    print(colored("\ / o-o  |      o-o  OO   O-o    o-o   o-O o-o o-o ", "green"))
-    print(colored(" o  |  | |    | |  | | \  |    | |  | |  | |-' |   ", "cyan"))
-    print(colored("/ \ o  o O---o| o  o o  o o    | o  o  o-o o-o o   ", "magenta"))
-    print(colored("              |                |                   ", "blue"))
-    print(colored("              ' by @Xnl-h4ck3r '              v" + VERSION))
+    print(colored("                                                o           o    o--o           o         ", "red"))
+    print(colored("                                                |    o      | /  |    o         |         ", "yellow"))
+    print(colored("                                       \ / o-o  |      o-o  OO   O-o    o-o   o-O o-o o-o ", "green"))
+    print(colored("                                        o  |  | |    | |  | | \  |    | |  | |  | |-' |   ", "cyan"))
+    print(colored("                                       / \ o  o O---o| o  o o  o o    | o  o  o-o o-o o   ", "magenta"))
+    print(colored("                                                     |                |                   ", "blue"))
+    print(colored("                                                     ' by @Xnl-h4ck3r '              v" + VERSION))
     print("")
 
 
@@ -186,11 +186,12 @@ def includeLink(link):
         # And exclude if the link:
         # - starts with literal characters \n
         # - starts with #
+        # - start with $
         # - has any white space characters in
         # - has any new line characters in
         # - doesn't have any letters or numbers in
         try:
-            if link.count("\n") > 1 or link.startswith("#"):
+            if link.count("\n") > 1 or link.startswith("#") or link.startswith("$"):
                 include = False
             if include:
                 include = not (bool(re.search(r"\s", link)))
@@ -409,6 +410,10 @@ def getResponseLinks(response, url):
                                         "ERROR getResponseLinks 2: " + str(e), "red"
                                     )
                                 )
+                        
+                        # If the link starts with a . and the  2nd character is not a . or / then remove the first .
+                        if link[0] == '.' and link[1] != '.' and link[1] != '/':
+                            link = link[1:]
                         
                         # Only add the finding if it should be included
                         if includeLink(link):
