@@ -152,13 +152,13 @@ UA_GAMECONSOLE = [
 
 def showBanner():
     print("")
-    print(colored("                                                o           o    o--o           o         ", "red"))
-    print(colored("                                                |    o      | /  |    o         |         ", "yellow"))
-    print(colored("                                       \ / o-o  |      o-o  OO   O-o    o-o   o-O o-o o-o ", "green"))
-    print(colored("                                        o  |  | |    | |  | | \  |    | |  | |  | |-' |   ", "cyan"))
-    print(colored("                                       / \ o  o O---o| o  o o  o o    | o  o  o-o o-o o   ", "magenta"))
-    print(colored("                                                     |                |                   ", "blue"))
-    print(colored("                                                     ' by @Xnl-h4ck3r '              v" + VERSION))
+    print(colored("           o           o    o--o           o         ", "red"))
+    print(colored("           |    o      | /  |    o         |         ", "yellow"))
+    print(colored("  \ / o-o  |      o-o  OO   O-o    o-o   o-O o-o o-o ", "green"))
+    print(colored("   o  |  | |    | |  | | \  |    | |  | |  | |-' |   ", "cyan"))
+    print(colored("  / \ o  o O---o| o  o o  o o    | o  o  o-o o-o o   ", "magenta"))
+    print(colored("                |                |                   ", "blue"))
+    print(colored("                ' by @Xnl-h4ck3r '              v" + VERSION))
     print("")
 
 
