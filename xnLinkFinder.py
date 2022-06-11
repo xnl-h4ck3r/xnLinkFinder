@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 # Python 3
 
-VERSION = "0.2"
+VERSION = "0.3"
 inScopePrefixDomains = None
 inScopeFilterDomains = None
 burpFile = False
+stdFile = False
 urlPassed = False
+dirPassed = False
 inputFile = None
 linksFound = set()
 linksVisited = set()
@@ -166,10 +168,8 @@ def showBanner():
 def verbose():
     return args.verbose or args.vverbose
 
-
 def vverbose():
     return args.vverbose
-
 
 def includeLink(link):
     """
@@ -264,6 +264,39 @@ def includeLink(link):
 
     return include
 
+def includeFile(fileName):
+    """
+    Determine if the passed file name should be excluded by checking the list of exclusions
+    Returns whether the file should be included
+    """
+    try:
+        global lstExclusions
+
+        include = True
+        
+        # Go through lstExclusions and see if finding contains any. If not then continue
+        for exc in lstExclusions:
+            try:
+                if fileName.find(exc.lower()) >= 0:
+                    include = False
+            except Exception as e:
+                if vverbose():
+                    print(
+                        colored(
+                            "ERROR includeFile 2: Failed to check exclusions for a finding on file: "
+                            + fileName
+                            + " ("
+                            + str(e)
+                            + ")",
+                            "red",
+                        )
+                    )
+
+    except Exception as e:
+        if vverbose():
+            print(colored("ERROR includeFile 1: " + str(e), "red"))
+
+    return include
 
 def includeContentType(header):
     """
@@ -317,11 +350,11 @@ def getResponseLinks(response, url):
     """
     Get a list of links found
     """
-    global inScopePrefixDomains, burpFile
+    global inScopePrefixDomains, burpFile, dirPassed
 
     try:
-        # if the --include argument is True then add the input links to the output too
-        if args.include:
+        # if the --include argument is True then add the input links to the output too (unless the input was a directory)
+        if args.include and not dirPassed:
             addLink(url, url)
 
         if burpFile:
@@ -334,9 +367,14 @@ def getResponseLinks(response, url):
             body = response  # response[bodyHeaderDivide:]
             responseUrl = url
         else:
-            body = str(response.headers) + "\r\n\r\n" + response.text
-            header = response.headers
-            responseUrl = response.url
+            if dirPassed:
+                body = response
+                header = ''
+                responseUrl = url
+            else:
+                body = str(response.headers) + "\r\n\r\n" + response.text
+                header = response.headers
+                responseUrl = response.url
  
         # Some URLs may be displayed in the body within strings that have escaped /, so replace any \/ with /
         body = body.replace("\/", "/")
@@ -350,11 +388,11 @@ def getResponseLinks(response, url):
                 LINK_REGEX_NONSTANDARD_FILES = LINK_REGEX_NONSTANDARD_FILES + "|" + ext
         
         try:
-            # If it is content-type we want to process then carry on
-            if includeContentType(header):
+            # If it is content-type we want to process then carry on, or if a directory was passed (so there is no content type) ensure the filename is not an exclusion
+            if (dirPassed and includeFile(url)) or (not dirPassed and includeContentType(header)):
                 
                 reString = (
-                    r"(?:\"|'|\\n|\\r|\n|\r|\s)(((?:[a-zA-Z]{1,10}:\/\/|\/\/)([^\"'\/]{1,}\.[a-zA-Z]{2,}|localhost)[^\"'\n]{0,})|((?:\/|\.\.\/|\.\/)[^\"'><,;| *()(%%$^\/\\\[\]][^\"'><,;|()]{1,})|([a-zA-Z0-9_\-\/]{1,}\/[a-zA-Z0-9_\-\/]{1,}\.(?:[a-zA-Z]{1,4}"
+                    r"(?:\"|'|\\n|\\r|\n|\r|\s)(((?:[a-zA-Z]{1,10}:\/\/|\/\/)([^\"'\/]{1,}\.[a-zA-Z]{2,}|localhost)[^\"'\n]{0,})|((?:\/|\.\.\/|\.\/)[^\"'><,;| *()(%%$^\/\\\[\]][^\"'><,;|()\s]{1,})|([a-zA-Z0-9_\-\/]{1,}\/[a-zA-Z0-9_\-\/]{1,}\.(?:[a-zA-Z]{1,4}"
                     + LINK_REGEX_NONSTANDARD_FILES
                     + ")(?:[\?|\/][^\"|']{0,}|))|([a-zA-Z0-9_\-]{1,}\.(?:"
                     + LINK_REGEX_FILES
@@ -363,7 +401,7 @@ def getResponseLinks(response, url):
                 link_keys = re.finditer(reString, body, re.IGNORECASE)
                 
                 for key in link_keys:
-                    
+                   
                     if key is not None and key.group() != "":
                         link = key.group()
                         link = link.strip("\"\'\n\r( ")
@@ -410,7 +448,7 @@ def getResponseLinks(response, url):
                                         "ERROR getResponseLinks 2: " + str(e), "red"
                                     )
                                 )
-                        
+                            
                         # If the link starts with a . and the  2nd character is not a . or / then remove the first .
                         if link[0] == '.' and link[1] != '.' and link[1] != '/':
                             link = link[1:]
@@ -469,35 +507,36 @@ def getResponseLinks(response, url):
                 print(colored("ERROR getResponseLinks 3: " + str(e), "red"))
 
         # Also add a link of a js.map file if the X-SourceMap or SourceMap header exists
-        try:
-            # See if the SourceMap header exists
+        if not dirPassed:
             try:
-                if burpFile:
-                    mapFile = re.findall(
-                        r"(?<=SourceMap\:\s).*?(?=\n)", header, re.IGNORECASE
-                    )[0]
-                else:
-                    mapFile = header["sourcemap"]
-            except:
-                mapFile = ""
-            # If not found, try the deprecated X-SourceMap header
-            if mapFile != "":
+                # See if the SourceMap header exists
                 try:
                     if burpFile:
                         mapFile = re.findall(
-                            r"(?<=X-SourceMap\:\s).*?(?=\n)", header, re.IGNORECASE
+                            r"(?<=SourceMap\:\s).*?(?=\n)", header, re.IGNORECASE
                         )[0]
                     else:
-                        mapFile = header["x-sourcemap"]
+                        mapFile = header["sourcemap"]
                 except:
                     mapFile = ""
-            # If a map file was found in the response, then add a link for it
-            if mapFile != "":
-                addLink(mapFile)
+                # If not found, try the deprecated X-SourceMap header
+                if mapFile != "":
+                    try:
+                        if burpFile:
+                            mapFile = re.findall(
+                                r"(?<=X-SourceMap\:\s).*?(?=\n)", header, re.IGNORECASE
+                            )[0]
+                        else:
+                            mapFile = header["x-sourcemap"]
+                    except:
+                        mapFile = ""
+                # If a map file was found in the response, then add a link for it
+                if mapFile != "":
+                    addLink(mapFile)
 
-        except Exception as e:
-            if vverbose():
-                print("getResponseLinks 4: " + str(e))
+            except Exception as e:
+                if vverbose():
+                    print("getResponseLinks 4: " + str(e))
 
     except Exception as e:
         if vverbose():
@@ -572,14 +611,14 @@ def processUrl(url):
     # If the url has the origin at the end (.e.g [...]) then strip it pff before processing
     if url.find("[") > 0:
         url = str(url[0 : url.find("[") - 2])
-
+    
     try:
         # If we should make the current request
         if shouldMakeRequest(url):
 
             # Add the url to the list of visited URls so we don't visit again
-            # Don't do this for Burp files as they can be huge
-            if not burpFile:
+            # Don't do this for Burp files as they can be huge, or for file names in directory mode
+            if not burpFile and not dirPassed:
                 linksVisited.add(url)
 
             # Get memory usage every 25 requests
@@ -708,7 +747,7 @@ def processUrl(url):
 # Display stats if -vv argument was chosen
 def processStats():
     print()
-    if not burpFile:
+    if not burpFile and not dirPassed:
         print("TOTAL REQUESTS MADE: " + str(totalRequests))
         print("DUPLICATE REQUESTS SKIPPED: " + str(skippedRequests))
         print("FAILED REQUESTS: " + str(failedRequests))
@@ -765,7 +804,7 @@ def processOutput():
                 str(linkCount) + " 🤘\n",
             )
 
-        # If -o (--output) argument was not "cli" then openthe output file
+        # If -o (--output) argument was not "cli" then open the output file
         if args.output != "cli":
             try:
                 # If argument -ow was passed and the file exists, overwrite it, otherwise append to it
@@ -781,13 +820,15 @@ def processOutput():
         # If the -ra --regex-after was passed then only output if it matches
         outputCount = 0
         for link in linksFound:
+            # Replace &amp; with &
+            link = link.replace('&amp;','&')
+            
             if args.output == "cli":
                 if args.regex_after is None or re.search(args.regex_after, link):
                     print(link)
                     outputCount = outputCount + 1
             else:  # file
                 try:
-
                     if args.regex_after is None or re.search(args.regex_after, link):
                         outFile.write(link + "\n")
                         outputCount = outputCount + 1
@@ -799,7 +840,7 @@ def processOutput():
         if args.regex_after is not None and linkCount > 0 and outputCount < linkCount:
             print(
                 colored(
-                    '\nPotential unique links output after appplying filter "'
+                    '\nPotential unique links output after applying filter "'
                     + args.regex_after
                     + '":',
                     "cyan",
@@ -809,6 +850,7 @@ def processOutput():
 
         # Clean up
         linksFound = None
+        
         # If the output was a file, close the file
         if args.output != "cli":
             try:
@@ -923,11 +965,11 @@ def printProgressBar(
 
 
 def processDepth():
-    global burpFile, stopProgram
+    global stopProgram
     try:
         # If the -d (--depth) argument was passed then do another search
-        # This is not used for Burp files
-        if not burpFile and args.depth > 1:
+        # This is only used for URL or std file of URLs
+        if (urlPassed or stdFile) and args.depth > 1:
             for d in range(args.depth - 1):
                 if stopProgram is not None:
                     break
@@ -965,7 +1007,7 @@ def processDepth():
 
 def showOptions():
 
-    global burpFile, urlPassed, inScopePrefixDomains, inScopeFilterDomains
+    global burpFile, stdFile, urlPassed, dirPassed, inScopePrefixDomains, inScopeFilterDomains
 
     try:
         print(colored("Selected options:", "cyan"))
@@ -981,10 +1023,16 @@ def showOptions():
                     "Links will be found in saved Burp responses.",
                 )
             else:
-                print(
-                    colored("-i: " + args.input + " (Text File)", "magenta"),
-                    "All URLs will be requested and links found in all responses.",
-                )
+                if dirPassed:
+                    print(
+                        colored("-i: " + args.input + " (Directory)", "magenta"),
+                        "All files in the directory will be searched for links. Sub directories are not searched.",
+                    )
+                else: 
+                    print(
+                        colored("-i: " + args.input + " (Text File)", "magenta"),
+                        "All URLs will be requested and links found in all responses.",
+                    )
 
         print(
             colored("-o: " + args.output, "magenta"), "Where the output will be sent."
@@ -1028,7 +1076,7 @@ def showOptions():
                 "The regex applied after all links have been retrieved to determine what is output.",
             )
 
-        if not burpFile:
+        if not burpFile and not dirPassed:
             print(
                 colored("-d: " + str(args.depth), "magenta"),
                 "The depth of link searches, e.g. how many times links will be searched for recursively.",
@@ -1039,14 +1087,14 @@ def showOptions():
             exclusions = "{none}"
         print(
             colored("-x: " + exclusions, "magenta"),
-            "Additional exclusions (to config.yml) to filter links in the output.",
+            "Additional exclusions (to config.yml) to filter links in the output, e.g. -x .xml,.cfm",
         )
 
         print(
             colored("-orig: " + str(args.origin), "magenta"),
             "Whether the origin of a link is displayed in the output.",
         )
-        if not burpFile:
+        if not burpFile and not dirPassed:
             print(
                 colored("-p: " + str(args.processes), "magenta"),
                 "The number of parallel requests made.",
@@ -1091,6 +1139,11 @@ def showOptions():
                 "Whether the program will stop if > 95 requests have connection errors.",
             )
         
+        if dirPassed: 
+            print(
+                colored("-mfs: " + str(args.max_file_size) + ' Mb', "magenta"),
+                "The maximum file size (in Mb) of a file to be checked if -i is a directory. If the file size is over this value, it will be ignored.",
+            )
         print()
 
     except Exception as e:
@@ -1118,27 +1171,23 @@ def getScopeDomains():
             scopeFile = open(args.scope_prefix, "r")
             inScopePrefixDomains = [line.rstrip() for line in scopeFile]
             scopeFile.close()
-            print(inScopePrefixDomains)
+            
             for prefix in inScopePrefixDomains:
                 if prefix.find(".") < 0 or prefix.find(" ") > 0 or prefix.find("*") > 0:
                     scopePrefixError = True
         except:
-            if not burpFile:
-                if (
-                    args.scope_prefix.find(".") < 0
-                    or args.scope_prefix.find(" ") > 0
-                    or args.scope_prefix.find("*") > 0
-                ):
-                    scopePrefixError = True
+            if (
+                args.scope_prefix.find(".") < 0
+                or args.scope_prefix.find(" ") > 0
+                or args.scope_prefix.find("*") > 0
+            ):
+                scopePrefixError = True
         if scopePrefixError:
             print(
                 colored(
-                    "The -sp (--scope-prefix) value should be a valid file of domains, or a single domain, e.g. https://www.example1.com, http://example2.co.uk",
+                    "The -sp (--scope-prefix) value should be a valid file of domains, or a single domain, e.g. https://www.example1.com, http://example2.co.uk. Wildcards are not allowed, and a schema is optional",
                     "red",
                 )
-            )
-            print(
-                colored("Wildcards are not allowed, and a schema is optional.", "red")
             )
             exit(0)
 
@@ -1153,31 +1202,132 @@ def getScopeDomains():
                 if filter.find(".") < 0 or filter.find(" ") > 0:
                     scopeFilterError = True
         except:
-            if not burpFile:
-                if args.scope_filter.find(".") < 0 or args.scope_filter.find(" ") > 0:
-                    scopeFilterError = True
+            if args.scope_filter.find(".") < 0 or args.scope_filter.find(" ") >= 0:
+                scopeFilterError = True
         if scopeFilterError:
             print(
                 colored(
-                    "The -sf (--scope-filter) value should be a valid file of domains, or a single domain.",
-                    "red",
-                )
-            )
-            print(
-                colored(
-                    "No schema should be included and wildacard is optional, e.g. example1.com, sub.example2.com, example3.*",
+                    "The -sf (--scope-filter) value should be a valid file of domains, or a single domain. No schema should be included and wildacard is optional, e.g. example1.com, sub.example2.com, example3.*",
                     "red",
                 )
             )
             exit(0)
 
+# Get links from all files in a specified directory
+def processDirectory():
+    global totalResponses
+    
+    print(colored("Processing files in directory " + args.input + ":\n", "cyan"))
+    
+    dirPath = args.input
+    request = ""
+    response = ""
+    
+    # Get the number of files in the directory that are less than --max-file-size
+    try:
+        totalResponses = len([entry for entry in os.listdir(dirPath) if (os.path.isfile(os.path.join(dirPath, entry)) and (os.path.getsize(os.path.join(dirPath, entry)) / 1024) < args.max_file_size)])
+    except Exception as e:
+        print(colored("ERROR processDirectory 1: " + str(e)))
+     
+    try:
+        # If there are no files to process, tell the user
+        if totalResponses == 0:
+            print(colored("There are no files with a size greater than " + str(args.max_file_size) + " Mb to process.", "red"))
+        else:
+            responseCount = 0
+            printProgressBar(
+                0,
+                totalResponses,
+                prefix="Checking " + str(totalResponses) + " files: ",
+                suffix="Complete",
+                length=50,
+            )
+            # Iterate directory
+            for path in os.listdir(dirPath):
+                
+                # Check if current path is a file and the size is less than --max-file-size
+                if os.path.isfile(os.path.join(dirPath, path)) and (os.path.getsize(os.path.join(dirPath, path)) / 1024) < args.max_file_size:
+                    
+                    if stopProgram is not None:
+                        break
 
+                    # Show progress bar
+                    responseCount = responseCount + 1
+                    fillTest = responseCount % 2
+                    if fillTest == 0:
+                        fillChar = "O"
+                    elif fillTest == 1:
+                        fillChar = "o"
+                    suffix = "Complete"
+                    # Show memory usage if -vv option chosen, and check memory every 25 requests
+                    if responseCount % 25 == 0:
+                        try:
+                            getMemory()
+                            if vverbose():
+                                suffix = (
+                                    "Complete (Mem Usage "
+                                    + humanReadableSize(currentMemUsage)
+                                    + ", Total Mem "
+                                    + str(currentMemPercent)
+                                    + "%)"
+                                )
+                        except:
+                            if vverbose():
+                                suffix = 'Complete (To show memory usage, run "pip install psutil")'
+                    printProgressBar(
+                        responseCount,
+                        totalResponses,
+                        prefix="Checking "
+                        + str(totalResponses)
+                        + " files:",
+                        suffix=suffix,
+                        length=50,
+                        fill=fillChar,
+                    )
+
+                    # Set the request to the name of the file
+                    request = dirPath + path
+                    
+                    # Set the response as the contents of the file
+                    with open(request, 'r', encoding='utf-8', errors='ignore') as file:
+                        response = file.read()
+
+                    try:
+                        getResponseLinks(response, request)
+                        request = ""
+                        response = ""
+                    except Exception as e:
+                        if vverbose():
+                            print(
+                                colored(
+                                    "ERROR processDirectory 2: Request "
+                                    + str(responseCount)
+                                    + ": "
+                                    + str(e),
+                                    "red",
+                                )
+                            )
+
+    except Exception as e:
+        if vverbose():
+            print(
+                colored(
+                    "Error with file: Response "
+                    + str(responseCount)
+                    + ", File: "
+                    + request
+                    + " ERROR: "
+                    + str(e),
+                    "red",
+                )
+            )
+                    
 def processInput():
 
     # Tell Python to run the handler() function when SIGINT is received
     signal(SIGINT, handler)
 
-    global lstExclusions, burpFile, inputFile, urlPassed, currentMemUsage, currentMemPercent, stopProgram
+    global lstExclusions, burpFile, stdFile, inputFile, urlPassed, dirPassed, currentMemUsage, currentMemPercent, stopProgram
 
     try:
         # Set the link exclusions, and add any additional exclusions passed with -x (--exclude)
@@ -1186,23 +1336,26 @@ def processInput():
             lstExclusions.extend(args.exclude.split(","))
 
         # If the -i (--input) can be a standard file (text file with URLs per line),
-        # or a Burp XML file with Requests and Responses.
-        # if the value passed is not a valid file, then assume it is an individual URL
+        # or a directory containing files to search,
+        # or a Burp XML file with Requests and Responses
+        # if the value passed is not a valid file, or a directory, then assume it is an individual URL
         inputArg = args.input
-        urlPassed = False
-        try:
-            inputFile = open(inputArg, "r")
-            firstLine = inputFile.readline()
-            burpFile = firstLine.startswith("<?xml")
-        except IOError:
+        if os.path.isfile(inputArg):
+            try:
+                inputFile = open(inputArg, "r")
+                firstLine = inputFile.readline()
+                burpFile = firstLine.startswith("<?xml")
+            except:
+                stdFile = True
+        elif os.path.isdir(inputArg):
+            dirPassed = True
+            if inputArg[-1] != '/':
+                args.input = args.input + '/'
+        else:
             urlPassed = True
-            burpFile = False
-        except Exception as e:
-            if vverbose():
-                print(colored("ERROR processInput 2: " + str(e), "red"))
 
         # Set headers to use if going to be making requests
-        if not burpFile:
+        if urlPassed or stdFile:
             setHeaders()
         
         # Show the user their selected options if -vv is passed
@@ -1377,35 +1530,40 @@ def processInput():
 
         else:
 
-            # Show the current User Agent group
-            if verbose(): print(colored("\nUser-Agent Group:", "cyan"), args.user_agent[currentUAGroup])
+            # If it's a directory
+            if dirPassed:
+                processDirectory()
+                
+            else:
+                # Show the current User Agent group
+                if verbose(): print(colored("\nUser-Agent Group:", "cyan"), args.user_agent[currentUAGroup])
 
-            if urlPassed:
-                # It's not a standard file, so assume it's just a single URL
-                if verbose():
-                    print(colored("Processing URL:", "cyan"))
-                processUrl(inputArg)
-
-            else:  # It's a file of URLs
-                try:
-                    inputFile = open(inputArg, "r")
+                if urlPassed:
+                    # It's not a standard file, so assume it's just a single URL
                     if verbose():
-                        print(colored("Reading input file " + inputArg + ":", "cyan"))
-                    with inputFile as f:
-                        if stopProgram is None:
-                            p = mp.Pool(args.processes)
-                            p.map(processUrl, f)
-                            p.close()
-                            p.join()
-                    inputFile.close()
-                except Exception as e:
-                    if vverbose():
-                        print(
-                            colored(
-                                "ERROR processInput 5: Problem with standard file: "
-                                + str(e),
-                                "red")
-                        )
+                        print(colored("Processing URL:", "cyan"))
+                    processUrl(inputArg)
+
+                else:  # It's a file of URLs
+                    try:
+                        inputFile = open(inputArg, "r")
+                        if verbose():
+                            print(colored("Reading input file " + inputArg + ":", "cyan"))
+                        with inputFile as f:
+                            if stopProgram is None:
+                                p = mp.Pool(args.processes)
+                                p.map(processUrl, f)
+                                p.close()
+                                p.join()
+                        inputFile.close()
+                    except Exception as e:
+                        if vverbose():
+                            print(
+                                colored(
+                                    "ERROR processInput 5: Problem with standard file: "
+                                    + str(e),
+                                    "red")
+                            )
 
     except Exception as e:
         if vverbose():
@@ -1634,6 +1792,15 @@ if __name__ == "__main__":
         metavar="<integer>",
         type=argcheckPercent,
     )
+    parser.add_argument(
+        "-mfs",
+        "--max-file-size",
+        help="The maximum file size (in bytes) of a file to be checked if -i is a directory. If the file size os over, it will be ignored (default: 500 MB)",
+        action="store",
+        type=int,
+        default=500,
+        metavar="<integer>",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     parser.add_argument(
         "-vv", "--vverbose", action="store_true", help="Increased verbose output"
@@ -1642,7 +1809,7 @@ if __name__ == "__main__":
 
     showBanner()
 
-    # Get the config settingds from the config.yml file
+    # Get the config settings from the config.yml file
     getConfig()
 
     # Get the current Process ID to use to get memory usage that is displayed with -vv option
@@ -1652,10 +1819,7 @@ if __name__ == "__main__":
         pass
 
     try:
-        # if the -o (--output) was not passed then default to output.txt
-        if args.output is None:
-            args.output = "output.txt"
-
+        
         # Set User Agents to use
         setUserAgents()
         
@@ -1683,8 +1847,8 @@ if __name__ == "__main__":
             skippedRequests = 0
             failedRequests = 0
             
-            # If the file was a burp file then ignore userAgents if passed because they are not relevant
-            if burpFile: break
+            # If a burp file or directory is processed then ignore userAgents if passed because they are not relevant
+            if burpFile or dirPassed: break
 
         # If the program was stopped then alert the user
         if stopProgram is not None:

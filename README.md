@@ -2,7 +2,7 @@
 
 ## About
 
-This is a tool used to discover endpoints for a given target. It can find them by crawling a target, or get them from a Burp project.
+This is a tool used to discover endpoints for a given target. It can find them by crawling a target, searching files in a given directory, or get them from a Burp project.
 The python script is based on the link finding capabilities of my Burp extension [GAP](https://github.com/xnl-h4ck3r/burp-extensions).
 As a starting point, I took the amazing tool [LinkFinder](https://github.com/GerbenJavado/LinkFinder) by Gerben Javado, and used the Regex for finding links, but with additional improvements to find even more.
 
@@ -42,17 +42,18 @@ $ python setup.py install
 | -sTO      | †                       | Stop when > 95 percent of requests time out (default: false)                                                                                                                                                                                                                                                                                                                               |
 | -sCE      | †                       | Stop when > 95 percent of requests have connection errors (default: false)                                                                                                                                                                                                                                                                                                                 |
 | -m        | --memory-threshold      | The memory threshold percentage. If the machines memory goes above the threshold, the program will be stopped and ended gracefully before running out of memory (default: 95)                                                                                                                                                                                                              |
+| -mfs      | --max-file-size †       | The maximum file size (in Mb) of a file to be checked if -i is a directory. If the file size is over this value, it will be ignored.                                                                                                                                                                                                                                                       |
 | -v        | --verbose               | Verbose output                                                                                                                                                                                                                                                                                                                                                                             |
 | -vv       | --vverbose              | Increased verbose output                                                                                                                                                                                                                                                                                                                                                                   |
 | -h        | --help                  | show the help message and exit                                                                                                                                                                                                                                                                                                                                                             |
 
-† NOT RELEVANT FOR INPUT OF BURP XML FILE
+† NOT RELEVANT FOR INPUT OF DIRECTORY OR BURP XML FILE
 
 ## config.yml
 
 The `config.yml` file has the keys which can be updated to suit your needs:
 
-- `linkExclude` - A comma separated list of strings (e.g. `.css,.jpg,.jpeg` etc.) that all links are checked against. If a link includes any of the strings then it will be excluded from the output.
+- `linkExclude` - A comma separated list of strings (e.g. `.css,.jpg,.jpeg` etc.) that all links are checked against. If a link includes any of the strings then it will be excluded from the output. If the input is a directory, then file names are checked against this list.
 - `contentExclude` - A comma separated list of strings (e.g. `text/css,image/jpeg,image/jpg` etc.) that all responses `Content-Type` headers are checked against. Any responses with the these content types will be excluded and not checked for links.
 - `regexFiles` - A list of file types separated by a pipe character (e.g. `php|php3|php5` etc.). These are used in the Link Finding Regex when there are findings that aren't obvious links, but are interesting file types that you want to pick out. If you add to this list, ensure you escape any dots to ensure correct regex, e.g. `js\.map`
 
@@ -98,6 +99,16 @@ If you have a file of JS file URLs for example, you can look for links in those:
 python3 xnLinkFinder.py -i target_js.txt
 ```
 
+### Find Links from a files in a directory - Basic
+
+If you have a files, e.g. JS files, HTTP responses, etc. you can look for links in those:
+
+```
+python3 xnLinkFinder.py -i ~/Tools/waymore/results/target.com
+```
+
+NOTE: Sub directories are not checked. The `-mfs` option can be specified to skip files over a certain size.
+
 ## Recommendations and Notes
 
 - Always use the Scope Prefix argument `-sp`. This can be one scope domain, or a file containing multiple scope domains.
@@ -126,6 +137,7 @@ python3 xnLinkFinder.py -i target_js.txt
 - If you decide to cancel xnLinkFinder (using `Ctrl-C`) in the middle of running, be patient and any gathered data will be saved before ending gracefully.
 - Using the `-orig` option will show the URL where the link was found. This can mean you have duplicate links in the output if the same link was found on multiple sources, but it will suffixed with the origin URL in square brackets.
 - When making requests, xnLinkFinder will use a random User-Agent from the current group, which defaults to `desktop`. If you have a target that could have different links for different user agent groups, the specify `-u desktop mobile` for example (separate with a space). The `mobile` user agent option is an combination of `mobile-apple`, `mobile-android` and `mobile-windows`.
+- When `-i` has been set to a directory, the contents of the files in the root of that directory will be searched for links. Files in sub-directories are not searched. Any files that are over the size set by `-mfs` (default: 500 MB) will be skipped.
 
 ## Issues
 
@@ -133,7 +145,6 @@ If you come across any problems at all, or have ideas for improvements, please f
 
 ## TODO
 
-- Allow `-i` to be a folder name, and search all files, e.g. `*.js`
 - Also get all potential parameters
 
 ## Example output
