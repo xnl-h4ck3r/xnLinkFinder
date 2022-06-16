@@ -1242,7 +1242,7 @@ def processDirectory():
                 0,
                 totalResponses,
                 prefix="Checking " + str(totalResponses) + " files: ",
-                suffix="Complete",
+                suffix="Complete  ",
                 length=50,
             )
             # Iterate directory
@@ -1261,7 +1261,7 @@ def processDirectory():
                         fillChar = "O"
                     elif fillTest == 1:
                         fillChar = "o"
-                    suffix = "Complete"
+                    suffix = "Complete  "
                     # Show memory usage if -vv option chosen, and check memory every 25 requests
                     if responseCount % 25 == 0:
                         try:
