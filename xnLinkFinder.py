@@ -376,9 +376,12 @@ def getResponseLinks(response, url):
                 header = response.headers
                 responseUrl = response.url
  
-        # Some URLs may be displayed in the body within strings that have escaped /, so replace any \/ with /
-        body = body.replace("\/", "/")
-
+        # Some URLs may be displayed in the body within strings that have different encodings of / and : so replace these
+        pattern = re.compile("(&#x2f;|%2f|\\u002f|\\\/)", re.IGNORECASE)
+        body = pattern.sub("/",body)
+        pattern = re.compile("(&#x3a;|%3a|\\u003a|\\\/)", re.IGNORECASE)
+        body = pattern.sub(":",body)
+        
         # Take the LINK_REGEX_FILES values and build a string of any values over 4 characters or has a number in it
         # This is used in the 4th capturing group Link Finding regexwebsocket
         lstFileExt = LINK_REGEX_FILES.split("|")
