@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 # Python 3
+# Good luck and good hunting! If you really love the tool (or any others), or they helped you find an awesome bounty, consider BUYING ME A COFFEE! (https://ko-fi.com/xnlh4ck3r) ☕ (I could use the caffeine!)
 
-VERSION = "0.3"
+VERSION = "1.0"
 inScopePrefixDomains = None
 inScopeFilterDomains = None
 burpFile = False
+zapFile = False
 stdFile = False
 urlPassed = False
 dirPassed = False
@@ -233,7 +235,7 @@ def includeLink(link):
                     if inScopeFilterDomains is None:
                         search = args.scope_filter.replace(".", "\.")
                         search = search.replace("*", "")
-                        regexStr = r"(:\/\/|//|^)[^\/|?|#]*" + search
+                        regexStr = r"^([A-Z,a-z]*)?(:\/\/|//|^)[^\/|?|#]*" + search
                         if re.search(regexStr, link):
                             include = True
                     else:
@@ -242,7 +244,7 @@ def includeLink(link):
                             search = search.replace("*", "")
                             search = search.replace("\n", "")
                             if search != "":
-                                regexStr = r"(:\/\/|//|^)[^\/|?|#]*" + search
+                                regexStr = r"^([A-Z,a-z]*)?(:\/\/|//|^)[^\/|?|#]*" + search
                                 if re.search(regexStr, link):
                                     include = True
                 except Exception as e:
@@ -303,7 +305,7 @@ def includeContentType(header):
     Determine if the content type is in the exclusions
     Returns whether the content type is included
     """
-    global burpFile
+    global burpFile, zapFile
 
     include = True
     
@@ -316,6 +318,8 @@ def includeContentType(header):
                     header,
                     re.IGNORECASE,
                 )[0]
+            elif zapFile:
+                contentType = '' #??????????????????
             else:
                 contentType = header["content-type"]
             contentType = contentType.split(";")[0]
@@ -350,14 +354,14 @@ def getResponseLinks(response, url):
     """
     Get a list of links found
     """
-    global inScopePrefixDomains, burpFile, dirPassed
+    global inScopePrefixDomains, burpFile, zapFile, dirPassed
 
     try:
         # if the --include argument is True then add the input links to the output too (unless the input was a directory)
         if args.include and not dirPassed:
             addLink(url, url)
 
-        if burpFile:
+        if burpFile or zapFile:
             # \r\n\r\n separates the header and body. Get the position of this
             # but if it is 0 then there is no body, so set it to the length of response
             bodyHeaderDivide = response.find("\r\n\r\n")
@@ -375,7 +379,7 @@ def getResponseLinks(response, url):
                 body = str(response.headers) + "\r\n\r\n" + response.text
                 header = response.headers
                 responseUrl = response.url
- 
+        
         # Some URLs may be displayed in the body within strings that have different encodings of / and : so replace these
         pattern = re.compile("(&#x2f;|%2f|\\u002f|\\\/)", re.IGNORECASE)
         body = pattern.sub("/",body)
@@ -441,9 +445,10 @@ def getResponseLinks(response, url):
                                 else:
                                     end = 1
                                 link = link[start:-end]
-                            if link[-1] == "\\":
-                                link = link[0:-1]
-
+                            
+                            # If there are any trailing back slashes, remove them all
+                            link = link.rstrip("\\")
+                            
                         except Exception as e:
                             if vverbose():
                                 print(
@@ -514,7 +519,7 @@ def getResponseLinks(response, url):
             try:
                 # See if the SourceMap header exists
                 try:
-                    if burpFile:
+                    if burpFile or zapFile:
                         mapFile = re.findall(
                             r"(?<=SourceMap\:\s).*?(?=\n)", header, re.IGNORECASE
                         )[0]
@@ -525,7 +530,7 @@ def getResponseLinks(response, url):
                 # If not found, try the deprecated X-SourceMap header
                 if mapFile != "":
                     try:
-                        if burpFile:
+                        if burpFile or zapFile:
                             mapFile = re.findall(
                                 r"(?<=X-SourceMap\:\s).*?(?=\n)", header, re.IGNORECASE
                             )[0]
@@ -604,7 +609,7 @@ def shouldMakeRequest(url):
 
 def processUrl(url):
 
-    global burpFile, totalRequests, skippedRequests, failedRequests, userAgent, requestHeaders, tooManyRequests, tooManyForbidden, tooManyTimeouts, tooManyConnectionErrors, stopProgram
+    global burpFile, zapFile, totalRequests, skippedRequests, failedRequests, userAgent, requestHeaders, tooManyRequests, tooManyForbidden, tooManyTimeouts, tooManyConnectionErrors, stopProgram
 
     # Choose a random user agent string to use from the current group
     userAgent = random.choice(userAgents[currentUAGroup])
@@ -620,8 +625,8 @@ def processUrl(url):
         if shouldMakeRequest(url):
 
             # Add the url to the list of visited URls so we don't visit again
-            # Don't do this for Burp files as they can be huge, or for file names in directory mode
-            if not burpFile and not dirPassed:
+            # Don't do this for Burp or ZAP files as they can be huge, or for file names in directory mode
+            if not burpFile and not zapFile and not dirPassed:
                 linksVisited.add(url)
 
             # Get memory usage every 25 requests
@@ -638,17 +643,26 @@ def processUrl(url):
                     if not url.startswith("http"):
                         requestUrl = "http://" + url
                     
+                    # If the -replay-proxy argument was passed, try to use it
+                    if args.replay_proxy != '':
+                        proxies = { 'http': args.replay_proxy, 'https': args.replay_proxy }
+                        verify = False
+                    else:
+                        proxies = {}
+                        verify = not args.insecure
+                    
                     # Suppress insecure request warnings if using insecure mode
-                    if args.insecure:
+                    if not verify:
                         requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
-
+                        
                     # Make the request
                     resp = requests.get(
                         requestUrl,
                         headers=requestHeaders,
                         timeout=args.timeout,
                         allow_redirects=True,
-                        verify = not args.insecure
+                        verify = verify,
+                        proxies = proxies
                     )
                     if resp.status_code == 200:
                         if verbose():
@@ -685,6 +699,9 @@ def processUrl(url):
 
                     getResponseLinks(resp, url)
                     totalRequests = totalRequests + 1
+                except requests.exceptions.ProxyError as pe:
+                    print(colored("Cannot connect to the proxy " + args.replay_proxy, "red"))
+                    pass
                 except requests.exceptions.ConnectionError as errc:
                     failedRequests = failedRequests + 1
                     if verbose():
@@ -750,7 +767,7 @@ def processUrl(url):
 # Display stats if -vv argument was chosen
 def processStats():
     print()
-    if not burpFile and not dirPassed:
+    if not burpFile and not zapFile and not dirPassed:
         print("TOTAL REQUESTS MADE: " + str(totalRequests))
         print("DUPLICATE REQUESTS SKIPPED: " + str(skippedRequests))
         print("FAILED REQUESTS: " + str(failedRequests))
@@ -1010,7 +1027,7 @@ def processDepth():
 
 def showOptions():
 
-    global burpFile, stdFile, urlPassed, dirPassed, inScopePrefixDomains, inScopeFilterDomains
+    global burpFile, zapFile, stdFile, urlPassed, dirPassed, inScopePrefixDomains, inScopeFilterDomains
 
     try:
         print(colored("Selected options:", "cyan"))
@@ -1024,6 +1041,11 @@ def showOptions():
                 print(
                     colored("-i: " + args.input + " (Burp XML File)", "magenta"),
                     "Links will be found in saved Burp responses.",
+                )
+            elif zapFile: 
+                print(
+                    colored("-i: " + args.input + " (OWASP ZAP File)", "magenta"),
+                    "Links will be found in saved ZAP responses.",
                 )
             else:
                 if dirPassed:
@@ -1079,7 +1101,7 @@ def showOptions():
                 "The regex applied after all links have been retrieved to determine what is output.",
             )
 
-        if not burpFile and not dirPassed:
+        if not burpFile and not zapFile and not dirPassed:
             print(
                 colored("-d: " + str(args.depth), "magenta"),
                 "The depth of link searches, e.g. how many times links will be searched for recursively.",
@@ -1097,7 +1119,7 @@ def showOptions():
             colored("-orig: " + str(args.origin), "magenta"),
             "Whether the origin of a link is displayed in the output.",
         )
-        if not burpFile and not dirPassed:
+        if not burpFile and not zapFile and not dirPassed:
             print(
                 colored("-p: " + str(args.processes), "magenta"),
                 "The number of parallel requests made.",
@@ -1140,6 +1162,10 @@ def showOptions():
             print(
                 colored("-sCE: " + str(args.sCE), "magenta"),
                 "Whether the program will stop if > 95 requests have connection errors.",
+            )
+            print(
+                colored("-replay-proxy: " + str(args.replay_proxy), "magenta"),
+                "Replay requests using this proxy.",
             )
         
         if dirPassed: 
@@ -1242,7 +1268,7 @@ def processDirectory():
                 0,
                 totalResponses,
                 prefix="Checking " + str(totalResponses) + " files: ",
-                suffix="Complete  ",
+                suffix="Complete ",
                 length=50,
             )
             # Iterate directory
@@ -1261,9 +1287,9 @@ def processDirectory():
                         fillChar = "O"
                     elif fillTest == 1:
                         fillChar = "o"
-                    suffix = "Complete  "
-                    # Show memory usage if -vv option chosen, and check memory every 25 requests
-                    if responseCount % 25 == 0:
+                    suffix = "Complete "
+                    # Show memory usage if -vv option chosen, and check memory every 25 requests (or if its the last)
+                    if responseCount % 25 == 0 or responseCount == totalResponses:
                         try:
                             getMemory()
                             if vverbose():
@@ -1324,13 +1350,311 @@ def processDirectory():
                     "red",
                 )
             )
+
+def processZapMessage(zapMessage, responseCount):
+    """
+    Process a specific message from an OWASP ZAP ASCII text output file. There is a "message" for each request and response
+    """
+    global totalResponses, currentMemUsage, currentMemPercent
+    try:
+        # Split the message into request (just URL) and response
+        request = zapMessage.split("\n\n",1)[0].strip().split(" ")[1].strip()
+        response = zapMessage.split("\n\n",1)[1].strip()
+        
+        # Show progress bar
+        fillTest = responseCount % 2
+        if fillTest == 0:
+            fillChar = "O"
+        elif fillTest == 1:
+            fillChar = "o"
+        suffix = "Complete "
+        # Show memory usage if -vv option chosen, and check memory every 25 requests (or if its the last)
+        if responseCount % 25 == 0 or responseCount == totalResponses:
+            try:
+                getMemory()
+                if vverbose():
+                    suffix = (
+                        "Complete (Mem Usage "
+                        + humanReadableSize(currentMemUsage)
+                        + ", Total Mem "
+                        + str(currentMemPercent)
+                        + "%)"
+                    )
+            except:
+                if vverbose():
+                    suffix = 'Complete (To show memory usage, run "pip install psutil")'
+        printProgressBar(
+            responseCount,
+            totalResponses,
+            prefix="Checking "
+            + str(totalResponses)
+            + " responses:",
+            suffix=suffix,
+            length=50,
+            fill=fillChar,
+        )
+        
+        # Get the links
+        getResponseLinks(response, request)
+        
+    except Exception as e:
+        if vverbose():
+            print(colored("ERROR processZapMessage 1: " + str(e),"red"))    
+
+def processZapFile():
+    """
+    Process an ASCII text file that is output from OWASP ZAP. 
+    By selecting the requests/responses you want in ZAP, you can then select Report -> Export Messages to File...
+    This will save a file of all responses to check for links.
+    It is assumed that each request/response "message" will start with a line matching REGEX ^={4}\s[0-9]+\s={10}$
+    (this was tested with ZAP v2.11.1)
+    """
+    global totalResponses, currentMemUsage, currentMemPercent, stopProgram
+    
+    try:
+        try: 
+            fileSize = os.path.getsize(args.input)
+            filePath = os.path.abspath(args.input).replace(" ", "\ ")
+            
+            cmd = "grep -Eo '^={4}\s[0-9]+\s={10}$' " + filePath + " | wc -l"
+            grep = subprocess.run(
+                cmd, shell=True, text=True, stdout=subprocess.PIPE, check=True
+            )
+            totalResponses = int(grep.stdout.split("\n")[0])
+
+            print(
+                    colored(
+                        "\nProcessing OWASP ZAP file "
+                        + args.input
+                        + " ("
+                        + humanReadableSize(fileSize)
+                        + "):",
+                        "cyan",
+                    )
+                )
+        except:
+            print(colored("Processing OWASP ZAP file " + args.input + ":", "cyan"))
+        
+        try:
+            zapMessage = ""
+            responseCount = 0
+            printProgressBar(
+                0,
+                totalResponses,
+                prefix="Checking " + str(totalResponses) + " responses: ",
+                suffix="Complete ",
+                length=50,
+            )
+            
+            # Open the ZAP file and read line by line without loading into memory
+            with open(args.input, 'r', encoding='utf-8', errors='ignore') as owaspZapFile:
+                for line in owaspZapFile:
+                    if stopProgram is not None:
+                        break
                     
+                    # Check for the separator lines
+                    match = re.search('={4}\s[0-9]+\s={10}', line)
+
+                    # If it is the start of the ZAP message then process it
+                    if match is not None and zapMessage != "": 
+                        
+                        # Process the full message (request and response)
+                        responseCount = responseCount + 1
+                        processZapMessage(zapMessage, responseCount)
+                        
+                        # Reset the current message
+                        zapMessage = ""
+                        
+                    else:
+                        # Add the current line to the current Zap message
+                        if match is None:            
+                            zapMessage = zapMessage + line
+            
+            # If there was one last message, process it
+            if zapMessage != "":
+                  processZapMessage(zapMessage, responseCount+1)
+                                   
+        except Exception as e:
+            if vverbose():
+                print(colored("ERROR processZapFile 2: " + str(e),"red"))
+                
+    except Exception as e:
+        if vverbose():
+            print(colored("ERROR processZapFile 1: " + str(e),"red"))
+            
+def processBurpFile():
+    """
+    Process a Burp XML file of requests/responses
+    """
+    global totalResponses, currentMemUsage, currentMemPercent, stopProgram
+    
+    try:
+        fileSize = os.path.getsize(args.input)
+        filePath = os.path.abspath(args.input).replace(" ", "\ ")
+        try:
+            cmd = 'grep -o "<item>" ' + filePath + " | wc -l"
+            grep = subprocess.run(
+                cmd, shell=True, text=True, stdout=subprocess.PIPE, check=True
+            )
+            totalResponses = int(grep.stdout.split("\n")[0])
+
+            print(
+                colored(
+                    "Sometimes there is a problem in Burp XML files. This can often be resolved by removing unnecessary tags which will also make the file smaller. This can be done to file "
+                    + filePath
+                    + " now, or you can try without changing it.",
+                    "yellow",
+                )
+            )
+            reply = input("Do you want to remove tags form the file? y/n: ")
+            if reply.lower() == "y":
+                try:
+                    cmd = (
+                        "sed -i -E '/(<time|<host|<port|<prot|<meth|<path|<exte|<requ|<stat|<responselength|<mime|<comm)/d' "
+                        + filePath
+                    )
+                    run = subprocess.run(
+                        cmd,
+                        shell=True,
+                        text=True,
+                        stdout=subprocess.PIPE,
+                        check=True,
+                    )
+                except Exception as e:
+                    if verbose():
+                        print(colored("There was a problem: " + str(e)))
+
+        except Exception as e:
+            if verbose():
+                print(colored("ERROR processInput 3: " + str(e), "red"))
+
+        print(
+            colored(
+                "\nProcessing Burp file "
+                + args.input
+                + " ("
+                + humanReadableSize(fileSize)
+                + "):",
+                "cyan",
+            )
+        )
+    except:
+        print(colored("Processing Burp file " + args.input + ":", "cyan"))
+
+    request = ""
+    response = ""
+    try:
+        responseCount = 0
+        printProgressBar(
+            0,
+            totalResponses,
+            prefix="Checking " + str(totalResponses) + " responses: ",
+            suffix="Complete ",
+            length=50,
+        )
+        for event, elem in etree.iterparse(args.input, events=("start", "end")):
+            if stopProgram is not None:
+                break
+            if event == "end":
+                if elem.tag == "url":
+
+                    # Show progress bar
+                    responseCount = responseCount + 1
+                    fillTest = responseCount % 2
+                    if fillTest == 0:
+                        fillChar = "O"
+                    elif fillTest == 1:
+                        fillChar = "o"
+                    suffix = "Complete "
+                    # Show memory usage if -vv option chosen, and check memory every 25 requests (or if its the last)
+                    if responseCount % 25 == 0 or responseCount == totalResponses:
+                        try:
+                            getMemory()
+                            if vverbose():
+                                suffix = (
+                                    "Complete (Mem Usage "
+                                    + humanReadableSize(currentMemUsage)
+                                    + ", Total Mem "
+                                    + str(currentMemPercent)
+                                    + "%)"
+                                )
+                        except:
+                            if vverbose():
+                                suffix = 'Complete (To show memory usage, run "pip install psutil")'
+                    printProgressBar(
+                        responseCount,
+                        totalResponses,
+                        prefix="Checking "
+                        + str(totalResponses)
+                        + " responses:",
+                        suffix=suffix,
+                        length=50,
+                        fill=fillChar,
+                    )
+
+                    try:
+                        request = elem.text
+                    except:
+                        if verbose():
+                            print(
+                                colored(
+                                    "Failed to get URL " + str(responseCount),
+                                    "red",
+                                )
+                            )
+
+            if event == "end":
+                if elem.tag == "response":
+                    try:
+                        response = base64.b64decode(elem.text).decode(
+                            "utf-8", "replace"
+                        )
+                    except:
+                        pass
+
+            if (
+                response is not None
+                and request is not None
+                and response != ""
+                and request != ""
+            ):
+                try:
+                    elem.clear()
+                    getResponseLinks(response, request)
+                    request = ""
+                    response = ""
+                except Exception as e:
+                    if vverbose():
+                        print(
+                            colored(
+                                "ERROR processInput 4: Request "
+                                + str(responseCount)
+                                + ": "
+                                + str(e),
+                                "red",
+                            )
+                        )
+
+    except Exception as e:
+        if vverbose():
+            print(
+                colored(
+                    "Error with Burp file: Response "
+                    + str(responseCount)
+                    + ", URL: "
+                    + request
+                    + " ERROR: "
+                    + str(e),
+                    "red",
+                )
+            )
+
 def processInput():
 
     # Tell Python to run the handler() function when SIGINT is received
     signal(SIGINT, handler)
 
-    global lstExclusions, burpFile, stdFile, inputFile, urlPassed, dirPassed, currentMemUsage, currentMemPercent, stopProgram
+    global lstExclusions, burpFile, zapFile, stdFile, inputFile, urlPassed, dirPassed, currentMemUsage, currentMemPercent, stopProgram
 
     try:
         # Set the link exclusions, and add any additional exclusions passed with -x (--exclude)
@@ -1341,15 +1665,29 @@ def processInput():
         # If the -i (--input) can be a standard file (text file with URLs per line),
         # or a directory containing files to search,
         # or a Burp XML file with Requests and Responses
+        # or a OWASP ZAP ASCII text file with Requests and Responses
         # if the value passed is not a valid file, or a directory, then assume it is an individual URL
         inputArg = args.input
         if os.path.isfile(inputArg):
             try:
                 inputFile = open(inputArg, "r")
                 firstLine = inputFile.readline()
+
+                # Check if the file passed is a Burp file
                 burpFile = firstLine.startswith("<?xml")
+                
+                # If not a Burp file, check of it is an OWASP ZAP file
+                if not burpFile:
+                    match = re.search('={4}\s[0-9]+\s={10}', firstLine)
+                    if match is not None:
+                        zapFile = True
+                
+                    # If it's not a burp or a zap file then assume it is a standard file or URLs
+                    if not zapFile:
+                        stdFile = True
             except:
-                stdFile = True
+                print(colored("Cannot read input file " + inputArg + ":" + str(e), "red"))
+                exit()
         elif os.path.isdir(inputArg):
             dirPassed = True
             if inputArg[-1] != '/':
@@ -1368,169 +1706,15 @@ def processInput():
         # Get the scope -sp and -sf domains if required
         getScopeDomains()
 
-        # if Burp file...
+        # Process the correct input type...
         if burpFile:
-            try:
-                fileSize = os.path.getsize(args.input)
-                filePath = os.path.abspath(args.input).replace(" ", "\ ")
-                try:
-                    cmd = 'grep -o "<item>" ' + filePath + " | wc -l"
-                    grep = subprocess.run(
-                        cmd, shell=True, text=True, stdout=subprocess.PIPE, check=True
-                    )
-                    totalResponses = int(grep.stdout.split("\n")[0])
-
-                    print(
-                        colored(
-                            "Sometimes there is a problem in Burp XML files. This can often be resolved by removing unnecessary tags which will also make the file smaller. This can be done to file "
-                            + filePath
-                            + " now, or you can try without changing it.",
-                            "yellow",
-                        )
-                    )
-                    reply = input("Do you want to remove tags form the file? y/n: ")
-                    if reply.lower() == "y":
-                        try:
-                            cmd = (
-                                "sed -i -E '/(<time|<host|<port|<prot|<meth|<path|<exte|<requ|<stat|<responselength|<mime|<comm)/d' "
-                                + filePath
-                            )
-                            run = subprocess.run(
-                                cmd,
-                                shell=True,
-                                text=True,
-                                stdout=subprocess.PIPE,
-                                check=True,
-                            )
-                        except Exception as e:
-                            if verbose():
-                                print(colored("There was a problem: " + str(e)))
-
-                except Exception as e:
-                    if verbose():
-                        print(colored("ERROR processInput 3: " + str(e), "red"))
-
-                print(
-                    colored(
-                        "\nProcessing Burp file "
-                        + args.input
-                        + " ("
-                        + humanReadableSize(fileSize)
-                        + "):",
-                        "cyan",
-                    )
-                )
-            except:
-                print(colored("Processing Burp file " + args.input + ":", "cyan"))
-
-            request = ""
-            response = ""
-            try:
-                responseCount = 0
-                printProgressBar(
-                    0,
-                    totalResponses,
-                    prefix="Checking " + str(totalResponses) + " responses: ",
-                    suffix="Complete",
-                    length=50,
-                )
-                for event, elem in etree.iterparse(args.input, events=("start", "end")):
-                    if stopProgram is not None:
-                        break
-                    if event == "end":
-                        if elem.tag == "url":
-
-                            # Show progress bar
-                            responseCount = responseCount + 1
-                            fillTest = responseCount % 2
-                            if fillTest == 0:
-                                fillChar = "O"
-                            elif fillTest == 1:
-                                fillChar = "o"
-                            suffix = "Complete"
-                            # Show memory usage if -vv option chosen, and check memory every 25 requests
-                            if responseCount % 25 == 0:
-                                try:
-                                    getMemory()
-                                    if vverbose():
-                                        suffix = (
-                                            "Complete (Mem Usage "
-                                            + humanReadableSize(currentMemUsage)
-                                            + ", Total Mem "
-                                            + str(currentMemPercent)
-                                            + "%)"
-                                        )
-                                except:
-                                    if vverbose():
-                                        suffix = 'Complete (To show memory usage, run "pip install psutil")'
-                            printProgressBar(
-                                responseCount,
-                                totalResponses,
-                                prefix="Checking "
-                                + str(totalResponses)
-                                + " responses:",
-                                suffix=suffix,
-                                length=50,
-                                fill=fillChar,
-                            )
-
-                            try:
-                                request = elem.text
-                            except:
-                                if verbose():
-                                    print(
-                                        colored(
-                                            "Failed to get URL " + str(responseCount),
-                                            "red",
-                                        )
-                                    )
-
-                    if event == "end":
-                        if elem.tag == "response":
-                            try:
-                                response = base64.b64decode(elem.text).decode(
-                                    "utf-8", "replace"
-                                )
-                            except:
-                                pass
-
-                    if (
-                        response is not None
-                        and request is not None
-                        and response != ""
-                        and request != ""
-                    ):
-                        try:
-                            elem.clear()
-                            getResponseLinks(response, request)
-                            request = ""
-                            response = ""
-                        except Exception as e:
-                            if vverbose():
-                                print(
-                                    colored(
-                                        "ERROR processInput 4: Request "
-                                        + str(responseCount)
-                                        + ": "
-                                        + str(e),
-                                        "red",
-                                    )
-                                )
-
-            except Exception as e:
-                if vverbose():
-                    print(
-                        colored(
-                            "Error with Burp file: Response "
-                            + str(responseCount)
-                            + ", URL: "
-                            + request
-                            + " ERROR: "
-                            + str(e),
-                            "red",
-                        )
-                    )
-
+            # If it's an Burp file
+            processBurpFile()
+            
+        elif zapFile:
+            # If it's an OWASP ZAP file
+            processZapFile()
+            
         else:
 
             # If it's a directory
@@ -1641,7 +1825,7 @@ if __name__ == "__main__":
         "-i",
         "--input",
         action="store",
-        help="Input a: URL, text file of URLs, or a Burp XML output file.",
+        help="Input a: URL, text file of URLs, a Directory of files to search, a Burp XML output file or an OWASP ZAP output file.",
         required=True,
     )
     parser.add_argument(
@@ -1804,6 +1988,12 @@ if __name__ == "__main__":
         default=500,
         metavar="<integer>",
     )
+    parser.add_argument(
+        "-replay-proxy",
+        action="store",
+        help="For active link finding with URL (or file of URLs), replay the requests through this proxy.",
+        default="",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     parser.add_argument(
         "-vv", "--vverbose", action="store_true", help="Increased verbose output"
@@ -1850,8 +2040,8 @@ if __name__ == "__main__":
             skippedRequests = 0
             failedRequests = 0
             
-            # If a burp file or directory is processed then ignore userAgents if passed because they are not relevant
-            if burpFile or dirPassed: break
+            # If a Burp file, ZAP file or directory is processed then ignore userAgents if passed because they are not relevant
+            if burpFile or zapFile or dirPassed: break
 
         # If the program was stopped then alert the user
         if stopProgram is not None:

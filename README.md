@@ -2,7 +2,14 @@
 
 ## About
 
-This is a tool used to discover endpoints for a given target. It can find them by crawling a target, searching files in a given directory, or get them from a Burp project.
+This is a tool used to discover endpoints for a given target. It can find them by:
+
+- crawling a target (pass a domain/URL)
+- crawling multiple targets (pass a file of domains/URLs)
+- searching files in a given directory (pass a directory name)
+- get them from a Burp project (pass location of a Burp XML file)
+- get them from an OWASP ZAP project (pass location of a ZAP ASCII message file)
+
 The python script is based on the link finding capabilities of my Burp extension [GAP](https://github.com/xnl-h4ck3r/burp-extensions).
 As a starting point, I took the amazing tool [LinkFinder](https://github.com/GerbenJavado/LinkFinder) by Gerben Javado, and used the Regex for finding links, but with additional improvements to find even more.
 
@@ -18,36 +25,36 @@ $ python setup.py install
 
 ## Usage
 
-| Arg       | Long Arg                | Description                                                                                                                                                                                                                                                                                                                                                                                |
-| --------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| -i        | --input                 | Input a: URL, text file of URLs, or a Burp XML output file.                                                                                                                                                                                                                                                                                                                                |
-| -o        | --output                | The file to save the output to, including path if necessary (default: output.txt). If set to `cli` then output is only written to STDOUT. If the file already exist it will just be appended to (and de-duplicated) unless option `-ow` is passed.                                                                                                                                         |
-| -ow       | --output-overwrite      | If the output file already exists, it will be overwritten instead of being appended to.                                                                                                                                                                                                                                                                                                    |
-| -sp       | --scope-prefix          | Any links found starting with `/` will be prefixed with scope domains in the output instead of the original link. If the passed value is a valid file name, that file will be used, otherwise the string literal will be used.                                                                                                                                                             |
-| -spo      | --scope-prefix-original | If argument `-sp` is passed, then this determines whether the original link starting with `/` is also included in the output (default: false)                                                                                                                                                                                                                                              |
-| -sf       | --scope-filter          | Will filter output links to only include them if the domain of the link is in the scope specified. If the passed value is a valid file name, that file will be used, otherwise the string literal will be used.                                                                                                                                                                            |
-| -c        | --cookies †             | Add cookies to pass with HTTP requests. Pass in the format `'name1=value1; name2=value2;'`                                                                                                                                                                                                                                                                                                 |
-| -H        | --headers †             | Add custom headers to pass with HTTP requests. Pass in the format `'Header1: value1; Header2: value2;'`                                                                                                                                                                                                                                                                                    |
-| -ra       | --regex-after           | RegEx for filtering purposes against found endpoints before output (e.g. `/api/v[0-9]\.[0-9]\*` ). If it matches, the link is output.                                                                                                                                                                                                                                                      |
-| -d        | --depth †               | The level of depth to search. For example, if a value of 2 is passed, then all links initially found will then be searched for more links (default: 1). This option is ignored for Burp files because they can be huge and consume lots of memory. It is also advisable to use the `-sp` (`--scope-prefix`) argument to ensure a request to links found without a domain can be attempted. |
-| -p        | --processes †           | Basic multithreading is done when getting requests for a URL, or file of URLs (not a Burp file). This argument determines the number of processes (threads) used (default: 25)                                                                                                                                                                                                             |
-| -x        | --exclude               | Additional Link exclusions (to the list in `config.yml`) in a comma separated list, e.g. `careers,forum`                                                                                                                                                                                                                                                                                   |
-| -orig     | --origin                | Whether you want the origin of the link to be in the output. Displayed as `LINK-URL [ORIGIN-URL]` in the output (default: false)                                                                                                                                                                                                                                                           |
-| -t        | --timeout †             | How many seconds to wait for the server to send data before giving up (default: 10 seconds)                                                                                                                                                                                                                                                                                                |
-| -inc      | --include               | Include input (`-i`) links in the output (default: false)                                                                                                                                                                                                                                                                                                                                  |
-| -u        | --user-agent †          | What User Agents to get links for, e.g. `-u desktop mobile`                                                                                                                                                                                                                                                                                                                                |
-| -insecure | †                       | Whether TLS certificate checks should be disabled when making requests (delfault: false)                                                                                                                                                                                                                                                                                                   |
-| -s429     | †                       | Stop when > 95 percent of responses return 429 Too Many Requests (default: false)                                                                                                                                                                                                                                                                                                          |
-| -s403     | †                       | Stop when > 95 percent of responses return 403 Forbidden (default: false)                                                                                                                                                                                                                                                                                                                  |
-| -sTO      | †                       | Stop when > 95 percent of requests time out (default: false)                                                                                                                                                                                                                                                                                                                               |
-| -sCE      | †                       | Stop when > 95 percent of requests have connection errors (default: false)                                                                                                                                                                                                                                                                                                                 |
-| -m        | --memory-threshold      | The memory threshold percentage. If the machines memory goes above the threshold, the program will be stopped and ended gracefully before running out of memory (default: 95)                                                                                                                                                                                                              |
-| -mfs      | --max-file-size †       | The maximum file size (in Mb) of a file to be checked if -i is a directory. If the file size is over this value, it will be ignored.                                                                                                                                                                                                                                                       |
-| -v        | --verbose               | Verbose output                                                                                                                                                                                                                                                                                                                                                                             |
-| -vv       | --vverbose              | Increased verbose output                                                                                                                                                                                                                                                                                                                                                                   |
-| -h        | --help                  | show the help message and exit                                                                                                                                                                                                                                                                                                                                                             |
+| Arg           | Long Arg                | Description                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --- | --- | --------- | -------------- |
+| -i            | --input                 | Input a: URL, text file of URLs, a Directory of files to search, a Burp XML output file or an OWASP ZAP output file.                                                                                                                                                                                                                                                                       |
+| -o            | --output                | The file to save the output to, including path if necessary (default: output.txt). If set to `cli` then output is only written to STDOUT. If the file already exist it will just be appended to (and de-duplicated) unless option `-ow` is passed.                                                                                                                                         |
+| -ow           | --output-overwrite      | If the output file already exists, it will be overwritten instead of being appended to.                                                                                                                                                                                                                                                                                                    |
+| -sp           | --scope-prefix          | Any links found starting with `/` will be prefixed with scope domains in the output instead of the original link. If the passed value is a valid file name, that file will be used, otherwise the string literal will be used.                                                                                                                                                             |
+| -spo          | --scope-prefix-original | If argument `-sp` is passed, then this determines whether the original link starting with `/` is also included in the output (default: false)                                                                                                                                                                                                                                              |
+| -sf           | --scope-filter          | Will filter output links to only include them if the domain of the link is in the scope specified. If the passed value is a valid file name, that file will be used, otherwise the string literal will be used.                                                                                                                                                                            |
+| -c            | --cookies †             | Add cookies to pass with HTTP requests. Pass in the format `'name1=value1; name2=value2;'`                                                                                                                                                                                                                                                                                                 |
+| -H            | --headers †             | Add custom headers to pass with HTTP requests. Pass in the format `'Header1: value1; Header2: value2;'`                                                                                                                                                                                                                                                                                    |
+| -ra           | --regex-after           | RegEx for filtering purposes against found endpoints before output (e.g. `/api/v[0-9]\.[0-9]\*` ). If it matches, the link is output.                                                                                                                                                                                                                                                      |
+| -d            | --depth †               | The level of depth to search. For example, if a value of 2 is passed, then all links initially found will then be searched for more links (default: 1). This option is ignored for Burp files because they can be huge and consume lots of memory. It is also advisable to use the `-sp` (`--scope-prefix`) argument to ensure a request to links found without a domain can be attempted. |
+| -p            | --processes †           | Basic multithreading is done when getting requests for a URL, or file of URLs (not a Burp file). This argument determines the number of processes (threads) used (default: 25)                                                                                                                                                                                                             |
+| -x            | --exclude               | Additional Link exclusions (to the list in `config.yml`) in a comma separated list, e.g. `careers,forum`                                                                                                                                                                                                                                                                                   |
+| -orig         | --origin                | Whether you want the origin of the link to be in the output. Displayed as `LINK-URL [ORIGIN-URL]` in the output (default: false)                                                                                                                                                                                                                                                           |
+| -t            | --timeout †             | How many seconds to wait for the server to send data before giving up (default: 10 seconds)                                                                                                                                                                                                                                                                                                |
+| -inc          | --include               | Include input (`-i`) links in the output (default: false)                                                                                                                                                                                                                                                                                                                                  |
+| -u            | --user-agent †          | What User Agents to get links for, e.g. `-u desktop mobile`                                                                                                                                                                                                                                                                                                                                |
+| -insecure     | †                       | Whether TLS certificate checks should be disabled when making requests (delfault: false)                                                                                                                                                                                                                                                                                                   |
+| -s429         | †                       | Stop when > 95 percent of responses return 429 Too Many Requests (default: false)                                                                                                                                                                                                                                                                                                          |
+| -s403         | †                       | Stop when > 95 percent of responses return 403 Forbidden (default: false)                                                                                                                                                                                                                                                                                                                  |
+| -sTO          | †                       | Stop when > 95 percent of requests time out (default: false)                                                                                                                                                                                                                                                                                                                               |
+| -sCE          | †                       | Stop when > 95 percent of requests have connection errors (default: false)                                                                                                                                                                                                                                                                                                                 |
+| -m            | --memory-threshold      | The memory threshold percentage. If the machines memory goes above the threshold, the program will be stopped and ended gracefully before running out of memory (default: 95)                                                                                                                                                                                                              |
+| -mfs          | --max-file-size †       | The maximum file size (in Mb) of a file to be checked if -i is a directory. If the file size is over this value, it will be ignored.                                                                                                                                                                                                                                                       |
+| -replay-proxy | †                       | For active link finding with URL (or file of URLs), replay the requests through this proxy.                                                                                                                                                                                                                                                                                                |     | -v  | --verbose | Verbose output |
+| -vv           | --vverbose              | Increased verbose output                                                                                                                                                                                                                                                                                                                                                                   |
+| -h            | --help                  | show the help message and exit                                                                                                                                                                                                                                                                                                                                                             |
 
-† NOT RELEVANT FOR INPUT OF DIRECTORY OR BURP XML FILE
+† NOT RELEVANT FOR INPUT OF DIRECTORY, BURP XML FILE OR OWASP ZAP FILE
 
 ## config.yml
 
@@ -58,23 +65,6 @@ The `config.yml` file has the keys which can be updated to suit your needs:
 - `regexFiles` - A list of file types separated by a pipe character (e.g. `php|php3|php5` etc.). These are used in the Link Finding Regex when there are findings that aren't obvious links, but are interesting file types that you want to pick out. If you add to this list, ensure you escape any dots to ensure correct regex, e.g. `js\.map`
 
 ## Examples
-
-### Find Links from a Burp project - Basic
-
-In Burp, select the items you want to search by highlighting the scope for example, right clicking and selecting the `Save selected items`. Ensure that the option `base64-encode requests and responses` option is checked before saving.
-To get all links from the file (even with HUGE files, you'll be able to get all the links):
-
-```
-python3 xnLinkFinder.py -i target_burp.xml
-```
-
-### Find Links from a Burp project - Detailed
-
-Ideally, provide scope prefix (`-sp`) with the primary domain (including schema), and a scope filter (`-sf`) to filter the results only to relevant domains.
-
-```
-python3 xnLinkFinder.py -i target_burp.xml -o target_burp.txt -sp https://www.target.com -sf target.* -ow -spo -inc -vv
-```
 
 ### Find Links from a specific target - Basic
 
@@ -109,6 +99,36 @@ python3 xnLinkFinder.py -i ~/Tools/waymore/results/target.com
 
 NOTE: Sub directories are not checked. The `-mfs` option can be specified to skip files over a certain size.
 
+### Find Links from a Burp project - Basic
+
+In Burp, select the items you want to search by highlighting the scope for example, right clicking and selecting the `Save selected items`. Ensure that the option `base64-encode requests and responses` option is checked before saving.
+To get all links from the file (even with HUGE files, you'll be able to get all the links):
+
+```
+python3 xnLinkFinder.py -i target_burp.xml
+```
+
+NOTE: xnLinkFinder makes the assumption that if the first line of the file passed with `-i` starts with `<?xml` then you are trying to process a Burp file.
+
+### Find Links from a Burp project - Detailed
+
+Ideally, provide scope prefix (`-sp`) with the primary domain (including schema), and a scope filter (`-sf`) to filter the results only to relevant domains.
+
+```
+python3 xnLinkFinder.py -i target_burp.xml -o target_burp.txt -sp https://www.target.com -sf target.* -ow -spo -inc -vv
+```
+
+### Find Links from an OWASP ZAP project - Basic
+
+In ZAP, select the items you want to search by highlighting the History for example, clicking menu `Report` and selecting `Export Messages to File...`. This will let you save an ASCII text file of all requests and responses you want to search.
+To get all links from the file (even with HUGE files, you'll be able to get all the links):
+
+```
+python3 xnLinkFinder.py -i target_zap.txt
+```
+
+NOTE: xnLinkFinder makes the assumption that if the first line of the file passed with `-i` is in the format `==== 99 ==========` for example, then you are trying to process an OWASP ZAP ASCII text file.
+
 ## Recommendations and Notes
 
 - Always use the Scope Prefix argument `-sp`. This can be one scope domain, or a file containing multiple scope domains.
@@ -129,7 +149,7 @@ NOTE: Sub directories are not checked. The `-mfs` option can be specified to ski
   THIS IS FOR FILTERING THE LINKS DOMAIN ONLY.
 - If you want to filter the final output in any way, use `-ra`. It's always a good idea to use https://regex101.com/ to check your Regex expression is going to do what you expect.
 - Use the `-v` option to have a better idea of what the tool is doing
-- If you have problems, use the `-vv` option which may show errors that are occurring, which maybe can be resolved, or raised as an issue on github
+- If you have problems, use the `-vv` option which may show errors that are occurring, which can possibly be resolved, or raised as an issue on github
 - Pass cookies (`-c`), headers (`-H`) and regex (`-ra`) values within single quotes, e.g. `-ra '/api/v[0-9]\.[0-9]\*'`
 - Set the `-o` option to give a specific output file name, rather than the default of `output.txt`. If you plan on running a large depth of searches, start with 2 with option `-v` to check what is being returned. Then you can increase the Depth, and the new output will be appended to the existing file, unless you pass `-ow`.
 - If using a high Depth (`-d`) be wary of some sites using dynamic links so will it will just keep finding new ones. If no new links are being found, then xnlLinkFinder will stop searching. Providing the Stop flags (`s429`, `s403`, `sTO`, `sCE`) should also be considered.
@@ -138,6 +158,7 @@ NOTE: Sub directories are not checked. The `-mfs` option can be specified to ski
 - Using the `-orig` option will show the URL where the link was found. This can mean you have duplicate links in the output if the same link was found on multiple sources, but it will suffixed with the origin URL in square brackets.
 - When making requests, xnLinkFinder will use a random User-Agent from the current group, which defaults to `desktop`. If you have a target that could have different links for different user agent groups, the specify `-u desktop mobile` for example (separate with a space). The `mobile` user agent option is an combination of `mobile-apple`, `mobile-android` and `mobile-windows`.
 - When `-i` has been set to a directory, the contents of the files in the root of that directory will be searched for links. Files in sub-directories are not searched. Any files that are over the size set by `-mfs` (default: 500 MB) will be skipped.
+- When using the `-replay-proxy` option, sometimes requests can take longer. If you start seeing more `Request Timeout` errors (you'll see errors if you use `-v` or `-vv` options) then consider using `-t` to raise the timeout limit.
 
 ## Issues
 
