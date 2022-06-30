@@ -2,6 +2,22 @@
 # Python 3
 # Good luck and good hunting! If you really love the tool (or any others), or they helped you find an awesome bounty, consider BUYING ME A COFFEE! (https://ko-fi.com/xnlh4ck3r) ☕ (I could use the caffeine!)
 
+from urllib3.exceptions import InsecureRequestWarning
+import enum
+import math
+import random
+import subprocess
+import yaml
+import xml.etree.ElementTree as etree
+import base64
+import multiprocessing.dummy as mp
+from sys import exit
+from signal import signal, SIGINT
+from termcolor import colored
+import argparse
+import requests
+import os
+import re
 VERSION = "1.0"
 inScopePrefixDomains = None
 inScopeFilterDomains = None
@@ -31,22 +47,6 @@ tooManyTimeouts = 0
 tooManyConnectionErrors = 0
 stopProgramCount = 0
 
-import re
-import os
-import requests
-import argparse
-from termcolor import colored
-from signal import signal, SIGINT
-from sys import exit
-import multiprocessing.dummy as mp
-import base64
-import xml.etree.ElementTree as etree
-import yaml
-import subprocess
-import random
-import math
-import enum
-from urllib3.exceptions import InsecureRequestWarning
 
 # Try to import psutil to show memory usage
 try:
@@ -58,6 +58,8 @@ except:
     maxMemoryPercent = -1
 
 # Creating stopProgram enum
+
+
 class StopProgram(enum.Enum):
     SIGINT = 1
     TOO_MANY_REQUESTS = 2
@@ -65,8 +67,10 @@ class StopProgram(enum.Enum):
     TOO_MANY_TIMEOUTS = 4
     TOO_MANY_CONNECTION_ERRORS = 5
     MEMORY_THRESHOLD = 6
+
+
 stopProgram = None
- 
+
 # Yaml config values
 LINK_EXCLUSIONS = ""
 CONTENTTYPE_EXCLUSIONS = ""
@@ -170,8 +174,10 @@ def showBanner():
 def verbose():
     return args.verbose or args.vverbose
 
+
 def vverbose():
     return args.vverbose
+
 
 def includeLink(link):
     """
@@ -204,7 +210,7 @@ def includeLink(link):
         except Exception as e:
             if vverbose():
                 print("ERROR includeLink 2: " + str(e))
-        
+
         if include:
             # Go through lstExclusions and see if finding contains any. If not then continue
             # If it fails then try URL encoding and then checking
@@ -266,6 +272,7 @@ def includeLink(link):
 
     return include
 
+
 def includeFile(fileName):
     """
     Determine if the passed file name should be excluded by checking the list of exclusions
@@ -275,7 +282,7 @@ def includeFile(fileName):
         global lstExclusions
 
         include = True
-        
+
         # Go through lstExclusions and see if finding contains any. If not then continue
         for exc in lstExclusions:
             try:
@@ -300,6 +307,7 @@ def includeFile(fileName):
 
     return include
 
+
 def includeContentType(header):
     """
     Determine if the content type is in the exclusions
@@ -308,7 +316,7 @@ def includeContentType(header):
     global burpFile, zapFile
 
     include = True
-    
+
     try:
         # Get the content-type from the response
         try:
@@ -319,7 +327,7 @@ def includeContentType(header):
                     re.IGNORECASE,
                 )[0]
             elif zapFile:
-                contentType = '' #??????????????????
+                contentType = ''  # ??????????????????
             else:
                 contentType = header["content-type"]
             contentType = contentType.split(";")[0]
@@ -379,13 +387,13 @@ def getResponseLinks(response, url):
                 body = str(response.headers) + "\r\n\r\n" + response.text
                 header = response.headers
                 responseUrl = response.url
-        
+
         # Some URLs may be displayed in the body within strings that have different encodings of / and : so replace these
         pattern = re.compile("(&#x2f;|%2f|\\u002f|\\\/)", re.IGNORECASE)
-        body = pattern.sub("/",body)
+        body = pattern.sub("/", body)
         pattern = re.compile("(&#x3a;|%3a|\\u003a|\\\/)", re.IGNORECASE)
-        body = pattern.sub(":",body)
-        
+        body = pattern.sub(":", body)
+
         # Take the LINK_REGEX_FILES values and build a string of any values over 4 characters or has a number in it
         # This is used in the 4th capturing group Link Finding regexwebsocket
         lstFileExt = LINK_REGEX_FILES.split("|")
@@ -393,11 +401,11 @@ def getResponseLinks(response, url):
         for ext in lstFileExt:
             if len(ext) > 4 or any(chr.isdigit() for chr in ext):
                 LINK_REGEX_NONSTANDARD_FILES = LINK_REGEX_NONSTANDARD_FILES + "|" + ext
-        
+
         try:
             # If it is content-type we want to process then carry on, or if a directory was passed (so there is no content type) ensure the filename is not an exclusion
             if (dirPassed and includeFile(url)) or (not dirPassed and includeContentType(header)):
-                
+
                 reString = (
                     r"(?:\"|'|\\n|\\r|\n|\r|\s)(((?:[a-zA-Z]{1,10}:\/\/|\/\/)([^\"'\/]{1,}\.[a-zA-Z]{2,}|localhost)[^\"'\n]{0,})|((?:\/|\.\.\/|\.\/)[^\"'><,;| *()(%%$^\/\\\[\]][^\"'><,;|()\s]{1,})|([a-zA-Z0-9_\-\/]{1,}\/[a-zA-Z0-9_\-\/]{1,}\.(?:[a-zA-Z]{1,4}"
                     + LINK_REGEX_NONSTANDARD_FILES
@@ -406,15 +414,15 @@ def getResponseLinks(response, url):
                     + ")(?:\?[^\"|^']{0,}|)))(?:\"|'|\\n|\\r|\n|\r|\s|$)|(?<=^Disallow:\s)[^\$\n]*|(?<=^Allow:\s)[^\$\n]*|(?<= Domain\=)[^\";']*|(?<=\<)http[^>\n]*"
                 )
                 link_keys = re.finditer(reString, body, re.IGNORECASE)
-                
+
                 for key in link_keys:
-                   
+
                     if key is not None and key.group() != "":
                         link = key.group()
                         link = link.strip("\"\'\n\r( ")
-                        link = link.replace("\\n","")
-                        link = link.replace("\\r","")
-                        
+                        link = link.replace("\\n", "")
+                        link = link.replace("\\r", "")
+
                         try:
                             first = link[:1]
                             last = link[-1]
@@ -445,25 +453,26 @@ def getResponseLinks(response, url):
                                 else:
                                     end = 1
                                 link = link[start:-end]
-                            
+
                             # If there are any trailing back slashes, remove them all
                             link = link.rstrip("\\")
-                            
+
                         except Exception as e:
                             if vverbose():
                                 print(
                                     colored(
-                                        "ERROR getResponseLinks 2: " + str(e), "red"
+                                        "ERROR getResponseLinks 2: " +
+                                        str(e), "red"
                                     )
                                 )
-                            
+
                         # If the link starts with a . and the  2nd character is not a . or / then remove the first .
                         if link[0] == '.' and link[1] != '.' and link[1] != '/':
                             link = link[1:]
-                        
+
                         # Only add the finding if it should be included
                         if includeLink(link):
-                            
+
                             # If the link found is for a .js.map file then put the full .map URL in the list
                             if link.find("//# sourceMappingURL") >= 0:
                                 # Get .map link after the =
@@ -471,11 +480,11 @@ def getResponseLinks(response, url):
                                 lastpos = link.find("\n")
                                 if lastpos <= 0:
                                     lastpos = len(link)
-                                mapFile = link[firstpos + 1 : lastpos]
+                                mapFile = link[firstpos + 1: lastpos]
 
                                 # Get the responseurl up to last /
                                 lastpos = responseUrl.rfind("/")
-                                mapPath = responseUrl[0 : lastpos + 1]
+                                mapPath = responseUrl[0: lastpos + 1]
 
                                 # Add them to get link of js.map and add to list
                                 link = mapPath + mapFile
@@ -613,13 +622,13 @@ def processUrl(url):
 
     # Choose a random user agent string to use from the current group
     userAgent = random.choice(userAgents[currentUAGroup])
-    requestHeaders['User-Agent']=userAgent
-    
+    requestHeaders['User-Agent'] = userAgent
+
     url = url.strip()
     # If the url has the origin at the end (.e.g [...]) then strip it pff before processing
     if url.find("[") > 0:
-        url = str(url[0 : url.find("[") - 2])
-    
+        url = str(url[0: url.find("[") - 2])
+
     try:
         # If we should make the current request
         if shouldMakeRequest(url):
@@ -642,33 +651,36 @@ def processUrl(url):
                     requestUrl = url
                     if not url.startswith("http"):
                         requestUrl = "http://" + url
-                    
+
                     # If the -replay-proxy argument was passed, try to use it
                     if args.replay_proxy != '':
-                        proxies = { 'http': args.replay_proxy, 'https': args.replay_proxy }
+                        proxies = {'http': args.replay_proxy,
+                                   'https': args.replay_proxy}
                         verify = False
                     else:
                         proxies = {}
                         verify = not args.insecure
-                    
+
                     # Suppress insecure request warnings if using insecure mode
                     if not verify:
-                        requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
-                        
+                        requests.packages.urllib3.disable_warnings(
+                            category=InsecureRequestWarning)
+
                     # Make the request
                     resp = requests.get(
                         requestUrl,
                         headers=requestHeaders,
                         timeout=args.timeout,
                         allow_redirects=True,
-                        verify = verify,
-                        proxies = proxies
+                        verify=verify,
+                        proxies=proxies
                     )
                     if resp.status_code == 200:
                         if verbose():
                             print(
                                 colored(
-                                    "Response " + str(resp.status_code) + ": " + url,
+                                    "Response " +
+                                    str(resp.status_code) + ": " + url,
                                     "green",
                                 )
                             )
@@ -676,7 +688,8 @@ def processUrl(url):
                         if verbose():
                             print(
                                 colored(
-                                    "Response " + str(resp.status_code) + ": " + url,
+                                    "Response " +
+                                    str(resp.status_code) + ": " + url,
                                     "yellow",
                                 )
                             )
@@ -700,7 +713,8 @@ def processUrl(url):
                     getResponseLinks(resp, url)
                     totalRequests = totalRequests + 1
                 except requests.exceptions.ProxyError as pe:
-                    print(colored("Cannot connect to the proxy " + args.replay_proxy, "red"))
+                    print(colored("Cannot connect to the proxy " +
+                          args.replay_proxy, "red"))
                     pass
                 except requests.exceptions.ConnectionError as errc:
                     failedRequests = failedRequests + 1
@@ -752,7 +766,8 @@ def processUrl(url):
                     else:
                         if verbose():
                             print(
-                                colored("Could not get a response for: " + url, "red")
+                                colored(
+                                    "Could not get a response for: " + url, "red")
                             )
                 except Exception as e:
                     if vverbose():
@@ -799,7 +814,7 @@ def processOutput():
         if args.origin:
             originLinks = set()
             for index, item in enumerate(linksFound):
-                originLinks.add(str(item[0 : item.find("[") - 2]))
+                originLinks.add(str(item[0: item.find("[") - 2]))
             uniqLinkCount = len(originLinks)
             originLinks = None
             if linkCount > uniqLinkCount:
@@ -807,7 +822,8 @@ def processOutput():
                     colored(
                         "\nPotential unique links found for " + args.input + ":", "cyan"
                     ),
-                    str(uniqLinkCount) + " (" + str(linkCount) + " lines reported) 🤘\n",
+                    str(uniqLinkCount) +
+                    " (" + str(linkCount) + " lines reported) 🤘\n",
                 )
             else:
                 print(
@@ -841,8 +857,8 @@ def processOutput():
         outputCount = 0
         for link in linksFound:
             # Replace &amp; with &
-            link = link.replace('&amp;','&')
-            
+            link = link.replace('&amp;', '&')
+
             if args.output == "cli":
                 if args.regex_after is None or re.search(args.regex_after, link):
                     print(link)
@@ -870,7 +886,7 @@ def processOutput():
 
         # Clean up
         linksFound = None
-        
+
         # If the output was a file, close the file
         if args.output != "cli":
             try:
@@ -975,7 +991,8 @@ def printProgressBar(
         )
         filledLength = int(length * iteration // total)
         bar = fill * filledLength + "-" * (length - filledLength)
-        print(colored(f"\r{prefix} |{bar}| {percent}% {suffix}", "green"), end=printEnd)
+        print(
+            colored(f"\r{prefix} |{bar}| {percent}% {suffix}", "green"), end=printEnd)
         # Print New Line on Complete
         if iteration == total:
             print()
@@ -1000,7 +1017,8 @@ def processDepth():
                 if verbose():
                     print(
                         colored(
-                            "\nProccessing URL's, depth " + str(d + 2) + ":", "cyan"
+                            "\nProccessing URL's, depth " +
+                            str(d + 2) + ":", "cyan"
                         )
                     )
                 oldList = linksFound.copy()
@@ -1039,28 +1057,33 @@ def showOptions():
         else:
             if burpFile:
                 print(
-                    colored("-i: " + args.input + " (Burp XML File)", "magenta"),
+                    colored("-i: " + args.input +
+                            " (Burp XML File)", "magenta"),
                     "Links will be found in saved Burp responses.",
                 )
-            elif zapFile: 
+            elif zapFile:
                 print(
-                    colored("-i: " + args.input + " (OWASP ZAP File)", "magenta"),
+                    colored("-i: " + args.input +
+                            " (OWASP ZAP File)", "magenta"),
                     "Links will be found in saved ZAP responses.",
                 )
             else:
                 if dirPassed:
                     print(
-                        colored("-i: " + args.input + " (Directory)", "magenta"),
+                        colored("-i: " + args.input +
+                                " (Directory)", "magenta"),
                         "All files in the directory will be searched for links. Sub directories are not searched.",
                     )
-                else: 
+                else:
                     print(
-                        colored("-i: " + args.input + " (Text File)", "magenta"),
+                        colored("-i: " + args.input +
+                                " (Text File)", "magenta"),
                         "All URLs will be requested and links found in all responses.",
                     )
 
         print(
-            colored("-o: " + args.output, "magenta"), "Where the output will be sent."
+            colored("-o: " + args.output,
+                    "magenta"), "Where the output will be sent."
         )
         print(
             colored("-ow: " + str(args.output_overwrite), "magenta"),
@@ -1070,7 +1093,8 @@ def showOptions():
         if args.scope_prefix is not None:
             if inScopePrefixDomains is not None:
                 print(
-                    colored("-sp: " + args.scope_prefix + " (File)", "magenta"),
+                    colored("-sp: " + args.scope_prefix +
+                            " (File)", "magenta"),
                     "A file of scope domains to prefix links starting with /",
                 )
             else:
@@ -1086,7 +1110,8 @@ def showOptions():
         if args.scope_filter is not None:
             if inScopeFilterDomains is not None:
                 print(
-                    colored("-sf: " + args.scope_filter + " (File)", "magenta"),
+                    colored("-sf: " + args.scope_filter +
+                            " (File)", "magenta"),
                     "A file or scope domains to filter the output by.",
                 )
             else:
@@ -1138,10 +1163,12 @@ def showOptions():
             )
 
             if args.cookies != "":
-                print(colored("-c: " + args.cookies, "magenta"), "Cookies passed with requests.")
-        
+                print(colored("-c: " + args.cookies, "magenta"),
+                      "Cookies passed with requests.")
+
             if args.headers != "":
-                print(colored("-H: " + args.headers, "magenta"), "Custom headers passed with requests.")
+                print(colored("-H: " + args.headers, "magenta"),
+                      "Custom headers passed with requests.")
 
             print(
                 colored("-insecure: " + str(args.insecure), "magenta"),
@@ -1167,8 +1194,8 @@ def showOptions():
                 colored("-replay-proxy: " + str(args.replay_proxy), "magenta"),
                 "Replay requests using this proxy.",
             )
-        
-        if dirPassed: 
+
+        if dirPassed:
             print(
                 colored("-mfs: " + str(args.max_file_size) + ' Mb', "magenta"),
                 "The maximum file size (in Mb) of a file to be checked if -i is a directory. If the file size is over this value, it will be ignored.",
@@ -1200,7 +1227,7 @@ def getScopeDomains():
             scopeFile = open(args.scope_prefix, "r")
             inScopePrefixDomains = [line.rstrip() for line in scopeFile]
             scopeFile.close()
-            
+
             for prefix in inScopePrefixDomains:
                 if prefix.find(".") < 0 or prefix.find(" ") > 0 or prefix.find("*") > 0:
                     scopePrefixError = True
@@ -1243,25 +1270,29 @@ def getScopeDomains():
             exit(0)
 
 # Get links from all files in a specified directory
+
+
 def processDirectory():
     global totalResponses
-    
+
     print(colored("Processing files in directory " + args.input + ":\n", "cyan"))
-    
+
     dirPath = args.input
     request = ""
     response = ""
-    
+
     # Get the number of files in the directory that are less than --max-file-size
     try:
-        totalResponses = len([entry for entry in os.listdir(dirPath) if (os.path.isfile(os.path.join(dirPath, entry)) and (os.path.getsize(os.path.join(dirPath, entry)) / 1024) < args.max_file_size)])
+        totalResponses = len([entry for entry in os.listdir(dirPath) if (os.path.isfile(os.path.join(
+            dirPath, entry)) and (os.path.getsize(os.path.join(dirPath, entry)) / 1024) < args.max_file_size)])
     except Exception as e:
         print(colored("ERROR processDirectory 1: " + str(e)))
-     
+
     try:
         # If there are no files to process, tell the user
         if totalResponses == 0:
-            print(colored("There are no files with a size greater than " + str(args.max_file_size) + " Mb to process.", "red"))
+            print(colored("There are no files with a size greater than " +
+                  str(args.max_file_size) + " Mb to process.", "red"))
         else:
             responseCount = 0
             printProgressBar(
@@ -1273,10 +1304,10 @@ def processDirectory():
             )
             # Iterate directory
             for path in os.listdir(dirPath):
-                
+
                 # Check if current path is a file and the size is less than --max-file-size
                 if os.path.isfile(os.path.join(dirPath, path)) and (os.path.getsize(os.path.join(dirPath, path)) / 1024) < args.max_file_size:
-                    
+
                     if stopProgram is not None:
                         break
 
@@ -1316,7 +1347,7 @@ def processDirectory():
 
                     # Set the request to the name of the file
                     request = dirPath + path
-                    
+
                     # Set the response as the contents of the file
                     with open(request, 'r', encoding='utf-8', errors='ignore') as file:
                         response = file.read()
@@ -1351,6 +1382,7 @@ def processDirectory():
                 )
             )
 
+
 def processZapMessage(zapMessage, responseCount):
     """
     Process a specific message from an OWASP ZAP ASCII text output file. There is a "message" for each request and response
@@ -1358,9 +1390,9 @@ def processZapMessage(zapMessage, responseCount):
     global totalResponses, currentMemUsage, currentMemPercent
     try:
         # Split the message into request (just URL) and response
-        request = zapMessage.split("\n\n",1)[0].strip().split(" ")[1].strip()
-        response = zapMessage.split("\n\n",1)[1].strip()
-        
+        request = zapMessage.split("\n\n", 1)[0].strip().split(" ")[1].strip()
+        response = zapMessage.split("\n\n", 1)[1].strip()
+
         # Show progress bar
         fillTest = responseCount % 2
         if fillTest == 0:
@@ -1393,13 +1425,14 @@ def processZapMessage(zapMessage, responseCount):
             length=50,
             fill=fillChar,
         )
-        
+
         # Get the links
         getResponseLinks(response, request)
-        
+
     except Exception as e:
         if vverbose():
-            print(colored("ERROR processZapMessage 1: " + str(e),"red"))    
+            print(colored("ERROR processZapMessage 1: " + str(e), "red"))
+
 
 def processZapFile():
     """
@@ -1410,31 +1443,46 @@ def processZapFile():
     (this was tested with ZAP v2.11.1)
     """
     global totalResponses, currentMemUsage, currentMemPercent, stopProgram
-    
+
     try:
-        try: 
+        try:
             fileSize = os.path.getsize(args.input)
             filePath = os.path.abspath(args.input).replace(" ", "\ ")
-            
-            cmd = "grep -Eo '^={4}\s[0-9]+\s={10}$' " + filePath + " | wc -l"
+
+            # Check OS
+            if os.name != 'nt':
+                # Check if host process is cmd.exe or powershell.exe
+                pprocName = psutil.Process(os.getppid()).name()
+                isPowerShell = bool(re.fullmatch(
+                    'pwsh|pwsh.exe|powershell.exe', pprocName))
+                if isPowerShell:
+                    cmd = "(type " + filePath + \
+                        " | findstr /R '^={4}\s[0-9]+\s={10}$' | Measure-Object -line).lines"
+                else:
+                    cmd = 'type ' + filePath + \
+                        'findstr /R "^={4}\s[0-9]+\s={10}$" | find / v / c ""'
+            else:
+                cmd = "grep -Eo '^={4}\s[0-9]+\s={10}$' " + \
+                    filePath + " | wc -l"
+
             grep = subprocess.run(
                 cmd, shell=True, text=True, stdout=subprocess.PIPE, check=True
             )
             totalResponses = int(grep.stdout.split("\n")[0])
 
             print(
-                    colored(
-                        "\nProcessing OWASP ZAP file "
-                        + args.input
-                        + " ("
-                        + humanReadableSize(fileSize)
-                        + "):",
-                        "cyan",
-                    )
+                colored(
+                    "\nProcessing OWASP ZAP file "
+                    + args.input
+                    + " ("
+                    + humanReadableSize(fileSize)
+                    + "):",
+                    "cyan",
                 )
+            )
         except:
             print(colored("Processing OWASP ZAP file " + args.input + ":", "cyan"))
-        
+
         try:
             zapMessage = ""
             responseCount = 0
@@ -1445,49 +1493,50 @@ def processZapFile():
                 suffix="Complete ",
                 length=50,
             )
-            
+
             # Open the ZAP file and read line by line without loading into memory
             with open(args.input, 'r', encoding='utf-8', errors='ignore') as owaspZapFile:
                 for line in owaspZapFile:
                     if stopProgram is not None:
                         break
-                    
+
                     # Check for the separator lines
                     match = re.search('={4}\s[0-9]+\s={10}', line)
 
                     # If it is the start of the ZAP message then process it
-                    if match is not None and zapMessage != "": 
-                        
+                    if match is not None and zapMessage != "":
+
                         # Process the full message (request and response)
                         responseCount = responseCount + 1
                         processZapMessage(zapMessage, responseCount)
-                        
+
                         # Reset the current message
                         zapMessage = ""
-                        
+
                     else:
                         # Add the current line to the current Zap message
-                        if match is None:            
+                        if match is None:
                             zapMessage = zapMessage + line
-            
+
             # If there was one last message, process it
             if zapMessage != "":
-                  processZapMessage(zapMessage, responseCount+1)
-                                   
+                processZapMessage(zapMessage, responseCount+1)
+
         except Exception as e:
             if vverbose():
-                print(colored("ERROR processZapFile 2: " + str(e),"red"))
-                
+                print(colored("ERROR processZapFile 2: " + str(e), "red"))
+
     except Exception as e:
         if vverbose():
-            print(colored("ERROR processZapFile 1: " + str(e),"red"))
-            
+            print(colored("ERROR processZapFile 1: " + str(e), "red"))
+
+
 def processBurpFile():
     """
     Process a Burp XML file of requests/responses
     """
     global totalResponses, currentMemUsage, currentMemPercent, stopProgram
-    
+
     try:
         fileSize = os.path.getsize(args.input)
         filePath = os.path.abspath(args.input).replace(" ", "\ ")
@@ -1649,6 +1698,7 @@ def processBurpFile():
                 )
             )
 
+
 def processInput():
 
     # Tell Python to run the handler() function when SIGINT is received
@@ -1675,18 +1725,19 @@ def processInput():
 
                 # Check if the file passed is a Burp file
                 burpFile = firstLine.startswith("<?xml")
-                
+
                 # If not a Burp file, check of it is an OWASP ZAP file
                 if not burpFile:
                     match = re.search('={4}\s[0-9]+\s={10}', firstLine)
                     if match is not None:
                         zapFile = True
-                
+
                     # If it's not a burp or a zap file then assume it is a standard file or URLs
                     if not zapFile:
                         stdFile = True
             except:
-                print(colored("Cannot read input file " + inputArg + ":" + str(e), "red"))
+                print(colored("Cannot read input file " +
+                      inputArg + ":" + str(e), "red"))
                 exit()
         elif os.path.isdir(inputArg):
             dirPassed = True
@@ -1698,7 +1749,7 @@ def processInput():
         # Set headers to use if going to be making requests
         if urlPassed or stdFile:
             setHeaders()
-        
+
         # Show the user their selected options if -vv is passed
         if vverbose():
             showOptions()
@@ -1710,20 +1761,22 @@ def processInput():
         if burpFile:
             # If it's an Burp file
             processBurpFile()
-            
+
         elif zapFile:
             # If it's an OWASP ZAP file
             processZapFile()
-            
+
         else:
 
             # If it's a directory
             if dirPassed:
                 processDirectory()
-                
+
             else:
                 # Show the current User Agent group
-                if verbose(): print(colored("\nUser-Agent Group:", "cyan"), args.user_agent[currentUAGroup])
+                if verbose():
+                    print(colored("\nUser-Agent Group:", "cyan"),
+                          args.user_agent[currentUAGroup])
 
                 if urlPassed:
                     # It's not a standard file, so assume it's just a single URL
@@ -1735,7 +1788,8 @@ def processInput():
                     try:
                         inputFile = open(inputArg, "r")
                         if verbose():
-                            print(colored("Reading input file " + inputArg + ":", "cyan"))
+                            print(colored("Reading input file " +
+                                  inputArg + ":", "cyan"))
                         with inputFile as f:
                             if stopProgram is None:
                                 p = mp.Pool(args.processes)
@@ -1779,10 +1833,12 @@ def setUserAgents():
         userAgents = [UA_DESKTOP]
 
 # Set the headers to be used for all requests
+
+
 def setHeaders():
-    
+
     global requestHeaders
-    
+
     # Define headers
     requestHeaders = {
         "Cookies": args.cookies,
@@ -1798,10 +1854,14 @@ def setHeaders():
                 headerName = header.split(':')[0]
                 headerValue = header.split(':')[1]
                 requestHeaders[headerName.strip()] = headerValue.strip()
-        except: 
-            if verbose(): print(colored("Unable to apply custom headers. Check -H argument value.","red"))
-            
+        except:
+            if verbose():
+                print(
+                    colored("Unable to apply custom headers. Check -H argument value.", "red"))
+
 # For validating -m / --memory-threshold argument
+
+
 def argcheckPercent(value):
     ivalue = int(value)
     if ivalue > 99:
@@ -1923,10 +1983,10 @@ if __name__ == "__main__":
         metavar="<seconds>",
     )
     parser.add_argument("-inc",
-        "--include",
-        action="store_true",
-        help="Include input (-i) links in the output (default: false)",
-    )
+                        "--include",
+                        action="store_true",
+                        help="Include input (-i) links in the output (default: false)",
+                        )
     parser.add_argument(
         "-u",
         "--user-agent",
@@ -1994,7 +2054,8 @@ if __name__ == "__main__":
         help="For active link finding with URL (or file of URLs), replay the requests through this proxy.",
         default="",
     )
-    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+    parser.add_argument("-v", "--verbose",
+                        action="store_true", help="Verbose output")
     parser.add_argument(
         "-vv", "--vverbose", action="store_true", help="Increased verbose output"
     )
@@ -2012,10 +2073,10 @@ if __name__ == "__main__":
         pass
 
     try:
-        
+
         # Set User Agents to use
         setUserAgents()
-        
+
         # Process each user agent group
         for i in range(len(userAgents)):
             if stopProgram is not None:
@@ -2039,9 +2100,10 @@ if __name__ == "__main__":
             totalRequests = 0
             skippedRequests = 0
             failedRequests = 0
-            
+
             # If a Burp file, ZAP file or directory is processed then ignore userAgents if passed because they are not relevant
-            if burpFile or zapFile or dirPassed: break
+            if burpFile or zapFile or dirPassed:
+                break
 
         # If the program was stopped then alert the user
         if stopProgram is not None:
