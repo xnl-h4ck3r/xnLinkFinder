@@ -2088,7 +2088,7 @@ if __name__ == "__main__":
             try:
                 filePath = os.path.abspath(args.output).replace(" ", "\ ")
 
-                # Fixes the "Input file specified 2 times" error message.
+                # Multi-OS support
                 if os.name != 'nt':
                     cmd = "sort -u -o " + args.output + " " + args.output
                 else:
@@ -2099,7 +2099,6 @@ if __name__ == "__main__":
             except Exception as e:
                 if vverbose():
                     print(colored("ERROR main 2: " + str(e), "red"))
-
 
     except Exception as e:
         if vverbose():
