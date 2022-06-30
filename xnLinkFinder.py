@@ -2087,13 +2087,19 @@ if __name__ == "__main__":
         if args.output != "cli":
             try:
                 filePath = os.path.abspath(args.output).replace(" ", "\ ")
-                cmd = "sort -u -o " + args.output + " " + args.output
+
+                # Fixes the "Input file specified 2 times" error message.
+                if os.name != 'nt':
+                    cmd = "sort -u -o " + args.output + " " + args.output
+                else:
+                    cmd = "sort /unique /o " + args.output + " " + args.output
                 sort = subprocess.run(
                     cmd, shell=True, text=True, stdout=subprocess.PIPE, check=True
                 )
             except Exception as e:
                 if vverbose():
                     print(colored("ERROR main 2: " + str(e), "red"))
+
 
     except Exception as e:
         if vverbose():
