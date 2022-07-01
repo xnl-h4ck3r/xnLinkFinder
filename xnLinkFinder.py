@@ -2,7 +2,7 @@
 # Python 3
 # Good luck and good hunting! If you really love the tool (or any others), or they helped you find an awesome bounty, consider BUYING ME A COFFEE! (https://ko-fi.com/xnlh4ck3r) ☕ (I could use the caffeine!)
 
-VERSION = "1.0"
+VERSION = "1.1"
 inScopePrefixDomains = None
 inScopeFilterDomains = None
 burpFile = False
@@ -10,6 +10,8 @@ zapFile = False
 stdFile = False
 urlPassed = False
 dirPassed = False
+stdinMultiple = False
+stdinFile = []
 inputFile = None
 linksFound = set()
 linksVisited = set()
@@ -30,6 +32,7 @@ tooManyForbidden = 0
 tooManyTimeouts = 0
 tooManyConnectionErrors = 0
 stopProgramCount = 0
+SPACER = ' ' * 70
 
 import re
 import os
@@ -37,7 +40,7 @@ import requests
 import argparse
 from termcolor import colored
 from signal import signal, SIGINT
-from sys import exit
+from sys import exit, stdin
 import multiprocessing.dummy as mp
 import base64
 import xml.etree.ElementTree as etree
@@ -47,6 +50,7 @@ import random
 import math
 import enum
 from urllib3.exceptions import InsecureRequestWarning
+import sys
 
 # Try to import psutil to show memory usage
 try:
@@ -153,17 +157,42 @@ UA_GAMECONSOLE = [
     "Mozilla/5.0 (Nintendo 3DS; U; ; en) Version/1.7412.EU",
 ]
 
+def write(text='',pipe=False):
+    # Only send text to stdout if the tool isn't piped to pass output to something else, 
+    # or if the tool has been piped and the pipe parameter is True
+    if sys.stdout.isatty() or (not sys.stdout.isatty() and pipe):
+        # If it has % Complete in the text then its for the progress bar, so don't add a newline
+        if text.find('% Complete') > 0:
+            sys.stdout.write(text)
+        else:
+            sys.stdout.write(text+'\n')
+
+def writerr(text='',pipe=False):
+    # Only send text to stdout if the tool isn't piped to pass output to something else, 
+    # or If the tool has been piped to output the send to stderr
+    if sys.stdout.isatty():
+        # If it has % Complete in the text then its for the progress bar, so don't add a newline
+        if text.find('% Complete') > 0:
+            sys.stdout.write(text)
+        else:
+            sys.stdout.write(text+'\n')
+    else:
+        # If it has % Complete in the text then its for the progress bar, so don't add a newline
+        if text.find('% Complete') > 0:
+            sys.stderr.write(text)
+        else:
+            sys.stderr.write(text+'\n')
 
 def showBanner():
-    print("")
-    print(colored("           o           o    o--o           o         ", "red"))
-    print(colored("           |    o      | /  |    o         |         ", "yellow"))
-    print(colored("  \ / o-o  |      o-o  OO   O-o    o-o   o-O o-o o-o ", "green"))
-    print(colored("   o  |  | |    | |  | | \  |    | |  | |  | |-' |   ", "cyan"))
-    print(colored("  / \ o  o O---o| o  o o  o o    | o  o  o-o o-o o   ", "magenta"))
-    print(colored("                |                |                   ", "blue"))
-    print(colored("                ' by @Xnl-h4ck3r '              v" + VERSION))
-    print("")
+    write("")
+    write(colored("           o           o    o--o           o         ", "red"))
+    write(colored("           |    o      | /  |    o         |         ", "yellow"))
+    write(colored("  \ / o-o  |      o-o  OO   O-o    o-o   o-O o-o o-o ", "green"))
+    write(colored("   o  |  | |    | |  | | \  |    | |  | |  | |-' |   ", "cyan"))
+    write(colored("  / \ o  o O---o| o  o o  o o    | o  o  o-o o-o o   ", "magenta"))
+    write(colored("                |                |                   ", "blue"))
+    write(colored("                ' by @Xnl-h4ck3r '              v" + VERSION))
+    write("")
 
 
 # Functions used when printing messages dependant on verbose options
@@ -203,7 +232,7 @@ def includeLink(link):
                 include = bool(re.search(r"[0-9a-zA-Z]", link))
         except Exception as e:
             if vverbose():
-                print("ERROR includeLink 2: " + str(e))
+                writerr("ERROR includeLink 2: " + str(e))
         
         if include:
             # Go through lstExclusions and see if finding contains any. If not then continue
@@ -215,7 +244,7 @@ def includeLink(link):
                         include = False
                 except Exception as e:
                     if vverbose():
-                        print(
+                        writerr(
                             colored(
                                 "ERROR includeLink 3: Failed to check exclusions for a finding on URL: "
                                 + link
@@ -249,7 +278,7 @@ def includeLink(link):
                                     include = True
                 except Exception as e:
                     if vverbose():
-                        print(
+                        writerr(
                             colored(
                                 "ERROR includeLink 4: Failed to check scope filter for a checking URL: "
                                 + link
@@ -262,7 +291,7 @@ def includeLink(link):
 
     except Exception as e:
         if vverbose():
-            print(colored("ERROR includeLink 1: " + str(e), "red"))
+            writerr(colored("ERROR includeLink 1: " + str(e), "red"))
 
     return include
 
@@ -283,7 +312,7 @@ def includeFile(fileName):
                     include = False
             except Exception as e:
                 if vverbose():
-                    print(
+                    writerr(
                         colored(
                             "ERROR includeFile 2: Failed to check exclusions for a finding on file: "
                             + fileName
@@ -296,7 +325,7 @@ def includeFile(fileName):
 
     except Exception as e:
         if vverbose():
-            print(colored("ERROR includeFile 1: " + str(e), "red"))
+            writerr(colored("ERROR includeFile 1: " + str(e), "red"))
 
     return include
 
@@ -312,14 +341,12 @@ def includeContentType(header):
     try:
         # Get the content-type from the response
         try:
-            if burpFile:
+            if burpFile or zapFile:
                 contentType = re.findall(
                     r"(?<=Content-Type\:\s)[a-zA-Z\-].+\/[a-zA-Z\-].+?(?=\s|\;)",
                     header,
                     re.IGNORECASE,
                 )[0]
-            elif zapFile:
-                contentType = '' #??????????????????
             else:
                 contentType = header["content-type"]
             contentType = contentType.split(";")[0]
@@ -333,7 +360,7 @@ def includeContentType(header):
                 include = False
     except Exception as e:
         if vverbose():
-            print(colored("ERROR includeContentType 1: " + str(e), "red"))
+            writerr(colored("ERROR includeContentType 1: " + str(e), "red"))
 
     return include
 
@@ -347,7 +374,7 @@ def addLink(link, url):
             linksFound.add(link)
     except Exception as e:
         if vverbose():
-            print(colored("ERROR addLink 1: " + str(e), "red"))
+            writerr(colored("ERROR addLink 1: " + str(e), "red"))
 
 
 def getResponseLinks(response, url):
@@ -362,13 +389,18 @@ def getResponseLinks(response, url):
             addLink(url, url)
 
         if burpFile or zapFile:
-            # \r\n\r\n separates the header and body. Get the position of this
-            # but if it is 0 then there is no body, so set it to the length of response
-            bodyHeaderDivide = response.find("\r\n\r\n")
+            if burpFile:
+                # \r\n\r\n separates the header and body. Get the position of this
+                # but if it is 0 then there is no body, so set it to the length of response
+                bodyHeaderDivide = response.find("\r\n\r\n")
+            else:
+                # \n\n separates the header and body. Get the position of this
+                # but if it is 0 then there is no body, so set it to the length of response
+                bodyHeaderDivide = response.find("\n\n")
             if bodyHeaderDivide == 0:
                 bodyHeaderDivide = len(response)
             header = response[:bodyHeaderDivide]
-            body = response  # response[bodyHeaderDivide:]
+            body = response 
             responseUrl = url
         else:
             if dirPassed:
@@ -408,13 +440,13 @@ def getResponseLinks(response, url):
                 link_keys = re.finditer(reString, body, re.IGNORECASE)
                 
                 for key in link_keys:
-                   
-                    if key is not None and key.group() != "":
+                    
+                    if key is not None and key.group() != "" and len(key.group()) > 2:
                         link = key.group()
                         link = link.strip("\"\'\n\r( ")
                         link = link.replace("\\n","")
                         link = link.replace("\\r","")
-                        
+
                         try:
                             first = link[:1]
                             last = link[-1]
@@ -451,7 +483,7 @@ def getResponseLinks(response, url):
                             
                         except Exception as e:
                             if vverbose():
-                                print(
+                                writerr(
                                     colored(
                                         "ERROR getResponseLinks 2: " + str(e), "red"
                                     )
@@ -485,34 +517,67 @@ def getResponseLinks(response, url):
                             if link.startswith("//"):
                                 link = "http:" + link
 
-                            # If the -sp (--scope-prefix) option was passed and the link starts with a /
-                            if args.scope_prefix is not None and link.startswith("/"):
-
+                            # If the -sp (--scope-prefix) option was passed and the link doesn't start with http
+                            if args.scope_prefix is not None and not link.lower().startswith("http"):
+                            
                                 # If -spo os passed then add the original link
                                 if args.scope_prefix_original:
                                     addLink(link, responseUrl)
-
+                                            
                                 # If the -sp (--scope-prefix) option is a name of a file, then add a link for each scope domain
                                 if inScopePrefixDomains is not None:
                                     count = 0
+                                    processLink = True
                                     for domain in inScopePrefixDomains:
-                                        count += 1
-                                        prefix = "{}".format(domain.strip())
-                                        if prefix != "":
-                                            addLink(prefix + link, responseUrl)
+                                        # Get the domain without a schema
+                                        domainTest = args.input
+                                        if domainTest.find('//') >= 0:
+                                            domainTest = domainTest.split('//')[1]
+                                        # Get the prefix without a schema
+                                        prefixTest =  domain
+                                        if prefixTest.find('//') >= 0:
+                                            prefixTest = prefixTest.split('//')[1]
+                                        # If the link doesn't start with the domain or prefix then carry on
+                                        if not link.lower().startswith(domainTest) and not link.lower().startswith(prefixTest):
+                                            processLink = False
+                                    
+                                    if processLink:
+                                        # If the link doesn't start with a / and doesn't start with http then prefix it with a / before we prefix with the -sp (--scope-prefix)
+                                        if not link.startswith("/") and not link.lower().startswith("http"):
+                                            link = '/' + link
 
-                                else:  # else just prefix wit the -s value
+                                        for domain in inScopePrefixDomains:
+                                            count += 1
+                                            prefix = "{}".format(domain.strip())
+                                            if prefix != "":
+                                                addLink(prefix + link, responseUrl)
+
+                                else:  # else just prefix wit the -sp value
                                     prefix = args.scope_prefix
-                                    if not prefix.startswith("http"):
-                                        prefix = "http://" + prefix
-                                    addLink(prefix + link, responseUrl)
+                                    # Get the prefix without a schema
+                                    prefixTest = args.scope_prefix
+                                    if prefixTest.find('//') >= 0:
+                                        prefixTest = prefixTest.split('//')[1]
+                                    # Get the domain without a schema
+                                    domainTest = args.input
+                                    if domainTest.find('//') >= 0:
+                                        domainTest = domainTest.split('//')[1]
+
+                                    # If the link doesn't start with the domain or prefix then carry on
+                                    if not link.lower().startswith(domainTest) and not link.lower().startswith(prefixTest):
+                                        # If the link doesn't start with a / and doesn't start with http, then prefix it with a / before we prefix with the -sp (--scope-prefix)
+                                        if not link.startswith("/") and not link.lower().startswith("http"):
+                                            link = '/' + link
+                                        if not prefix.lower().startswith("http"):
+                                            prefix = "http://" + prefix
+                                        addLink(prefix + link, responseUrl)
 
                             else:
                                 addLink(link, responseUrl)
 
         except Exception as e:
             if vverbose():
-                print(colored("ERROR getResponseLinks 3: " + str(e), "red"))
+                writerr(colored("ERROR getResponseLinks 3: " + str(e), "red"))
 
         # Also add a link of a js.map file if the X-SourceMap or SourceMap header exists
         if not dirPassed:
@@ -544,11 +609,11 @@ def getResponseLinks(response, url):
 
             except Exception as e:
                 if vverbose():
-                    print("getResponseLinks 4: " + str(e))
+                    writerr(colored("ERROR getResponseLinks 4: " + str(e), "red"))
 
     except Exception as e:
         if vverbose():
-            print(colored("ERROR getResponseLinks 1: " + str(e), "red"))
+            writerr(colored("ERROR getResponseLinks 1: " + str(e), "red"))
 
 
 def handler(signal_received, frame):
@@ -561,25 +626,16 @@ def handler(signal_received, frame):
     if stopProgram is not None:
         stopProgramCount = stopProgramCount + 1
         if stopProgramCount == 1:
-            print(
-                colored(
-                    ">>> Please be patient... Trying to save data and end gracefully!",
-                    "red",
-                )
-            )
+            writerr(colored(">>> Please be patient... Trying to save data and end gracefully!"+SPACER,'red'))
         elif stopProgramCount == 2:
-            print(colored(">>> SERIOUSLY... YOU DON'T WANT YOUR DATA SAVED?!", "red"))
+            writerr(colored(">>> SERIOUSLY... YOU DON'T WANT YOUR DATA SAVED?!"+SPACER, 'red'))
         elif stopProgramCount == 3:
-            print(colored(">>> Patience isn't your strong suit eh? ¯\_(ツ)_/¯", "red"))
+            writerr(colored(">>> Patience isn't your strong suit eh? ¯\_(ツ)_/¯"+SPACER, 'red'))
+            sys.exit()
     else:
         stopProgram = StopProgram.SIGINT
-        print(
-            colored(
-                '>>> "Oh my God, they killed Kenny... and xnLinkFinder!" - Kyle', "red"
-            )
-        )
-        print(colored(">>> Attempting to rescue the data gathered so far...", "red"))
-
+        writerr(colored('>>> "Oh my God, they killed Kenny... and waymore!" - Kyle'+SPACER, "red"))
+        writerr(colored(">>> Attempting to rescue any data gathered so far..."+SPACER, "red"))
 
 def getMemory():
 
@@ -615,7 +671,8 @@ def processUrl(url):
     userAgent = random.choice(userAgents[currentUAGroup])
     requestHeaders['User-Agent']=userAgent
     
-    url = url.strip()
+    url = url.strip().rstrip('\n')
+    
     # If the url has the origin at the end (.e.g [...]) then strip it pff before processing
     if url.find("[") > 0:
         url = str(url[0 : url.find("[") - 2])
@@ -640,7 +697,7 @@ def processUrl(url):
             if stopProgram is None:
                 try:
                     requestUrl = url
-                    if not url.startswith("http"):
+                    if not url.lower().startswith("http"):
                         requestUrl = "http://" + url
                     
                     # If the -replay-proxy argument was passed, try to use it
@@ -654,7 +711,7 @@ def processUrl(url):
                     # Suppress insecure request warnings if using insecure mode
                     if not verify:
                         requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
-                        
+
                     # Make the request
                     resp = requests.get(
                         requestUrl,
@@ -666,7 +723,7 @@ def processUrl(url):
                     )
                     if resp.status_code == 200:
                         if verbose():
-                            print(
+                            write(
                                 colored(
                                     "Response " + str(resp.status_code) + ": " + url,
                                     "green",
@@ -674,7 +731,7 @@ def processUrl(url):
                             )
                     else:
                         if verbose():
-                            print(
+                            write(
                                 colored(
                                     "Response " + str(resp.status_code) + ": " + url,
                                     "yellow",
@@ -700,12 +757,12 @@ def processUrl(url):
                     getResponseLinks(resp, url)
                     totalRequests = totalRequests + 1
                 except requests.exceptions.ProxyError as pe:
-                    print(colored("Cannot connect to the proxy " + args.replay_proxy, "red"))
+                    writerr(colored("Cannot connect to the proxy " + args.replay_proxy, "red"))
                     pass
                 except requests.exceptions.ConnectionError as errc:
                     failedRequests = failedRequests + 1
                     if verbose():
-                        print(
+                        writerr(
                             colored(
                                 "Connection Error: "
                                 + url
@@ -724,7 +781,7 @@ def processUrl(url):
                 except requests.exceptions.Timeout:
                     failedRequests = failedRequests + 1
                     if verbose():
-                        print(colored("Request Timeout: " + url, "red"))
+                        writerr(colored("Request Timeout: " + url, "red"))
                     # If argument -sTO (Stop on Timeouts) passed, keep a count of timeouts and stop the program if > 95% of responses have timed out
                     if args.sTO:
                         tooManyTimeouts = tooManyTimeouts + 1
@@ -736,12 +793,12 @@ def processUrl(url):
                 except requests.exceptions.TooManyRedirects:
                     failedRequests = failedRequests + 1
                     if verbose():
-                        print(colored("Too Many Redirect: " + url, "red"))
+                        writerr(colored("Too Many Redirect: " + url, "red"))
                 except requests.exceptions.RequestException as e:
                     failedRequests = failedRequests + 1
                     if args.scope_filter is None:
                         if verbose():
-                            print(
+                            writerr(
                                 colored(
                                     "Could not get a response for: "
                                     + url
@@ -751,41 +808,41 @@ def processUrl(url):
                             )
                     else:
                         if verbose():
-                            print(
+                            writerr(
                                 colored("Could not get a response for: " + url, "red")
                             )
                 except Exception as e:
                     if vverbose():
-                        print(colored("ERROR processUrl 2: " + str(e), "red"))
+                        writerr(colored("ERROR processUrl 2: " + str(e), "red"))
         else:
             skippedRequests = skippedRequests + 1
     except Exception as e:
         if vverbose():
-            print(colored("ERROR processUrl 1: " + str(e), "red"))
+            writerr(colored("ERROR processUrl 1: " + str(e), "red"))
 
 
 # Display stats if -vv argument was chosen
 def processStats():
-    print()
+    write()
     if not burpFile and not zapFile and not dirPassed:
-        print("TOTAL REQUESTS MADE: " + str(totalRequests))
-        print("DUPLICATE REQUESTS SKIPPED: " + str(skippedRequests))
-        print("FAILED REQUESTS: " + str(failedRequests))
+        write("TOTAL REQUESTS MADE: " + str(totalRequests))
+        write("DUPLICATE REQUESTS SKIPPED: " + str(skippedRequests))
+        write("FAILED REQUESTS: " + str(failedRequests))
     if maxMemoryUsage > 0:
-        print("MAX MEMORY USAGE: " + humanReadableSize(maxMemoryUsage))
+        write("MAX MEMORY USAGE: " + humanReadableSize(maxMemoryUsage))
     elif maxMemoryUsage < 0:
-        print('MAX MEMORY USAGE: To show memory usage, run "pip install psutil"')
+        write('MAX MEMORY USAGE: To show memory usage, run "pip install psutil"')
     if maxMemoryPercent > 0:
-        print(
-            "MAX TOTAL MEMORY : "
+        write(
+            "MAX TOTAL MEMORY: "
             + str(maxMemoryPercent)
             + "% (Threshold "
             + str(args.memory_threshold)
             + "%)"
         )
     elif maxMemoryUsage < 0:
-        print('MAX TOTAL MEMORY: To show total memory %, run "pip install psutil"')
-    print()
+        write('MAX TOTAL MEMORY: To show total memory %, run "pip install psutil"')
+    write()
 
 
 def processOutput():
@@ -803,26 +860,11 @@ def processOutput():
             uniqLinkCount = len(originLinks)
             originLinks = None
             if linkCount > uniqLinkCount:
-                print(
-                    colored(
-                        "\nPotential unique links found for " + args.input + ":", "cyan"
-                    ),
-                    str(uniqLinkCount) + " (" + str(linkCount) + " lines reported) 🤘\n",
-                )
+                write(colored("\nPotential unique links found for " + args.input + ": ", "cyan")+colored(str(uniqLinkCount) + " (" + str(linkCount) + " lines reported) 🤘\n","white"))
             else:
-                print(
-                    colored(
-                        "\nPotential unique links found for " + args.input + ":", "cyan"
-                    ),
-                    str(linkCount) + " 🤘\n",
-                )
+                write(colored("\nPotential unique links found for " + args.input + ": ", "cyan")+colored(str(linkCount) + " 🤘\n","white"))
         else:
-            print(
-                colored(
-                    "\nPotential unique links found for " + args.input + ":", "cyan"
-                ),
-                str(linkCount) + " 🤘\n",
-            )
+            write(colored("\nPotential unique links found for " + args.input + ": ", "cyan")+colored(str(linkCount) + " 🤘\n","white"))
 
         # If -o (--output) argument was not "cli" then open the output file
         if args.output != "cli":
@@ -834,7 +876,7 @@ def processOutput():
                     outFile = open(os.path.expanduser(args.output), "a")
             except Exception as e:
                 if vverbose():
-                    print(colored("ERROR processOutput 2: " + str(e), "red"))
+                    writerr(colored("ERROR processOutput 2: " + str(e), "red"))
 
         # Go through all links, and output what was found
         # If the -ra --regex-after was passed then only output if it matches
@@ -845,28 +887,23 @@ def processOutput():
             
             if args.output == "cli":
                 if args.regex_after is None or re.search(args.regex_after, link):
-                    print(link)
+                    write(link,True)
                     outputCount = outputCount + 1
             else:  # file
                 try:
                     if args.regex_after is None or re.search(args.regex_after, link):
                         outFile.write(link + "\n")
+                        # If the tool is piped to pass output to something else, then write the link
+                        if not sys.stdout.isatty():
+                            write(link,True)
                         outputCount = outputCount + 1
                 except Exception as e:
                     if vverbose():
-                        print(colored("ERROR processOutput 3: " + str(e), "red"))
+                        writerr(colored("ERROR processOutput 3: " + str(e), "red"))
 
         # If there are less links output because of filters, show the new total
         if args.regex_after is not None and linkCount > 0 and outputCount < linkCount:
-            print(
-                colored(
-                    '\nPotential unique links output after applying filter "'
-                    + args.regex_after
-                    + '":',
-                    "cyan",
-                ),
-                str(outputCount) + " 🤘\n",
-            )
+            write(colored('\nPotential unique links output after applying filter "' + args.regex_after + '": ',"cyan")+colored(str(outputCount) + " 🤘\n","white"))
 
         # Clean up
         linksFound = None
@@ -877,10 +914,10 @@ def processOutput():
                 outFile.close()
             except Exception as e:
                 if vverbose():
-                    print(colored("ERROR processOutput 4: " + str(e), "red"))
+                    writerr(colored("ERROR processOutput 4: " + str(e), "red"))
 
             if verbose():
-                print(
+                write(
                     colored(
                         "Output successfully written to file " + args.output, "cyan"
                     )
@@ -892,7 +929,7 @@ def processOutput():
 
     except Exception as e:
         if vverbose():
-            print(colored("ERROR processOutput 1: " + str(e), "red"))
+            writerr(colored("ERROR processOutput 1: " + str(e), "red"))
 
 
 def getConfig():
@@ -909,7 +946,7 @@ def getConfig():
             LINK_EXCLUSIONS = config.get("linkExclude")
         except:
             if verbose():
-                print(
+                writerr(
                     colored(
                         'Unable to read "linkExclude" from config.yml; defaults set',
                         "red",
@@ -920,7 +957,7 @@ def getConfig():
             CONTENTTYPE_EXCLUSIONS = config.get("contentExclude")
         except:
             if verbose():
-                print(
+                writerr(
                     colored(
                         'Unable to read "contentExclude" from config.yml; defaults set',
                         "red",
@@ -931,7 +968,7 @@ def getConfig():
             LINK_REGEX_FILES = config.get("regexFiles")
         except:
             if verbose():
-                print(
+                writerr(
                     colored(
                         'Unable to read "regexFiles" from config.yml; defaults set',
                         "red",
@@ -940,7 +977,7 @@ def getConfig():
             LINK_REGEX_FILES = DEFAULT_LINK_REGEX_FILES
     except Exception as e:
         if vverbose():
-            print(colored("Unable to read config.yml; defaults set: "+str(e), "red"))
+            writerr(colored("Unable to read config.yml; defaults set: "+str(e), "red"))
             LINK_EXCLUSIONS = DEFAULT_LINK_EXCLUSIONS
             CONTENTTYPE_EXCLUSIONS = DEFAULT_CONTENTTYPE_EXCLUSIONS
             LINK_REGEX_FILES = DEFAULT_LINK_REGEX_FILES
@@ -975,21 +1012,29 @@ def printProgressBar(
         )
         filledLength = int(length * iteration // total)
         bar = fill * filledLength + "-" * (length - filledLength)
-        print(colored(f"\r{prefix} |{bar}| {percent}% {suffix}", "green"), end=printEnd)
+        # If the program is not piped with something else, write to stdout, otherwise write to stderr
+        if sys.stdout.isatty():
+            write(colored(f"\r{prefix} |{bar}| {percent}% {suffix}\r", "green"))
+        else:
+            writerr(colored(f"\r{prefix} |{bar}| {percent}% {suffix}\r", "green"))
         # Print New Line on Complete
         if iteration == total:
-            print()
+            # If the program is not piped with something else, write to stdout, otherwise write to stderr
+            if sys.stdout.isatty():
+                write()
+            else: 
+                writerr()
     except Exception as e:
         if vverbose():
-            print(colored("ERROR printProgressBar: " + str(e), "red"))
+            writerr(colored("ERROR printProgressBar: " + str(e), "red"))
 
 
 def processDepth():
     global stopProgram
     try:
         # If the -d (--depth) argument was passed then do another search
-        # This is only used for URL or std file of URLs
-        if (urlPassed or stdFile) and args.depth > 1:
+        # This is only used for URL, std file of URLs, or multiple URLs passed in STDIN
+        if (urlPassed or stdFile or stdinFile) and args.depth > 1:
             for d in range(args.depth - 1):
                 if stopProgram is not None:
                     break
@@ -998,7 +1043,7 @@ def processDepth():
                 linksFoundLastTime = len(linksFound)
 
                 if verbose():
-                    print(
+                    write(
                         colored(
                             "\nProccessing URL's, depth " + str(d + 2) + ":", "cyan"
                         )
@@ -1012,7 +1057,7 @@ def processDepth():
                 # Get the current number of Links found this time
                 linksFoundThisTime = len(linksFound)
                 if linksFoundThisTime - linksFoundLastTime == 0:
-                    print(
+                    write(
                         colored(
                             "\nNo more new URL's being found, so stopping depth search.",
                             "cyan",
@@ -1022,7 +1067,7 @@ def processDepth():
 
     except Exception as e:
         if vverbose():
-            print(colored("ERROR processDepth: " + str(e), "red"))
+            writerr(colored("ERROR processDepth: " + str(e), "red"))
 
 
 def showOptions():
@@ -1030,154 +1075,79 @@ def showOptions():
     global burpFile, zapFile, stdFile, urlPassed, dirPassed, inScopePrefixDomains, inScopeFilterDomains
 
     try:
-        print(colored("Selected options:", "cyan"))
+        write(colored("Selected options:", "cyan"))
         if urlPassed:
-            print(
-                colored("-i: " + args.input + " (URL)", "magenta"),
-                "The URL to request to search for links.",
-            )
+            write(colored("-i: " + args.input + " (URL) ", "magenta")+colored("The URL to request to search for links.","white"))
         else:
             if burpFile:
-                print(
-                    colored("-i: " + args.input + " (Burp XML File)", "magenta"),
-                    "Links will be found in saved Burp responses.",
-                )
+                write(colored("-i: " + args.input + " (Burp XML File) ", "magenta")+colored("Links will be found in saved Burp responses.","white"))
             elif zapFile: 
-                print(
-                    colored("-i: " + args.input + " (OWASP ZAP File)", "magenta"),
-                    "Links will be found in saved ZAP responses.",
-                )
+                write(colored("-i: " + args.input + " (OWASP ZAP File) ", "magenta")+colored("Links will be found in saved ZAP responses.","white"))
             else:
                 if dirPassed:
-                    print(
-                        colored("-i: " + args.input + " (Directory)", "magenta"),
-                        "All files in the directory will be searched for links. Sub directories are not searched.",
-                    )
+                    write(colored("-i: " + args.input + " (Directory) ", "magenta")+colored("All files in the directory will be searched for links. Sub directories are not searched.","white"))
                 else: 
-                    print(
-                        colored("-i: " + args.input + " (Text File)", "magenta"),
-                        "All URLs will be requested and links found in all responses.",
-                    )
+                    write(colored("-i: " + args.input + " (Text File) ", "magenta")+colored("All URLs will be requested and links found in all responses.","white"))
 
-        print(
-            colored("-o: " + args.output, "magenta"), "Where the output will be sent."
-        )
-        print(
-            colored("-ow: " + str(args.output_overwrite), "magenta"),
-            "Whether the output will be overwritten if it already exists.",
-        )
+        write(colored("-o: " + args.output, "magenta")+colored(" Where the output will be sent.","white"))
+        write(colored("-ow: " + str(args.output_overwrite), "magenta")+colored(" Whether the output will be overwritten if it already exists.","white"))
 
         if args.scope_prefix is not None:
             if inScopePrefixDomains is not None:
-                print(
-                    colored("-sp: " + args.scope_prefix + " (File)", "magenta"),
-                    "A file of scope domains to prefix links starting with /",
-                )
+                write(
+                    colored("-sp: " + args.scope_prefix + " (File)", "magenta")+colored(" A file of scope domains to prefix links starting with /","white"))
             else:
-                print(
-                    colored("-sp: " + args.scope_prefix + " (URL)", "magenta"),
-                    "A scope domain to prefix links starting with /",
-                )
-            print(
-                colored("-spo: " + str(args.scope_prefix_original), "magenta"),
-                "Whether the original domain starting with / will be output in addition to the prefixes.",
-            )
+                write(colored("-sp: " + args.scope_prefix + " (URL)", "magenta")+colored(" A scope domain to prefix links starting with /","white"))
+            write(
+                colored("-spo: " + str(args.scope_prefix_original), "magenta")+colored(" Whether the original domain starting with / will be output in addition to the prefixes.","white"))
 
         if args.scope_filter is not None:
             if inScopeFilterDomains is not None:
-                print(
-                    colored("-sf: " + args.scope_filter + " (File)", "magenta"),
-                    "A file or scope domains to filter the output by.",
-                )
+                write(colored("-sf: " + args.scope_filter + " (File)", "magenta")+colored(" A file or scope domains to filter the output by.","white"))
             else:
-                print(
-                    colored("-sf: " + args.scope_filter + " (URL)", "magenta"),
-                    "Scope domain to filter the output by.",
-                )
+                write(colored("-sf: " + args.scope_filter + " (URL)", "magenta")+colored(" Scope domain to filter the output by.","white"))
 
         if args.regex_after is not None:
-            print(
-                colored("-ra: " + args.regex_after, "magenta"),
-                "The regex applied after all links have been retrieved to determine what is output.",
-            )
+            write(colored("-ra: " + args.regex_after, "magenta")+colored(" The regex applied after all links have been retrieved to determine what is output.","white"))
 
         if not burpFile and not zapFile and not dirPassed:
-            print(
-                colored("-d: " + str(args.depth), "magenta"),
-                "The depth of link searches, e.g. how many times links will be searched for recursively.",
-            )
+            write(colored("-d: " + str(args.depth), "magenta")+colored(" The depth of link searches, e.g. how many times links will be searched for recursively.","white"))
 
         exclusions = args.exclude
         if exclusions == "":
             exclusions = "{none}"
-        print(
-            colored("-x: " + exclusions, "magenta"),
-            "Additional exclusions (to config.yml) to filter links in the output, e.g. -x .xml,.cfm",
-        )
+        write(colored("-x: " + exclusions, "magenta")+colored(" Additional exclusions (to config.yml) to filter links in the output, e.g. -x .xml,.cfm","white"))
 
-        print(
-            colored("-orig: " + str(args.origin), "magenta"),
-            "Whether the origin of a link is displayed in the output.",
-        )
+        write(colored("-orig: " + str(args.origin), "magenta")+colored(" Whether the origin of a link is displayed in the output.","white"))
         if not burpFile and not zapFile and not dirPassed:
-            print(
-                colored("-p: " + str(args.processes), "magenta"),
-                "The number of parallel requests made.",
-            )
-            print(
-                colored("-t: " + str(args.timeout), "magenta"),
-                "The number of seconds to wait for a response.",
-            )
-            print(
-                colored("-inc: " + str(args.include), "magenta"),
-                "Include input (-i) links in the output.",
-            )
-            print(
-                colored("-u: " + str(args.user_agent), "magenta"),
-                "What User Agents to use for requests. If more than one specified then all requests will be made per User Agent group.",
-            )
+            write(colored("-p: " + str(args.processes), "magenta")+colored(" The number of parallel requests made.","white"))
+            write(colored("-t: " + str(args.timeout), "magenta")+colored(" The number of seconds to wait for a response.","white"))
+            write(colored("-inc: " + str(args.include), "magenta")+colored(" Include input (-i) links in the output.","white"))
+            write(colored("-u: " + str(args.user_agent), "magenta")+colored(" What User Agents to use for requests. If more than one specified then all requests will be made per User Agent group.","white"))
 
             if args.cookies != "":
-                print(colored("-c: " + args.cookies, "magenta"), "Cookies passed with requests.")
+                write(colored("-c: " + args.cookies, "magenta")+colored(" Cookies passed with requests.","white"))
         
             if args.headers != "":
-                print(colored("-H: " + args.headers, "magenta"), "Custom headers passed with requests.")
+                write(colored("-H: " + args.headers, "magenta")+colored(" Custom headers passed with requests.","white"))
 
-            print(
-                colored("-insecure: " + str(args.insecure), "magenta"),
-                "Whether TLS certificate checks should be disabled when making requests.",
-            )
-            print(
-                colored("-s429: " + str(args.s429), "magenta"),
-                "Whether the program will stop if > 95 requests return Status 429: Too Many Requests.",
-            )
-            print(
-                colored("-s403: " + str(args.s403), "magenta"),
-                "Whether the program will stop if > 95 requests return Status 403: Forbidden.",
-            )
-            print(
-                colored("-sTO: " + str(args.sTO), "magenta"),
-                "Whether the program will stop if > 95 requests time out.",
-            )
-            print(
-                colored("-sCE: " + str(args.sCE), "magenta"),
-                "Whether the program will stop if > 95 requests have connection errors.",
-            )
-            print(
-                colored("-replay-proxy: " + str(args.replay_proxy), "magenta"),
-                "Replay requests using this proxy.",
-            )
+            write(colored("-insecure: " + str(args.insecure), "magenta")+colored(" Whether TLS certificate checks should be disabled when making requests.","white"))
+            write(colored("-s429: " + str(args.s429), "magenta")+colored(" Whether the program will stop if > 95 requests return Status 429: Too Many Requests.","white"))
+            write(colored("-s403: " + str(args.s403), "magenta")+colored(" Whether the program will stop if > 95 requests return Status 403: Forbidden.","white"))
+            write(colored("-sTO: " + str(args.sTO), "magenta")+colored(" Whether the program will stop if > 95 requests time out.","white"))
+            write(colored("-sCE: " + str(args.sCE), "magenta")+colored(" Whether the program will stop if > 95 requests have connection errors.","white"))
+            proxy = args.replay_proxy
+            if proxy == "":
+                proxy = "{none}"
+            write(colored("-replay-proxy: " + proxy, "magenta")+colored(" Replay requests using this proxy.","white"))
         
         if dirPassed: 
-            print(
-                colored("-mfs: " + str(args.max_file_size) + ' Mb', "magenta"),
-                "The maximum file size (in Mb) of a file to be checked if -i is a directory. If the file size is over this value, it will be ignored.",
-            )
-        print()
+            write(colored("-mfs: " + str(args.max_file_size) + ' Mb', "magenta")+colored(" The maximum file size (in Mb) of a file to be checked if -i is a directory. If the file size is over this value, it will be ignored.","white"))
+        write()
 
     except Exception as e:
         if vverbose():
-            print(colored("ERROR showOptions: " + str(e), "red"))
+            writerr(colored("ERROR showOptions: " + str(e), "red"))
 
 
 # Convert bytes to human readable form
@@ -1192,7 +1162,7 @@ def humanReadableSize(size, decimal_places=2):
 def getScopeDomains():
 
     global inScopePrefixDomains, inScopeFilterDomains
-
+    
     # Check -sp (--scope-prefix). Try to get the file contents if it is a file, otherwise check it appears like a domain
     if args.scope_prefix is not None:
         scopePrefixError = False
@@ -1212,13 +1182,13 @@ def getScopeDomains():
             ):
                 scopePrefixError = True
         if scopePrefixError:
-            print(
+            writerr(
                 colored(
                     "The -sp (--scope-prefix) value should be a valid file of domains, or a single domain, e.g. https://www.example1.com, http://example2.co.uk. Wildcards are not allowed, and a schema is optional",
                     "red",
                 )
             )
-            exit(0)
+            sys.exit()
 
     # Check -sf (--scope-filter). Try to get the file contents if it is a file, otherwise check it appears like a domain
     if args.scope_filter is not None:
@@ -1234,19 +1204,19 @@ def getScopeDomains():
             if args.scope_filter.find(".") < 0 or args.scope_filter.find(" ") >= 0:
                 scopeFilterError = True
         if scopeFilterError:
-            print(
+            writerr(
                 colored(
                     "The -sf (--scope-filter) value should be a valid file of domains, or a single domain. No schema should be included and wildacard is optional, e.g. example1.com, sub.example2.com, example3.*",
                     "red",
                 )
             )
-            exit(0)
+            sys.exit()
 
 # Get links from all files in a specified directory
 def processDirectory():
     global totalResponses
     
-    print(colored("Processing files in directory " + args.input + ":\n", "cyan"))
+    write(colored("Processing files in directory " + args.input + ":\n", "cyan"))
     
     dirPath = args.input
     request = ""
@@ -1256,12 +1226,12 @@ def processDirectory():
     try:
         totalResponses = len([entry for entry in os.listdir(dirPath) if (os.path.isfile(os.path.join(dirPath, entry)) and (os.path.getsize(os.path.join(dirPath, entry)) / 1024) < args.max_file_size)])
     except Exception as e:
-        print(colored("ERROR processDirectory 1: " + str(e)))
+        writerr(colored("ERROR processDirectory 1: " + str(e)))
      
     try:
         # If there are no files to process, tell the user
         if totalResponses == 0:
-            print(colored("There are no files with a size greater than " + str(args.max_file_size) + " Mb to process.", "red"))
+            writerr(colored("There are no files with a size greater than " + str(args.max_file_size) + " Mb to process.", "red"))
         else:
             responseCount = 0
             printProgressBar(
@@ -1327,7 +1297,7 @@ def processDirectory():
                         response = ""
                     except Exception as e:
                         if vverbose():
-                            print(
+                            writerr(
                                 colored(
                                     "ERROR processDirectory 2: Request "
                                     + str(responseCount)
@@ -1339,7 +1309,7 @@ def processDirectory():
 
     except Exception as e:
         if vverbose():
-            print(
+            writerr(
                 colored(
                     "Error with file: Response "
                     + str(responseCount)
@@ -1359,8 +1329,7 @@ def processZapMessage(zapMessage, responseCount):
     try:
         # Split the message into request (just URL) and response
         request = zapMessage.split("\n\n",1)[0].strip().split(" ")[1].strip()
-        response = zapMessage.split("\n\n",1)[1].strip()
-        
+        response = re.split(r'\nHTTP\/[0-9]',zapMessage)[1]
         # Show progress bar
         fillTest = responseCount % 2
         if fillTest == 0:
@@ -1399,7 +1368,7 @@ def processZapMessage(zapMessage, responseCount):
         
     except Exception as e:
         if vverbose():
-            print(colored("ERROR processZapMessage 1: " + str(e),"red"))    
+            writerr(colored("ERROR processZapMessage 1: " + str(e),"red"))    
 
 def processZapFile():
     """
@@ -1409,31 +1378,36 @@ def processZapFile():
     It is assumed that each request/response "message" will start with a line matching REGEX ^={4}\s[0-9]+\s={10}$
     (this was tested with ZAP v2.11.1)
     """
-    global totalResponses, currentMemUsage, currentMemPercent, stopProgram
+    global totalResponses, currentMemUsage, currentMemPercent, stopProgram, stdinMultiple
     
     try:
         try: 
-            fileSize = os.path.getsize(args.input)
-            filePath = os.path.abspath(args.input).replace(" ", "\ ")
-            
-            cmd = "grep -Eo '^={4}\s[0-9]+\s={10}$' " + filePath + " | wc -l"
-            grep = subprocess.run(
-                cmd, shell=True, text=True, stdout=subprocess.PIPE, check=True
-            )
-            totalResponses = int(grep.stdout.split("\n")[0])
-
-            print(
-                    colored(
-                        "\nProcessing OWASP ZAP file "
-                        + args.input
-                        + " ("
-                        + humanReadableSize(fileSize)
-                        + "):",
-                        "cyan",
-                    )
+            # If piped from stdin then 
+            if stdinMultiple:
+                write(colored("\nProcessing OWASP ZAP file from STDIN:", "cyan"))         
+            else: 
+                fileSize = os.path.getsize(args.input)
+                filePath = os.path.abspath(args.input).replace(" ", "\ ")
+                
+                cmd = "grep -Eo '^={4}\s[0-9]+\s={10}$' --text " + filePath + " | wc -l"
+                        
+                grep = subprocess.run(
+                    cmd, shell=True, text=True, stdout=subprocess.PIPE, check=True
                 )
+                totalResponses = int(grep.stdout.split("\n")[0])
+
+                write(
+                        colored(
+                            "\nProcessing OWASP ZAP file "
+                            + args.input
+                            + " ("
+                            + humanReadableSize(fileSize)
+                            + "):",
+                            "cyan",
+                        )
+                    )
         except:
-            print(colored("Processing OWASP ZAP file " + args.input + ":", "cyan"))
+            write(colored("Processing OWASP ZAP file " + args.input + ":", "cyan"))
         
         try:
             zapMessage = ""
@@ -1476,17 +1450,17 @@ def processZapFile():
                                    
         except Exception as e:
             if vverbose():
-                print(colored("ERROR processZapFile 2: " + str(e),"red"))
+                writerr(colored("ERROR processZapFile 2: " + str(e),"red"))
                 
     except Exception as e:
         if vverbose():
-            print(colored("ERROR processZapFile 1: " + str(e),"red"))
+            writerr(colored("ERROR processZapFile 1: " + str(e),"red"))
             
 def processBurpFile():
     """
     Process a Burp XML file of requests/responses
     """
-    global totalResponses, currentMemUsage, currentMemPercent, stopProgram
+    global totalResponses, currentMemUsage, currentMemPercent, stopProgram, stdinFile
     
     try:
         fileSize = os.path.getsize(args.input)
@@ -1498,15 +1472,27 @@ def processBurpFile():
             )
             totalResponses = int(grep.stdout.split("\n")[0])
 
-            print(
-                colored(
-                    "Sometimes there is a problem in Burp XML files. This can often be resolved by removing unnecessary tags which will also make the file smaller. This can be done to file "
-                    + filePath
-                    + " now, or you can try without changing it.",
-                    "yellow",
+            # Ask the user if we should remove un-needed tags to make the file smaller.
+            # If the program is piped to another process, just default to No
+            if sys.stdout.isatty():
+                write(
+                    colored(
+                        "Sometimes there is a problem in Burp XML files. This can often be resolved by removing unnecessary tags which will also make the file smaller. This can be done to file "
+                        + filePath
+                        + " now, or you can try without changing it.",
+                        "yellow",
+                    )
                 )
-            )
-            reply = input("Do you want to remove tags form the file? y/n: ")
+                try:
+                    # if input was piped through stdin, reset it back to the terminal otherwise we get an EOF error
+                    if not sys.stdin.isatty(): 
+                        sys.stdin = open("/dev/tty")
+                    reply = input("Do you want to remove tags form the file? y/n: ")
+                except:
+                    reply = "n"
+            else:
+                reply = "n"
+               
             if reply.lower() == "y":
                 try:
                     cmd = (
@@ -1522,13 +1508,13 @@ def processBurpFile():
                     )
                 except Exception as e:
                     if verbose():
-                        print(colored("There was a problem: " + str(e)))
+                        writerr(colored("There was a problem: " + str(e)))
 
         except Exception as e:
             if verbose():
-                print(colored("ERROR processInput 3: " + str(e), "red"))
+                writerr(colored("ERROR processBurpFile 2: " + str(e), "red"))
 
-        print(
+        write(
             colored(
                 "\nProcessing Burp file "
                 + args.input
@@ -1539,7 +1525,7 @@ def processBurpFile():
             )
         )
     except:
-        print(colored("Processing Burp file " + args.input + ":", "cyan"))
+        write(colored("Processing Burp file " + args.input + ":", "cyan"))
 
     request = ""
     response = ""
@@ -1596,7 +1582,7 @@ def processBurpFile():
                         request = elem.text
                     except:
                         if verbose():
-                            print(
+                            writerr(
                                 colored(
                                     "Failed to get URL " + str(responseCount),
                                     "red",
@@ -1625,9 +1611,9 @@ def processBurpFile():
                     response = ""
                 except Exception as e:
                     if vverbose():
-                        print(
+                        writerr(
                             colored(
-                                "ERROR processInput 4: Request "
+                                "ERROR processBurpFile 3: Request "
                                 + str(responseCount)
                                 + ": "
                                 + str(e),
@@ -1637,9 +1623,9 @@ def processBurpFile():
 
     except Exception as e:
         if vverbose():
-            print(
+            writerr(
                 colored(
-                    "Error with Burp file: Response "
+                    "ERROR processBurpFile 1: Response "
                     + str(responseCount)
                     + ", URL: "
                     + request
@@ -1649,52 +1635,51 @@ def processBurpFile():
                 )
             )
 
-def processInput():
-
-    # Tell Python to run the handler() function when SIGINT is received
-    signal(SIGINT, handler)
-
-    global lstExclusions, burpFile, zapFile, stdFile, inputFile, urlPassed, dirPassed, currentMemUsage, currentMemPercent, stopProgram
-
+def processEachInput(input):
+    """
+    Process the input, whether its from -i or <stdin>
+    """
+    global burpFile, zapFile, urlPassed, stdFile, stdinFile, dirPassed, stdinMultiple, linksFound, linksVisited, totalRequests, skippedRequests, failedRequests
+    
+    # Set the -i / --input to the current input
+    args.input = input
+    
     try:
-        # Set the link exclusions, and add any additional exclusions passed with -x (--exclude)
-        lstExclusions = LINK_EXCLUSIONS.split(",")
-        if args.exclude != "":
-            lstExclusions.extend(args.exclude.split(","))
-
         # If the -i (--input) can be a standard file (text file with URLs per line),
         # or a directory containing files to search,
         # or a Burp XML file with Requests and Responses
         # or a OWASP ZAP ASCII text file with Requests and Responses
-        # if the value passed is not a valid file, or a directory, then assume it is an individual URL
-        inputArg = args.input
-        if os.path.isfile(inputArg):
-            try:
-                inputFile = open(inputArg, "r")
-                firstLine = inputFile.readline()
+        # if the value passed is not a valid file, or a directory, then assume it is an individual URL:
+        if not stdinMultiple:
+            if os.path.isfile(input):    
+                try:
+                    inputFile = open(input, "r")
+                    firstLine = inputFile.readline()
 
-                # Check if the file passed is a Burp file
-                burpFile = firstLine.startswith("<?xml")
-                
-                # If not a Burp file, check of it is an OWASP ZAP file
-                if not burpFile:
-                    match = re.search('={4}\s[0-9]+\s={10}', firstLine)
-                    if match is not None:
-                        zapFile = True
-                
-                    # If it's not a burp or a zap file then assume it is a standard file or URLs
-                    if not zapFile:
-                        stdFile = True
-            except:
-                print(colored("Cannot read input file " + inputArg + ":" + str(e), "red"))
-                exit()
-        elif os.path.isdir(inputArg):
-            dirPassed = True
-            if inputArg[-1] != '/':
-                args.input = args.input + '/'
+                    # Check if the file passed is a Burp file
+                    burpFile = firstLine.startswith("<?xml")
+                    
+                    # If not a Burp file, check of it is an OWASP ZAP file
+                    if not burpFile:
+                        match = re.search('={4}\s[0-9]+\s={10}', firstLine)
+                        if match is not None:
+                            zapFile = True
+                    
+                        # If it's not a burp or a zap file then assume it is a standard file or URLs
+                        if not zapFile:
+                            stdFile = True
+                except:
+                    writerr(colored("Cannot read input file " + input + ":" + str(e), "red"))
+                    sys.exit()
+            elif os.path.isdir(input):
+                dirPassed = True
+                if input[-1] != '/':
+                    args.input = args.input + '/'
+            else:
+                urlPassed = True
         else:
-            urlPassed = True
-
+            stdFile = True
+            
         # Set headers to use if going to be making requests
         if urlPassed or stdFile:
             setHeaders()
@@ -1702,7 +1687,7 @@ def processInput():
         # Show the user their selected options if -vv is passed
         if vverbose():
             showOptions()
-
+        
         # Get the scope -sp and -sf domains if required
         getScopeDomains()
 
@@ -1723,38 +1708,119 @@ def processInput():
                 
             else:
                 # Show the current User Agent group
-                if verbose(): print(colored("\nUser-Agent Group:", "cyan"), args.user_agent[currentUAGroup])
+                if verbose(): write(colored("\nUser-Agent Group: ", "cyan")+colored(args.user_agent[currentUAGroup],"white"))
 
                 if urlPassed:
                     # It's not a standard file, so assume it's just a single URL
                     if verbose():
-                        print(colored("Processing URL:", "cyan"))
-                    processUrl(inputArg)
+                        write(colored("Processing URL:", "cyan"))
+                    processUrl(input)
 
                 else:  # It's a file of URLs
                     try:
-                        inputFile = open(inputArg, "r")
-                        if verbose():
-                            print(colored("Reading input file " + inputArg + ":", "cyan"))
-                        with inputFile as f:
+                        # If not piped from another program, read the file
+                        if sys.stdin.isatty():
+                            inputFile = open(input, "r")
+                            if verbose():
+                                write(colored("Reading input file " + input + ":", "cyan"))
+                            with inputFile as f:
+                                if stopProgram is None:
+                                    p = mp.Pool(args.processes)
+                                    p.map(processUrl, f)
+                                    p.close()
+                                    p.join()
+                            inputFile.close()
+                        else:
+                            # Else it's piped from another process so go through the saved stdin
                             if stopProgram is None:
                                 p = mp.Pool(args.processes)
-                                p.map(processUrl, f)
+                                p.map(processUrl, stdinFile)
                                 p.close()
                                 p.join()
-                        inputFile.close()
                     except Exception as e:
                         if vverbose():
-                            print(
+                            writerr(
                                 colored(
-                                    "ERROR processInput 5: Problem with standard file: "
+                                    "ERROR processEachInput 2: Problem with standard file: "
                                     + str(e),
                                     "red")
                             )
+        # Get more links for Depth option if necessary
+            if stopProgram is None:
+                processDepth()
 
+            # Once all data has been found, process the output
+            processOutput()
+
+            # Reset the variables
+            linksFound = set()
+            linksVisited = set()
+            totalRequests = 0
+            skippedRequests = 0
+            failedRequests = 0
+                
     except Exception as e:
         if vverbose():
-            print(colored("ERROR processInput 1: " + str(e), "red"))
+            writerr(colored("ERROR processEachInput 1: " + str(e), "red"))
+            
+def processInput():
+
+    # Tell Python to run the handler() function when SIGINT is received
+    signal(SIGINT, handler)
+
+    global lstExclusions, burpFile, zapFile, stdFile, inputFile, urlPassed, dirPassed, stdinMultiple, stopProgram, stdinFile
+
+    try:
+        # Set the link exclusions, and add any additional exclusions passed with -x (--exclude)
+        lstExclusions = LINK_EXCLUSIONS.split(",")
+        if args.exclude != "":
+            lstExclusions.extend(args.exclude.split(","))
+
+        firstLine = ''
+        if not sys.stdin.isatty():
+            count = 1
+            firstLine = ''
+            stdinFile = sys.stdin.readlines()
+            for line in stdinFile:
+                if count == 1:
+                    firstLine = line.rstrip('\n')
+                elif count == 2:
+                    stdinMultiple = True
+                else:
+                    break
+                count = count + 1
+
+            # If multiple lines passed, check if its a Burp or Xap file
+            if stdinMultiple:    
+
+                # Check if the stdin passed is a Burp file
+                burpFile = firstLine.startswith("<?xml")
+                
+                 # If not a Burp file, check of it is an OWASP ZAP file
+                if not burpFile:
+                    match = re.search('={4}\s[0-9]+\s={10}', firstLine)
+                    if match is not None:
+                        zapFile = True
+        
+        # If input wasn't piped then just process the -i / --input value
+        if sys.stdin.isatty():
+            processEachInput(args.input)
+        else:
+            # If input was piped, but there's only one line, pass that as input
+            if not stdinMultiple:
+                processEachInput(firstLine)
+            else:
+                # Other wise there are multiple lines
+                # if it is multiple lines of stdin then process as a file of URLs
+                if stdinMultiple and not burpFile and not zapFile:
+                    processEachInput('<stdin>')
+                else:
+                    writerr(colored("You cannot pass a Burp or ZAP file via <stdin>. Please call xnLinkFinder by itself and provide the file with -i","red"))
+                    sys.exit()
+                    
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR processInput 1: " + str(e), "red"))
 
 
 # Set user agents to process
@@ -1799,7 +1865,7 @@ def setHeaders():
                 headerValue = header.split(':')[1]
                 requestHeaders[headerName.strip()] = headerValue.strip()
         except: 
-            if verbose(): print(colored("Unable to apply custom headers. Check -H argument value.","red"))
+            if verbose(): writerr(colored("Unable to apply custom headers. Check -H argument value.","red"))
             
 # For validating -m / --memory-threshold argument
 def argcheckPercent(value):
@@ -1809,7 +1875,6 @@ def argcheckPercent(value):
             "A valid integer percentage less than 100 must be entered."
         )
     return ivalue
-
 
 # Run xnLinkFinder
 if __name__ == "__main__":
@@ -1826,7 +1891,6 @@ if __name__ == "__main__":
         "--input",
         action="store",
         help="Input a: URL, text file of URLs, a Directory of files to search, a Burp XML output file or an OWASP ZAP output file.",
-        required=True,
     )
     parser.add_argument(
         "-o",
@@ -2000,6 +2064,12 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    # If no input was given, raise an error
+    if sys.stdin.isatty():
+        if args.input is None:
+            writerr(colored("You need to provide an input with -i argument or through <stdin>.", "red"))
+            sys.exit()
+            
     showBanner()
 
     # Get the config settings from the config.yml file
@@ -2025,20 +2095,6 @@ if __name__ == "__main__":
 
             # Process the input given on -i (--input) and get all links
             processInput()
-
-            # Get more links for Depth option if necessary
-            if stopProgram is None:
-                processDepth()
-
-            # Once all data has been found, process the output
-            processOutput()
-
-            # Reset the variables
-            linksFound = set()
-            linksVisited = set()
-            totalRequests = 0
-            skippedRequests = 0
-            failedRequests = 0
             
             # If a Burp file, ZAP file or directory is processed then ignore userAgents if passed because they are not relevant
             if burpFile or zapFile or dirPassed: break
@@ -2046,7 +2102,7 @@ if __name__ == "__main__":
         # If the program was stopped then alert the user
         if stopProgram is not None:
             if stopProgram == StopProgram.MEMORY_THRESHOLD:
-                print(
+                writerr(
                     colored(
                         "YOUR MEMORY USAGE REACHED "
                         + str(maxMemoryPercent)
@@ -2055,28 +2111,28 @@ if __name__ == "__main__":
                     )
                 )
             elif stopProgram == StopProgram.TOO_MANY_REQUESTS:
-                print(
+                writerr(
                     colored(
                         "THE PROGRAM WAS STOPPED DUE TO TOO MANY REQUESTS (429 ERRORS). DATA IS LIKELY TO BE INCOMPLETE.\n",
                         "red",
                     )
                 )
             elif stopProgram == StopProgram.TOO_MANY_FORBIDDEN:
-                print(
+                writerr(
                     colored(
                         "THE PROGRAM WAS STOPPED DUE TO TOO MANY FORBIDDEN REQUESTS (403 ERRORS). DATA IS LIKELY TO BE INCOMPLETE.\n",
                         "red",
                     )
                 )
             elif stopProgram == StopProgram.TOO_MANY_TIMEOUTS:
-                print(
+                writerr(
                     colored(
                         "THE PROGRAM WAS STOPPED DUE TO TOO MANY REQUEST TIMEOUTS. DATA IS LIKELY TO BE INCOMPLETE.\n",
                         "red",
                     )
                 )
             else:
-                print(
+                writerr(
                     colored(
                         "THE PROGRAM WAS STOPPED. DATA IS LIKELY TO BE INCOMPLETE.\n",
                         "red",
@@ -2093,8 +2149,8 @@ if __name__ == "__main__":
                 )
             except Exception as e:
                 if vverbose():
-                    print(colored("ERROR main 2: " + str(e), "red"))
+                    writerr(colored("ERROR main 2: " + str(e), "red"))
 
     except Exception as e:
         if vverbose():
-            print(colored("ERROR main 1: " + str(e), "red"))
+            writerr(colored("ERROR main 1: " + str(e), "red"))

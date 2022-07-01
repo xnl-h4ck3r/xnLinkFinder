@@ -130,6 +130,22 @@ python3 xnLinkFinder.py -i target_zap.txt
 
 NOTE: xnLinkFinder makes the assumption that if the first line of the file passed with `-i` is in the format `==== 99 ==========` for example, then you are trying to process an OWASP ZAP ASCII text file.
 
+### Piping to other Tools
+
+You can pipe xnLinkFinder to other tools. Any errors are sent to `stderr` and any links found are sent to `stdout`. The output file is still created in addition to the links being piped to the next program. For example:
+
+```
+python3 xnLinkFinder.py -i redbull.com -sp https://redbull.com -sf rebbull.* -d 3 | unfurl keys | sort -u
+```
+
+You can also pass the input through `stdin` instead of `-i`.
+
+```
+cat redbull_subs.txt | python3 xnLinkFinder.py -sp https://redbull.com -sf rebbull.* -d 3
+```
+
+NOTE: You can't pipe in a Burp or ZAP file, these must be passed using `-i`.
+
 ## Recommendations and Notes
 
 - Always use the Scope Prefix argument `-sp`. This can be one scope domain, or a file containing multiple scope domains.
@@ -168,12 +184,19 @@ If you come across any problems at all, or have ideas for improvements, please f
 ## TODO
 
 - Also get all potential parameters
+- Make it OS agnostic. Currently it only works properly on Linux due to direct OS command calls
 
 ## Example output
+
+Active link finding for a domain:
 
 <center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/raw/main/example1a.png"></center>
 ...
 <center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/raw/main/example1b.png"></center>
+
+Piped input and output:
+
+<center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/raw/main/example2.png"></center>
 
 Good luck and good hunting!
 If you really love the tool (or any others), or they helped you find an awesome bounty, consider [BUYING ME A COFFEE!](https://ko-fi.com/xnlh4ck3r) ☕ (I could use the caffeine!)
