@@ -1,5 +1,13 @@
 ## Changelog
 
+- v1.2
+
+  - New
+    - If a directory is passed as input, process all files in that directory plus all sub directories.
+  - Changed
+    - If a directory is passed with `-i`, when `-mfs` is given a value of 0 (Zero) then no files will be ignored, regardless of size.
+    - Add setup files and directories to `.gitignore`
+
 - v1.1
 
   - New

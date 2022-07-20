@@ -1085,7 +1085,7 @@ def showOptions():
                 write(colored("-i: " + args.input + " (OWASP ZAP File) ", "magenta")+colored("Links will be found in saved ZAP responses.","white"))
             else:
                 if dirPassed:
-                    write(colored("-i: " + args.input + " (Directory) ", "magenta")+colored("All files in the directory will be searched for links. Sub directories are not searched.","white"))
+                    write(colored("-i: " + args.input + " (Directory) ", "magenta")+colored("All files in the directory (and sub-directories) will be searched for links. Sub directories are not searched.","white"))
                 else: 
                     write(colored("-i: " + args.input + " (Text File) ", "magenta")+colored("All URLs will be requested and links found in all responses.","white"))
 
@@ -1222,16 +1222,23 @@ def processDirectory():
     request = ""
     response = ""
     
-    # Get the number of files in the directory that are less than --max-file-size
+    # Get the number of files in the directory (and sub directories) that are less than --max-file-size. If --max-file-size is Zero then process all files
     try:
-        totalResponses = len([entry for entry in os.listdir(dirPath) if (os.path.isfile(os.path.join(dirPath, entry)) and (os.path.getsize(os.path.join(dirPath, entry)) / 1024) < args.max_file_size)])
+        totalResponses = 0
+        for path, subdirs, files in os.walk(dirPath): 
+            for f in files: 
+                if args.max_file_size == 0 or (os.path.getsize(os.path.join(path, f))) / 1024 < args.max_file_size:
+                    totalResponses = totalResponses + 1
     except Exception as e:
         writerr(colored("ERROR processDirectory 1: " + str(e)))
      
     try:
         # If there are no files to process, tell the user
         if totalResponses == 0:
-            writerr(colored("There are no files with a size greater than " + str(args.max_file_size) + " Mb to process.", "red"))
+            if args.max_file_size == 0:
+                writerr(colored("There are no files to process.", "red"))
+            else:
+                writerr(colored("There are no files with a size greater than " + str(args.max_file_size) + " Mb to process.", "red"))
         else:
             responseCount = 0
             printProgressBar(
@@ -1241,71 +1248,72 @@ def processDirectory():
                 suffix="Complete ",
                 length=50,
             )
-            # Iterate directory
-            for path in os.listdir(dirPath):
-                
-                # Check if current path is a file and the size is less than --max-file-size
-                if os.path.isfile(os.path.join(dirPath, path)) and (os.path.getsize(os.path.join(dirPath, path)) / 1024) < args.max_file_size:
+            # Iterate directory and sub directories
+            for path, subdirs, files in os.walk(dirPath):
+                for filename in files:
                     
-                    if stopProgram is not None:
-                        break
+                    # Check if the file size is less than --max-file-size
+                    if args.max_file_size == 0 or (os.path.getsize(os.path.join(path, filename))) / 1024 < args.max_file_size:
+                        
+                        if stopProgram is not None:
+                            break
 
-                    # Show progress bar
-                    responseCount = responseCount + 1
-                    fillTest = responseCount % 2
-                    if fillTest == 0:
-                        fillChar = "O"
-                    elif fillTest == 1:
-                        fillChar = "o"
-                    suffix = "Complete "
-                    # Show memory usage if -vv option chosen, and check memory every 25 requests (or if its the last)
-                    if responseCount % 25 == 0 or responseCount == totalResponses:
+                        # Show progress bar
+                        responseCount = responseCount + 1
+                        fillTest = responseCount % 2
+                        if fillTest == 0:
+                            fillChar = "O"
+                        elif fillTest == 1:
+                            fillChar = "o"
+                        suffix = "Complete "
+                        # Show memory usage if -vv option chosen, and check memory every 25 requests (or if its the last)
+                        if responseCount % 25 == 0 or responseCount == totalResponses:
+                            try:
+                                getMemory()
+                                if vverbose():
+                                    suffix = (
+                                        "Complete (Mem Usage "
+                                        + humanReadableSize(currentMemUsage)
+                                        + ", Total Mem "
+                                        + str(currentMemPercent)
+                                        + "%)"
+                                    )
+                            except:
+                                if vverbose():
+                                    suffix = 'Complete (To show memory usage, run "pip install psutil")'
+                        printProgressBar(
+                            responseCount,
+                            totalResponses,
+                            prefix="Checking "
+                            + str(totalResponses)
+                            + " files:",
+                            suffix=suffix,
+                            length=50,
+                            fill=fillChar,
+                        )
+
+                        # Set the request to the name of the file
+                        request = os.path.join(path,filename)
+                        
+                        # Set the response as the contents of the file
+                        with open(request, 'r', encoding='utf-8', errors='ignore') as file:
+                            response = file.read()
+
                         try:
-                            getMemory()
+                            getResponseLinks(response, request)
+                            request = ""
+                            response = ""
+                        except Exception as e:
                             if vverbose():
-                                suffix = (
-                                    "Complete (Mem Usage "
-                                    + humanReadableSize(currentMemUsage)
-                                    + ", Total Mem "
-                                    + str(currentMemPercent)
-                                    + "%)"
+                                writerr(
+                                    colored(
+                                        "ERROR processDirectory 2: Request "
+                                        + str(responseCount)
+                                        + ": "
+                                        + str(e),
+                                        "red",
+                                    )
                                 )
-                        except:
-                            if vverbose():
-                                suffix = 'Complete (To show memory usage, run "pip install psutil")'
-                    printProgressBar(
-                        responseCount,
-                        totalResponses,
-                        prefix="Checking "
-                        + str(totalResponses)
-                        + " files:",
-                        suffix=suffix,
-                        length=50,
-                        fill=fillChar,
-                    )
-
-                    # Set the request to the name of the file
-                    request = dirPath + path
-                    
-                    # Set the response as the contents of the file
-                    with open(request, 'r', encoding='utf-8', errors='ignore') as file:
-                        response = file.read()
-
-                    try:
-                        getResponseLinks(response, request)
-                        request = ""
-                        response = ""
-                    except Exception as e:
-                        if vverbose():
-                            writerr(
-                                colored(
-                                    "ERROR processDirectory 2: Request "
-                                    + str(responseCount)
-                                    + ": "
-                                    + str(e),
-                                    "red",
-                                )
-                            )
 
     except Exception as e:
         if vverbose():
@@ -2046,7 +2054,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-mfs",
         "--max-file-size",
-        help="The maximum file size (in bytes) of a file to be checked if -i is a directory. If the file size os over, it will be ignored (default: 500 MB)",
+        help="The maximum file size (in bytes) of a file to be checked if -i is a directory. If the file size os over, it will be ignored (default: 500 MB). Setting to 0 means no files will be ignored, regardless of size.",
         action="store",
         type=int,
         default=500,
