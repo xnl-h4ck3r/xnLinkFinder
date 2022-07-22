@@ -2,7 +2,7 @@
 # Python 3
 # Good luck and good hunting! If you really love the tool (or any others), or they helped you find an awesome bounty, consider BUYING ME A COFFEE! (https://ko-fi.com/xnlh4ck3r) ☕ (I could use the caffeine!)
 
-VERSION = "1.1"
+VERSION = "1.3"
 inScopePrefixDomains = None
 inScopeFilterDomains = None
 burpFile = False
@@ -15,6 +15,7 @@ stdinFile = []
 inputFile = None
 linksFound = set()
 linksVisited = set()
+paramsFound = set()
 lstExclusions = {}
 requestHeaders = {}
 totalRequests = 0
@@ -51,6 +52,7 @@ import math
 import enum
 from urllib3.exceptions import InsecureRequestWarning
 import sys
+from urllib.parse import urlparse
 
 # Try to import psutil to show memory usage
 try:
@@ -75,6 +77,13 @@ stopProgram = None
 LINK_EXCLUSIONS = ""
 CONTENTTYPE_EXCLUSIONS = ""
 LINK_REGEX_FILES = ""
+RESP_PARAM_LINKSFOUND = True
+RESP_PARAM_PATHWORDS = True
+RESP_PARAM_JSON = True
+RESP_PARAM_JSVARS = True
+RESP_PARAM_XML = True
+RESP_PARAM_INPUTFIELD = True
+RESP_PARAM_METANAME = True
 
 # A comma separated list of Link exclusions used when the exclusions from config.yml cannot be found
 # Links are NOT output if they contain these strings. This just applies to the links found in endpoints, not the origin link in which it was found
@@ -365,8 +374,10 @@ def includeContentType(header):
     return include
 
 
-# Add a link to the list
+# Add a link to the list and potential parameters from the link if required
 def addLink(link, url):
+
+    # Add the link to the list
     try:
         if args.origin:
             linksFound.add(link + "  [" + url + "]")
@@ -376,6 +387,33 @@ def addLink(link, url):
         if vverbose():
             writerr(colored("ERROR addLink 1: " + str(e), "red"))
 
+    # Also add any relevant potential parameters
+    try:
+         # Get words in the URL path to add as potential parameters
+        if RESP_PARAM_PATHWORDS:
+            getPathWords(url)
+            getPathWords(link)
+        
+        # Get parameters from links if requested
+        if RESP_PARAM_LINKSFOUND and link.count('?') > 0:
+            # Get parameters from the link
+            try:
+                link = link.replace('&amp;', '&')
+                link = link.replace('\\x26', '&')
+                link = link.replace('\\u0026', '&')
+                link = link.replace('&equals;', '=')
+                link = link.replace('\\x3d', '=')
+                link = link.replace('\\u003d', '=')
+                param_keys = re.finditer(r"(?<=\?|&)[^\=\&\n].*?(?=\=|&|\n)", link)
+                for param in param_keys:
+                    if param is not None and param.group() != '':
+                        paramsFound.add(param.group().strip())
+            except Exception as e:
+                if vverbose():
+                    writerr(colored("ERROR addLink 2: " + str(e), "red"))
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR addLink 3 " + str(e), "red"))                                
 
 def getResponseLinks(response, url):
     """
@@ -520,10 +558,10 @@ def getResponseLinks(response, url):
                             # If the -sp (--scope-prefix) option was passed and the link doesn't start with http
                             if args.scope_prefix is not None and not link.lower().startswith("http"):
                             
-                                # If -spo os passed then add the original link
+                                # If -spo is passed, then add the original link
                                 if args.scope_prefix_original:
                                     addLink(link, responseUrl)
-                                            
+                                    
                                 # If the -sp (--scope-prefix) option is a name of a file, then add a link for each scope domain
                                 if inScopePrefixDomains is not None:
                                     count = 0
@@ -666,7 +704,7 @@ def shouldMakeRequest(url):
 def processUrl(url):
 
     global burpFile, zapFile, totalRequests, skippedRequests, failedRequests, userAgent, requestHeaders, tooManyRequests, tooManyForbidden, tooManyTimeouts, tooManyConnectionErrors, stopProgram
-
+    
     # Choose a random user agent string to use from the current group
     userAgent = random.choice(userAgents[currentUAGroup])
     requestHeaders['User-Agent']=userAgent
@@ -756,6 +794,10 @@ def processUrl(url):
 
                     getResponseLinks(resp, url)
                     totalRequests = totalRequests + 1
+                    
+                    # Get potential parameters from the response
+                    getResponseParams(resp)
+
                 except requests.exceptions.ProxyError as pe:
                     writerr(colored("Cannot connect to the proxy " + args.replay_proxy, "red"))
                     pass
@@ -823,7 +865,6 @@ def processUrl(url):
 
 # Display stats if -vv argument was chosen
 def processStats():
-    write()
     if not burpFile and not zapFile and not dirPassed:
         write("TOTAL REQUESTS MADE: " + str(totalRequests))
         write("DUPLICATE REQUESTS SKIPPED: " + str(skippedRequests))
@@ -844,13 +885,9 @@ def processStats():
         write('MAX TOTAL MEMORY: To show total memory %, run "pip install psutil"')
     write()
 
-
-def processOutput():
-    """
-    Output the list of collected links to a file or the cli
-    """
+# Process the output of all found links
+def processLinkOutput():
     global totalRequests, skippedRequests, linksFound
-
     try:
         linkCount = len(linksFound)
         if args.origin:
@@ -876,7 +913,7 @@ def processOutput():
                     outFile = open(os.path.expanduser(args.output), "a")
             except Exception as e:
                 if vverbose():
-                    writerr(colored("ERROR processOutput 2: " + str(e), "red"))
+                    writerr(colored("ERROR processLinkOutput 2: " + str(e), "red"))
 
         # Go through all links, and output what was found
         # If the -ra --regex-after was passed then only output if it matches
@@ -899,12 +936,12 @@ def processOutput():
                         outputCount = outputCount + 1
                 except Exception as e:
                     if vverbose():
-                        writerr(colored("ERROR processOutput 3: " + str(e), "red"))
+                        writerr(colored("ERROR processLinkOutput 3: " + str(e), "red"))
 
         # If there are less links output because of filters, show the new total
         if args.regex_after is not None and linkCount > 0 and outputCount < linkCount:
             write(colored('\nPotential unique links output after applying filter "' + args.regex_after + '": ',"cyan")+colored(str(outputCount) + " 🤘\n","white"))
-
+        
         # Clean up
         linksFound = None
         
@@ -914,14 +951,81 @@ def processOutput():
                 outFile.close()
             except Exception as e:
                 if vverbose():
-                    writerr(colored("ERROR processOutput 4: " + str(e), "red"))
+                    writerr(colored("ERROR processLinkOutput 4: " + str(e), "red"))
+
+            if verbose():
+                write(colored("Output successfully written to file " + args.output + "\n", "cyan"))
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR processLinkOutput 1: " + str(e), "red"))
+ 
+# Process the output of any potential parameters found           
+def processParamOutput():
+    global totalRequests, skippedRequests, paramsFound
+    try:
+        paramsCount = len(paramsFound)
+        write(colored("Potential parameters found for " + args.input + ": ", "cyan")+colored(str(paramsCount) + " 🤘\n","white"))
+
+        # If -op (--output_params) argument was not "cli" then open the output file
+        if args.output_params != "cli":
+            try:
+                # If argument -ow was passed and the file exists, overwrite it, otherwise append to it
+                if args.output_overwrite:
+                    outFile = open(os.path.expanduser(args.output_params), "w")
+                else:
+                    outFile = open(os.path.expanduser(args.output_params), "a")
+            except Exception as e:
+                if vverbose():
+                    writerr(colored("ERROR processParamOutput 2: " + str(e), "red"))
+
+        # Go through all parameters, and output what was found
+        outputCount = 0
+        for param in paramsFound:
+            if args.output_params == "cli":
+                if param != '':
+                    write(param,True)
+                    outputCount = outputCount + 1
+            else:  # file
+                try:
+                    if param != '':
+                        outFile.write(param + "\n")
+                        outputCount = outputCount + 1
+                except Exception as e:
+                    if vverbose():
+                        writerr(colored("ERROR processParamOutput 3: " + str(e), "red"))
+                        
+        # Clean up
+        paramsFound = None
+        
+        # If the output was a file, close the file
+        if args.output != "cli":
+            try:
+                outFile.close()
+            except Exception as e:
+                if vverbose():
+                    writerr(colored("ERROR processParamOutput 4: " + str(e), "red"))
 
             if verbose():
                 write(
                     colored(
-                        "Output successfully written to file " + args.output, "cyan"
+                        "Output successfully written to file " + args.output_params + "\n", "cyan"
                     )
                 )
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR processParamOutput 1: " + str(e), "red")) 
+    
+def processOutput():
+    """
+    Output the list of collected links and potential parameters files, or the cli
+    """
+
+    try:
+        # Process output of the found links
+        processLinkOutput()
+        
+        # Process output of the found parameters
+        processParamOutput()
 
         # Output stats if -vv option was selected
         if vverbose():
@@ -934,7 +1038,7 @@ def processOutput():
 
 def getConfig():
     # Try to get the values from the config file, otherwise use the defaults
-    global LINK_EXCLUSIONS, CONTENTTYPE_EXCLUSIONS, LINK_REGEX_FILES
+    global LINK_EXCLUSIONS, CONTENTTYPE_EXCLUSIONS, LINK_REGEX_FILES, RESP_PARAM_LINKSFOUND, RESP_PARAM_PATHWORDS, RESP_PARAM_JSON, RESP_PARAM_JSVARS, RESP_PARAM_XML, RESP_PARAM_INPUTFIELD, RESP_PARAM_METANAME
     try:
         configPath = os.path.dirname(__file__)
         if configPath == '':
@@ -975,6 +1079,76 @@ def getConfig():
                     )
                 )
             LINK_REGEX_FILES = DEFAULT_LINK_REGEX_FILES
+        try:
+            RESP_PARAM_LINKSFOUND = config.get("respParamLinksFound")
+        except:
+            if verbose():
+                writerr(
+                    colored(
+                        'Unable to read "respParamLinksFound" from config.yml; defaults to True',
+                        "red",
+                    )
+                )
+        try:
+            RESP_PARAM_PATHWORDS = config.get("respParamPathWords")
+        except:
+            if verbose():
+                writerr(
+                    colored(
+                        'Unable to read "respParamPathWords" from config.yml; defaults to True',
+                        "red",
+                    )
+                )
+        try:
+            RESP_PARAM_JSON = config.get("respParamJSON")
+        except:
+            if verbose():
+                writerr(
+                    colored(
+                        'Unable to read "respParamJSON" from config.yml; defaults to True',
+                        "red",
+                    )
+                )
+        try:
+            RESP_PARAM_JSVARS = config.get("respParamJSVars")
+        except:
+            if verbose():
+                writerr(
+                    colored(
+                        'Unable to read "respParamJSVars" from config.yml; defaults to True',
+                        "red",
+                    )
+                )
+        try:
+            RESP_PARAM_XML = config.get("respParamXML")
+        except:
+            if verbose():
+                writerr(
+                    colored(
+                        'Unable to read "respParamXML" from config.yml; defaults to True',
+                        "red",
+                    )
+                )
+        try:
+            RESP_PARAM_INPUTFIELD = config.get("respParamInputField")
+        except:
+            if verbose():
+                writerr(
+                    colored(
+                        'Unable to read "respParamInputField" from config.yml; defaults to True',
+                        "red",
+                    )
+                )
+        try:
+            RESP_PARAM_METANAME = config.get("respParamMetaName")
+        except:
+            if verbose():
+                writerr(
+                    colored(
+                        'Unable to read "respParamMetaName" from config.yml; defaults to True',
+                        "red",
+                    )
+                )    
     except Exception as e:
         if vverbose():
             writerr(colored("Unable to read config.yml; defaults set: "+str(e), "red"))
@@ -1089,7 +1263,8 @@ def showOptions():
                 else: 
                     write(colored("-i: " + args.input + " (Text File) ", "magenta")+colored("All URLs will be requested and links found in all responses.","white"))
 
-        write(colored("-o: " + args.output, "magenta")+colored(" Where the output will be sent.","white"))
+        write(colored("-o: " + args.output, "magenta")+colored(" Where the links output will be sent.","white"))
+        write(colored("-op: " + args.output_params, "magenta")+colored(" Where the parameter output will be sent.","white"))
         write(colored("-ow: " + str(args.output_overwrite), "magenta")+colored(" Whether the output will be overwritten if it already exists.","white"))
 
         if args.scope_prefix is not None:
@@ -1647,7 +1822,7 @@ def processEachInput(input):
     """
     Process the input, whether its from -i or <stdin>
     """
-    global burpFile, zapFile, urlPassed, stdFile, stdinFile, dirPassed, stdinMultiple, linksFound, linksVisited, totalRequests, skippedRequests, failedRequests
+    global burpFile, zapFile, urlPassed, stdFile, stdinFile, dirPassed, stdinMultiple, linksFound, linksVisited, totalRequests, skippedRequests, failedRequests, paramsFound
     
     # Set the -i / --input to the current input
     args.input = input
@@ -1753,19 +1928,20 @@ def processEachInput(input):
                                     + str(e),
                                     "red")
                             )
-        # Get more links for Depth option if necessary
+            # Get more links for Depth option if necessary
             if stopProgram is None:
                 processDepth()
 
-            # Once all data has been found, process the output
-            processOutput()
+        # Once all data has been found, process the output
+        processOutput()
 
-            # Reset the variables
-            linksFound = set()
-            linksVisited = set()
-            totalRequests = 0
-            skippedRequests = 0
-            failedRequests = 0
+        # Reset the variables
+        linksFound = set()
+        linksVisited = set()
+        paramsFound = set()
+        totalRequests = 0
+        skippedRequests = 0
+        failedRequests = 0
                 
     except Exception as e:
         if vverbose():
@@ -1874,7 +2050,160 @@ def setHeaders():
                 requestHeaders[headerName.strip()] = headerValue.strip()
         except: 
             if verbose(): writerr(colored("Unable to apply custom headers. Check -H argument value.","red"))
+
+# Get all words from path and if they do not contain file extension add them to the param_list            
+def getPathWords(url):
+    global paramsFound
+    path = urlparse(url).path
+    try:
+        # Split the URL on /
+        words = re.compile(r'[\:/?=&#]+',re.UNICODE).split(path)
+        # Add the word to the parameter list, unless it has a . in it or is a number, or it is a single character that isn't a letter
+        for word in words:
+            if word != '' and ('.' not in word) and (not word.isnumeric()) and not(len(word)==1 and not word.isalpha()):
+                paramsFound.add(word.strip())
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR getPathWords 1: " + str(e), "red"))
+
+# Get XML and JSON responses, extract keys and add them to the paramsFound list
+# In addition it will extract name and id from <input> fields in HTML
+def getResponseParams(response):
+    global paramsFound, inScopePrefixDomains, burpFile, zapFile, dirPassed
+    try:
+
+        if burpFile or zapFile:
+            if burpFile:
+                # \r\n\r\n separates the header and body. Get the position of this
+                # but if it is 0 then there is no body, so set it to the length of response
+                bodyHeaderDivide = response.find("\r\n\r\n")
+            else:
+                # \n\n separates the header and body. Get the position of this
+                # but if it is 0 then there is no body, so set it to the length of response
+                bodyHeaderDivide = response.find("\n\n")
+            if bodyHeaderDivide == 0:
+                bodyHeaderDivide = len(response)
+            header = response[:bodyHeaderDivide]
+            body = response 
+        else:
+            if dirPassed:
+                body = response
+                header = ''
+
+            else:
+                body = str(response.headers) + "\r\n\r\n" + response.text
+                header = response.headers
+        
+        # Get MIME content type
+        contentType = ''
+        try:
+            contentType = header['content-type'].split(';')[0].upper()
+        except:
+            pass
+        
+        # Get regardless of the content type
+        # Javascript variable could be in the html, script and even JSON response within a .js.map file
+        if RESP_PARAM_JSVARS:      
+
+            # Get inline javascript variables defined with "let"
+            try:
+                js_keys = re.finditer(r"(?<=let[\s])[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*[\s]*(?=(\=|;|\n|\r))", body, re.IGNORECASE)
+                for key in js_keys:
+                    if key is not None and key.group() != '':
+                        paramsFound.add(key.group().strip())
+            except Exception as e:
+                if vverbose():
+                    writerr(colored("ERROR getResponseParams 2: " + str(e), "red"))  
+                
+            # Get inline javascript variables defined with "var"
+            try:
+                js_keys = re.finditer(r"(?<=var\s)[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*?(?=(\s|=|,|;|\n))", body, re.IGNORECASE)
+                for key in js_keys:
+                    if key is not None and key.group() != '':
+                        paramsFound.add(key.group().strip())
+            except Exception as e:
+                if vverbose():
+                    writerr(colored("ERROR getResponseParams 3: " + str(e), "red"))  
+                
+            # Get inline javascript constants
+            try:
+                js_keys = re.finditer(r"(?<=const\s)[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*?(?=(\s|=|,|;|\n))", body, re.IGNORECASE)
+                for key in js_keys:
+                    if key is not None and key.group() != '':
+                        paramsFound.add(key.group().strip())
+            except Exception as e:
+                if vverbose():
+                    writerr(colored("ERROR getResponseParams 4: " + str(e), "red"))  
+        
+        # If mime type is JSON then get the JSON attributes        
+        if contentType.find('JSON') > 0:
+            if RESP_PARAM_JSON:
+                try:
+                    # Get only keys from json (everything between double quotes:)
+                    json_keys = (re.findall('"([a-zA-Z0-9$_\.-]*?)":', body, re.IGNORECASE))
+                    for key in json_keys:
+                        paramsFound.add(key.strip())
+                except Exception as e:
+                    if vverbose():
+                        writerr(colored("ERROR getResponseParams 5: " + str(e), "red"))  
+
+        # If the mime type is XML then get the xml keys 
+        elif contentType.find('XML') > 0:
+            if RESP_PARAM_XML:
+                try:
+                    # Get XML attributes
+                    xml_keys = (re.findall('<([a-zA-Z0-9$_\.-]*?)>', body))
+                    for key in xml_keys:
+                        paramsFound.add(key.strip())
+                except Exception as e:
+                    if vverbose():
+                        writerr(colored("ERROR getResponseParams 6: " + str(e), "red"))   
+
+        # If the mime type is HTML then get <input> name and id values, and meta tag names
+        elif contentType.find('HTML') > 0:
             
+            if RESP_PARAM_INPUTFIELD:
+                # Get Input field name and id attributes
+                try:
+                    html_keys = (re.findall('<input(.*?)>', body))
+                    for key in html_keys:
+                        input_name = re.search(r"(?<=\sname)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|\'))", key, re.IGNORECASE)
+                        if input_name is not None and input_name.group() != '':
+                            input_name_val = input_name.group() 
+                            input_name_val = input_name_val.replace('=','')
+                            input_name_val = input_name_val.replace('"','')
+                            input_name_val = input_name_val.replace('\'','')
+                            paramsFound.add(input_name_val.strip())
+                        input_id = re.search(r"(?<=\sid)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|'))", key, re.IGNORECASE)
+                        if input_id is not None and input_id.group() != '':
+                            input_id_val = input_id.group()
+                            input_id_val = input_id_val.replace('=','')
+                            input_id_val = input_id_val.replace('"','')
+                            input_id_val = input_id_val.replace('\'','')
+                            paramsFound.add(input_id_val.strip())
+                except Exception as e:
+                    if vverbose():
+                        writerr(colored("ERROR getResponseParams 7: " + str(e), "red"))    
+            
+            if RESP_PARAM_METANAME:
+                # Get meta tag name attribute
+                try:
+                    meta_keys = (re.findall('<meta(.*?)>', body))
+                    for key in meta_keys:
+                        meta_name = re.search(r"(?<=\sname)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|'))", key, re.IGNORECASE)
+                        if meta_name is not None and meta_name.group() != '':
+                            meta_name_val = meta_name.group()
+                            meta_name_val = meta_name_val.replace('=','')
+                            meta_name_val = meta_name_val.replace('"','')
+                            meta_name_val = meta_name_val.replace('\'','')
+                            paramsFound.add(meta_name_val.strip())
+                except Exception as e:
+                    if vverbose():
+                        writerr(colored("ERROR getResponseParams 8: " + str(e), "red"))
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR getResponseParams 1: " + str(e), "red"))
+                    
 # For validating -m / --memory-threshold argument
 def argcheckPercent(value):
     ivalue = int(value)
@@ -1904,8 +2233,15 @@ if __name__ == "__main__":
         "-o",
         "--output",
         action="store",
-        help="The file to save the output to, including path if necessary (default: output.txt). If set to \"cli\" then output is only written to STDOUT. If the file already exist it will just be appended to (and de-duplicated) unless option -ow is passed.",
+        help="The file to save the Links output to, including path if necessary (default: output.txt). If set to \"cli\" then output is only written to STDOUT. If the file already exist it will just be appended to (and de-duplicated) unless option -ow is passed.",
         default="output.txt",
+    )
+    parser.add_argument(
+        "-op",
+        "--output-params",
+        action="store",
+        help="The file to save the Potential Parameters output to, including path if necessary (default: parameters.txt). If set to \"cli\" then output is only written to STDOUT (but not piped to another program). If the file already exist it will just be appended to (and de-duplicated) unless option -ow is passed.",
+        default="parameters.txt",
     )
     parser.add_argument(
         "-ow",
@@ -2158,6 +2494,18 @@ if __name__ == "__main__":
             except Exception as e:
                 if vverbose():
                     writerr(colored("ERROR main 2: " + str(e), "red"))
+        
+        # De-deupe the parameters output file            
+        if args.output_params != "cli":
+            try:
+                filePath = os.path.abspath(args.output_params).replace(" ", "\ ")
+                cmd = "sort -u -o " + args.output_params + " " + args.output_params
+                sort = subprocess.run(
+                    cmd, shell=True, text=True, stdout=subprocess.PIPE, check=True
+                )
+            except Exception as e:
+                if vverbose():
+                    writerr(colored("ERROR main 3: " + str(e), "red"))
 
     except Exception as e:
         if vverbose():

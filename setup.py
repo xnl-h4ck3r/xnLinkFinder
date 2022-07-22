@@ -10,5 +10,5 @@ setup(
     author="@xnl-h4ck3r",
     url="https://github.com/xnl-h4ck3r/xnlLinkFinder",
     py_modules=["xnLinkFinder"],
-    install_requires=["argparse","requests","psutil","pyyaml","termcolor"],
+    install_requires=["argparse","requests","psutil","pyyaml","termcolor","urlparse3"],
 )

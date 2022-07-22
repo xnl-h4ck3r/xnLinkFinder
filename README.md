@@ -28,7 +28,8 @@ $ python setup.py install
 | Arg           | Long Arg                | Description                                                                                                                                                                                                                                                                                                                                                                                |
 | ------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | -i            | --input                 | Input a: URL, text file of URLs, a Directory of files to search, a Burp XML output file or an OWASP ZAP output file.                                                                                                                                                                                                                                                                       |
-| -o            | --output                | The file to save the output to, including path if necessary (default: output.txt). If set to `cli` then output is only written to STDOUT. If the file already exist it will just be appended to (and de-duplicated) unless option `-ow` is passed.                                                                                                                                         |
+| -o            | --output                | The file to save the Links output to, including path if necessary (default: output.txt). If set to `cli` then output is only written to STDOUT. If the file already exist it will just be appended to (and de-duplicated) unless option `-ow` is passed.                                                                                                                                   |
+| -op           | --output-params         | The file to save the Potential Parameters output to, including path if necessary (default: parameters.txt). If set to `cli` then output is only written to STDOUT (but not piped to another program). If the file already exist it will just be appended to (and de-duplicated) unless option `-ow` is passed.                                                                             |
 | -ow           | --output-overwrite      | If the output file already exists, it will be overwritten instead of being appended to.                                                                                                                                                                                                                                                                                                    |
 | -sp           | --scope-prefix          | Any links found starting with `/` will be prefixed with scope domains in the output instead of the original link. If the passed value is a valid file name, that file will be used, otherwise the string literal will be used.                                                                                                                                                             |
 | -spo          | --scope-prefix-original | If argument `-sp` is passed, then this determines whether the original link starting with `/` is also included in the output (default: false)                                                                                                                                                                                                                                              |
@@ -64,6 +65,15 @@ The `config.yml` file has the keys which can be updated to suit your needs:
 - `linkExclude` - A comma separated list of strings (e.g. `.css,.jpg,.jpeg` etc.) that all links are checked against. If a link includes any of the strings then it will be excluded from the output. If the input is a directory, then file names are checked against this list.
 - `contentExclude` - A comma separated list of strings (e.g. `text/css,image/jpeg,image/jpg` etc.) that all responses `Content-Type` headers are checked against. Any responses with the these content types will be excluded and not checked for links.
 - `regexFiles` - A list of file types separated by a pipe character (e.g. `php|php3|php5` etc.). These are used in the Link Finding Regex when there are findings that aren't obvious links, but are interesting file types that you want to pick out. If you add to this list, ensure you escape any dots to ensure correct regex, e.g. `js\.map`
+- `respParamLinksFound` † - Whether to get potential parameters from links found in responses: `True` or `False`
+- `respParamPathWords` † - Whether to add path words in retrieved links as potential parameters: `True` or `False`
+- `respParamJSON` † - If the MIME type of the response contains JSON, whether to add JSON Key values as potential parameters: `True` or `False`
+- `respParamJSVars` † - Whether javascript variables set with `var`, `let` or `const` are added as potential parameters: `True` or `False`
+- `respParamXML` † - If the MIME type of the response contains XML, whether to add XML attributes values as potential parameters: `True` or `False`
+- `respParamInputField` † - If the MIME type of the response contains HTML, whether to add NAME and ID attributes of any INPUT fields as potential parameters: `True` or `False`
+- `respParamMetaName` † - If the MIME type of the response contains HTML, whether to add NAME attributes of any META tags as potential parameters: `True` or `False`
+
+† IF THESE ARE NOT FOUND IN THE CONFIG FILE THEY WILL DEFAULT TO `True`
 
 ## Examples
 
@@ -132,7 +142,7 @@ NOTE: xnLinkFinder makes the assumption that if the first line of the file passe
 
 ### Piping to other Tools
 
-You can pipe xnLinkFinder to other tools. Any errors are sent to `stderr` and any links found are sent to `stdout`. The output file is still created in addition to the links being piped to the next program. For example:
+You can pipe xnLinkFinder to other tools. Any errors are sent to `stderr` and any links found are sent to `stdout`. The output file is still created in addition to the links being piped to the next program. However, potential parameters are not piped to the next program, but they are still written to file. For example:
 
 ```
 python3 xnLinkFinder.py -i redbull.com -sp https://redbull.com -sf rebbull.* -d 3 | unfurl keys | sort -u
@@ -157,7 +167,7 @@ NOTE: You can't pipe in a Burp or ZAP file, these must be passed using `-i`.
   ```
   If a link is found that has no domain, e.g. `/path/to/example.js` then giving passing `-sp http://www.target.com` will result in teh output `http://www.target.com/path/to/example.js` and if Depth (`-d`) is >1 then a request will be able to be made to that URL to search for more links. If a file of domains are passed using `-sp` then the output will include each domain followed by `/path/to/example.js` and increase the chance of finding more links.
 - If you use `-sp` but still want the original link of `/path/to/example.js` (without a domain) additionally returned in the output, the pass the argument `-spo`.
-- Always use the Scope Filter argument `-sf`. This will ensure that only relevant domains are returned in the output, and more importantly if Depth (`-d`) is >1 then out of scope targets will not be searched for links. This can be one scope domain, or a file containing multiple scope domains. Below are examples of the format used (no schema or path should be included):
+- Always use the Scope Filter argument `-sf`. This will ensure that only relevant domains are returned in the output, and more importantly if Depth (`-d`) is >1 then out of scope targets will not be searched for links or parameters. This can be one scope domain, or a file containing multiple scope domains. Below are examples of the format used (no schema or path should be included):
   ```
   target.*
   target-payments.com
@@ -168,7 +178,8 @@ NOTE: You can't pipe in a Burp or ZAP file, these must be passed using `-i`.
 - Use the `-v` option to have a better idea of what the tool is doing
 - If you have problems, use the `-vv` option which may show errors that are occurring, which can possibly be resolved, or raised as an issue on github
 - Pass cookies (`-c`), headers (`-H`) and regex (`-ra`) values within single quotes, e.g. `-ra '/api/v[0-9]\.[0-9]\*'`
-- Set the `-o` option to give a specific output file name, rather than the default of `output.txt`. If you plan on running a large depth of searches, start with 2 with option `-v` to check what is being returned. Then you can increase the Depth, and the new output will be appended to the existing file, unless you pass `-ow`.
+- Set the `-o` option to give a specific output file name for Links, rather than the default of `output.txt`. If you plan on running a large depth of searches, start with 2 with option `-v` to check what is being returned. Then you can increase the Depth, and the new output will be appended to the existing file, unless you pass `-ow`.
+- Set the `-op` option to give a specific output file name for Potential Parameters, rather than the default of `parameters.txt`. Any output will be appended to the existing file, unless you pass `-ow`.
 - If using a high Depth (`-d`) be wary of some sites using dynamic links so will it will just keep finding new ones. If no new links are being found, then xnlLinkFinder will stop searching. Providing the Stop flags (`s429`, `s403`, `sTO`, `sCE`) should also be considered.
 - If you are finding a large number of links (especially if the Depth (`-d` value is high), and have limited resources, the program will stop when it reaches the memory Threshold (`-m`) value and end gracefully with data intact before getting killed.
 - If you decide to cancel xnLinkFinder (using `Ctrl-C`) in the middle of running, be patient and any gathered data will be saved before ending gracefully.
@@ -183,7 +194,6 @@ If you come across any problems at all, or have ideas for improvements, please f
 
 ## TODO
 
-- Also get all potential parameters
 - Make it OS agnostic. Currently it only works properly on Linux due to direct OS command calls
 
 ## Example output

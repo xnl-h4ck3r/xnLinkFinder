@@ -1,5 +1,16 @@
 ## Changelog
 
+- v1.3
+
+  - New
+    - In addition to links, xnLinkFinder will now find potential parameters from the links and responses!
+    - Additional keys in `config.yml` to narrow down what is searched for potential parameters (see README).
+    - New argument `-op / --output-params` to specify the file that potential parameters are written to
+  - Changed
+    - Fixed a problem introduced in v1.2 that prevented any output for Burp and Zap files! Sorry!! :/
+    - Amend `setup.py` to include `urlparse3` that is now used to get the path of links found
+    - Amend `.gitignore` to include other unwanted files
+
 - v1.2
 
   - New
