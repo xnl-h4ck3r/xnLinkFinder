@@ -2,7 +2,7 @@
 
 ## About
 
-This is a tool used to discover endpoints for a given target. It can find them by:
+This is a tool used to discover endpoints (and potential parameters) for a given target. It can find them by:
 
 - crawling a target (pass a domain/URL)
 - crawling multiple targets (pass a file of domains/URLs)
