@@ -2,7 +2,7 @@
 # Python 3
 # Good luck and good hunting! If you really love the tool (or any others), or they helped you find an awesome bounty, consider BUYING ME A COFFEE! (https://ko-fi.com/xnlh4ck3r) ☕ (I could use the caffeine!)
 
-VERSION = "1.3"
+VERSION = "1.4"
 inScopePrefixDomains = None
 inScopeFilterDomains = None
 burpFile = False
@@ -103,7 +103,6 @@ UA_DESKTOP = [
     "Mozilla/5.0 (X11; CrOS x86_64 8172.45.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.64 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_2) AppleWebKit/601.3.9 (KHTML, like Gecko) Version/9.0.2 Safari/601.3.9",
     "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/47.0.2526.111 Safari/537.36",
-    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:15.0) Gecko/20100101 Firefox/15.0.1",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.84 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.75 Safari/537.36 Edg/99.0.1150.36",
     "Mozilla/5.0 (Windows NT 10.0; WOW64; Trident/7.0; rv:11.0) like Gecko",
@@ -804,14 +803,12 @@ def processUrl(url):
                 except requests.exceptions.ConnectionError as errc:
                     failedRequests = failedRequests + 1
                     if verbose():
-                        writerr(
-                            colored(
-                                "Connection Error: "
-                                + url
-                                + " (Please check this is a valid URL)",
-                                "red",
-                            )
-                        )
+                        # Check for certificate verification failure and suggest using -insecure
+                        if str(errc).find('CERTIFICATE_VERIFY_FAILED') > 0:
+                            writerr(colored("Connection Error: " + url + " returned CERTIFICATE_VERIFY_FAILED error. Trying again with argument -insecure may resolve the problem.","red"))
+                        else:    
+                            writerr(colored("Connection Error: " + url + " (Please check this is a valid URL)","red"))
+                            
                     # If argument -sCE (Stop on Connection Error) passed, keep a count of Connection Errors and stop the program if > 95% of responses have this error
                     if args.sCE:
                         tooManyConnectionErrors = tooManyConnectionErrors + 1
@@ -1406,7 +1403,7 @@ def processDirectory():
                     totalResponses = totalResponses + 1
     except Exception as e:
         writerr(colored("ERROR processDirectory 1: " + str(e)))
-     
+        
     try:
         # If there are no files to process, tell the user
         if totalResponses == 0:
@@ -1421,7 +1418,7 @@ def processDirectory():
                 totalResponses,
                 prefix="Checking " + str(totalResponses) + " files: ",
                 suffix="Complete ",
-                length=50,
+                length=getProgressBarLength(),
             )
             # Iterate directory and sub directories
             for path, subdirs, files in os.walk(dirPath):
@@ -1463,7 +1460,7 @@ def processDirectory():
                             + str(totalResponses)
                             + " files:",
                             suffix=suffix,
-                            length=50,
+                            length=getProgressBarLength(),
                             fill=fillChar,
                         )
 
@@ -1542,7 +1539,7 @@ def processZapMessage(zapMessage, responseCount):
             + str(totalResponses)
             + " responses:",
             suffix=suffix,
-            length=50,
+            length=getProgressBarLength(),
             fill=fillChar,
         )
         
@@ -1598,9 +1595,9 @@ def processZapFile():
             printProgressBar(
                 0,
                 totalResponses,
-                prefix="Checking " + str(totalResponses) + " responses: ",
+                prefix="Checking " + str(totalResponses) + " responses:",
                 suffix="Complete ",
-                length=50,
+                length=getProgressBarLength(),
             )
             
             # Open the ZAP file and read line by line without loading into memory
@@ -1717,9 +1714,9 @@ def processBurpFile():
         printProgressBar(
             0,
             totalResponses,
-            prefix="Checking " + str(totalResponses) + " responses: ",
+            prefix="Checking " + str(totalResponses) + " responses:",
             suffix="Complete ",
-            length=50,
+            length=getProgressBarLength(),
         )
         for event, elem in etree.iterparse(args.input, events=("start", "end")):
             if stopProgram is not None:
@@ -1757,7 +1754,7 @@ def processBurpFile():
                         + str(totalResponses)
                         + " responses:",
                         suffix=suffix,
-                        length=50,
+                        length=getProgressBarLength(),
                         fill=fillChar,
                     )
 
@@ -2213,6 +2210,19 @@ def argcheckPercent(value):
         )
     return ivalue
 
+# Get width of the progress bar based on the width of the terminal
+def getProgressBarLength():
+    try:
+        terminalWidth = os.get_terminal_size().columns
+        if vverbose():
+            offset = 90
+        else: 
+            offset = 50
+        progressBarLength = terminalWidth - offset
+    except:
+        progressBarLength = 10
+    return progressBarLength
+        
 # Run xnLinkFinder
 if __name__ == "__main__":
 

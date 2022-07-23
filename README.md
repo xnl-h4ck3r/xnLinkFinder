@@ -175,8 +175,8 @@ NOTE: You can't pipe in a Burp or ZAP file, these must be passed using `-i`.
   ```
   THIS IS FOR FILTERING THE LINKS DOMAIN ONLY.
 - If you want to filter the final output in any way, use `-ra`. It's always a good idea to use https://regex101.com/ to check your Regex expression is going to do what you expect.
-- Use the `-v` option to have a better idea of what the tool is doing
-- If you have problems, use the `-vv` option which may show errors that are occurring, which can possibly be resolved, or raised as an issue on github
+- Use the `-v` option to have a better idea of what the tool is doing.
+- If you have problems, use the `-vv` option which may show errors that are occurring, which can possibly be resolved, or you can raise as an issue on github.
 - Pass cookies (`-c`), headers (`-H`) and regex (`-ra`) values within single quotes, e.g. `-ra '/api/v[0-9]\.[0-9]\*'`
 - Set the `-o` option to give a specific output file name for Links, rather than the default of `output.txt`. If you plan on running a large depth of searches, start with 2 with option `-v` to check what is being returned. Then you can increase the Depth, and the new output will be appended to the existing file, unless you pass `-ow`.
 - Set the `-op` option to give a specific output file name for Potential Parameters, rather than the default of `parameters.txt`. Any output will be appended to the existing file, unless you pass `-ow`.
