@@ -1,5 +1,11 @@
 ## Changelog
 
+- v1.5
+
+  - Changed
+    - Base the length of the progress bar (show when downloading archived responses) on the width of the terminal so it displays better and you don't get multiple lines on smaller windows.
+    - Use a better way to add trailing spaces to strings to cover up other strings (like SIGINT message), regardless of terminal width.
+
 - v1.4
 
   - New

@@ -2,7 +2,7 @@
 # Python 3
 # Good luck and good hunting! If you really love the tool (or any others), or they helped you find an awesome bounty, consider BUYING ME A COFFEE! (https://ko-fi.com/xnlh4ck3r) ☕ (I could use the caffeine!)
 
-VERSION = "1.4"
+VERSION = "1.5"
 inScopePrefixDomains = None
 inScopeFilterDomains = None
 burpFile = False
@@ -33,7 +33,7 @@ tooManyForbidden = 0
 tooManyTimeouts = 0
 tooManyConnectionErrors = 0
 stopProgramCount = 0
-SPACER = ' ' * 70
+terminalWidth = 120
 
 import re
 import os
@@ -663,16 +663,16 @@ def handler(signal_received, frame):
     if stopProgram is not None:
         stopProgramCount = stopProgramCount + 1
         if stopProgramCount == 1:
-            writerr(colored(">>> Please be patient... Trying to save data and end gracefully!"+SPACER,'red'))
+            writerr(colored(getSPACER(">>> Please be patient... Trying to save data and end gracefully!"),'red'))
         elif stopProgramCount == 2:
-            writerr(colored(">>> SERIOUSLY... YOU DON'T WANT YOUR DATA SAVED?!"+SPACER, 'red'))
+            writerr(colored(getSPACER(">>> SERIOUSLY... YOU DON'T WANT YOUR DATA SAVED?!"), 'red'))
         elif stopProgramCount == 3:
-            writerr(colored(">>> Patience isn't your strong suit eh? ¯\_(ツ)_/¯"+SPACER, 'red'))
+            writerr(colored(getSPACER(">>> Patience isn't your strong suit eh? ¯\_(ツ)_/¯"), 'red'))
             sys.exit()
     else:
         stopProgram = StopProgram.SIGINT
-        writerr(colored('>>> "Oh my God, they killed Kenny... and waymore!" - Kyle'+SPACER, "red"))
-        writerr(colored(">>> Attempting to rescue any data gathered so far..."+SPACER, "red"))
+        writerr(colored(getSPACER('>>> "Oh my God, they killed Kenny... and waymore!" - Kyle'), "red"))
+        writerr(colored(getSPACER(">>> Attempting to rescue any data gathered so far..."), "red"))
 
 def getMemory():
 
@@ -1035,8 +1035,15 @@ def processOutput():
 
 def getConfig():
     # Try to get the values from the config file, otherwise use the defaults
-    global LINK_EXCLUSIONS, CONTENTTYPE_EXCLUSIONS, LINK_REGEX_FILES, RESP_PARAM_LINKSFOUND, RESP_PARAM_PATHWORDS, RESP_PARAM_JSON, RESP_PARAM_JSVARS, RESP_PARAM_XML, RESP_PARAM_INPUTFIELD, RESP_PARAM_METANAME
+    global LINK_EXCLUSIONS, CONTENTTYPE_EXCLUSIONS, LINK_REGEX_FILES, RESP_PARAM_LINKSFOUND, RESP_PARAM_PATHWORDS, RESP_PARAM_JSON, RESP_PARAM_JSVARS, RESP_PARAM_XML, RESP_PARAM_INPUTFIELD, RESP_PARAM_METANAME, terminalWidth
     try:
+        
+        # Set terminal width
+        try:
+            terminalWidth = os.get_terminal_size().columns
+        except:
+            terminalWidth = 120
+            
         configPath = os.path.dirname(__file__)
         if configPath == '':
             configPath = 'config.yml'
@@ -2213,15 +2220,21 @@ def argcheckPercent(value):
 # Get width of the progress bar based on the width of the terminal
 def getProgressBarLength():
     try:
-        terminalWidth = os.get_terminal_size().columns
         if vverbose():
             offset = 90
         else: 
             offset = 50
         progressBarLength = terminalWidth - offset
     except:
-        progressBarLength = 10
+        progressBarLength = 20
     return progressBarLength
+
+# Get the length of the space to add to a string to fill line up to width of terminal
+def getSPACER(text):
+    global terminalWidth
+    lenSpacer = terminalWidth - len(text) -1
+    SPACER = ' ' * lenSpacer
+    return text + SPACER
         
 # Run xnLinkFinder
 if __name__ == "__main__":
