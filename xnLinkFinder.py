@@ -1855,7 +1855,7 @@ def processEachInput(input):
                         # If it's not a burp or a zap file then assume it is a standard file or URLs
                         if not zapFile:
                             stdFile = True
-                except:
+                except Exception as e:
                     writerr(colored("Cannot read input file " + input + ":" + str(e), "red"))
                     sys.exit()
             elif os.path.isdir(input):
