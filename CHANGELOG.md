@@ -2,12 +2,12 @@
 
 - v1.6
 
-- Changed
+  - Changed
 
-  - Replace any occurrences of HTML Entity `&quot;` before looking for links. There was a target that had links links like `<span class="xxx">&quot;https://target.com/api/v1&quot;>` which weren't being extracted.
-  - Added `,.zip,.gz,.tar,.7z,.deb,.dmg` to `DEFAULT_LINK_EXCLUSIONS` constant and `LINK_EXCLUSIONS` in `config.yml`. There would be no valid links obtained from these types of raw files.
-  - Correct the conversion between bytes and megabytes when checking the `-mfs` argument.
-  - Exclude a link if it doesn't have printable characters
+    - Replace any occurrences of HTML Entity `&quot;` before looking for links. There was a target that had links links like `<span class="xxx">&quot;https://target.com/api/v1&quot;>` which weren't being extracted.
+    - Added `,.zip,.gz,.tar,.7z,.deb,.dmg` to `DEFAULT_LINK_EXCLUSIONS` constant and `LINK_EXCLUSIONS` in `config.yml`. There would be no valid links obtained from these types of raw files.
+    - Correct the conversion between bytes and megabytes when checking the `-mfs` argument.
+    - Exclude a link if it doesn't have printable characters
 
 - v1.5
 
