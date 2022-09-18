@@ -2,7 +2,7 @@
 # Python 3
 # Good luck and good hunting! If you really love the tool (or any others), or they helped you find an awesome bounty, consider BUYING ME A COFFEE! (https://ko-fi.com/xnlh4ck3r) ☕ (I could use the caffeine!)
 
-VERSION = "1.5"
+VERSION = "1.6"
 inScopePrefixDomains = None
 inScopeFilterDomains = None
 burpFile = False
@@ -89,7 +89,7 @@ RESP_PARAM_METANAME = True
 
 # A comma separated list of Link exclusions used when the exclusions from config.yml cannot be found
 # Links are NOT output if they contain these strings. This just applies to the links found in endpoints, not the origin link in which it was found
-DEFAULT_LINK_EXCLUSIONS = ".css,.jpg,.jpeg,.png,.svg,.img,.gif,.mp4,.flv,.ogv,.webm,.webp,.mov,.mp3,.m4a,.m4p,.scss,.tif,.tiff,.ttf,.otf,.woff,.woff2,.bmp,.ico,.eot,.htc,.rtf,.swf,.image,w3.org,doubleclick.net,youtube.com,.vue,jquery,bootstrap,font,jsdelivr.net,vimeo.com,pinterest.com,facebook,linkedin,twitter,instagram,google,mozilla.org,jibe.com,schema.org,schemas.microsoft.com,wordpress.org,w.org,wix.com,parastorage.com,whatwg.org,polyfill.io,typekit.net,schemas.openxmlformats.org,openweathermap.org,openoffice.org,reactjs.org,angularjs.org,java.com,purl.org,/image,/img,/css,/wp-json,/wp-content,/wp-includes,/theme,/audio,/captcha,/font,robots.txt,node_modules,.wav,.gltf"
+DEFAULT_LINK_EXCLUSIONS = ".css,.jpg,.jpeg,.png,.svg,.img,.gif,.mp4,.flv,.ogv,.webm,.webp,.mov,.mp3,.m4a,.m4p,.scss,.tif,.tiff,.ttf,.otf,.woff,.woff2,.bmp,.ico,.eot,.htc,.rtf,.swf,.image,w3.org,doubleclick.net,youtube.com,.vue,jquery,bootstrap,font,jsdelivr.net,vimeo.com,pinterest.com,facebook,linkedin,twitter,instagram,google,mozilla.org,jibe.com,schema.org,schemas.microsoft.com,wordpress.org,w.org,wix.com,parastorage.com,whatwg.org,polyfill.io,typekit.net,schemas.openxmlformats.org,openweathermap.org,openoffice.org,reactjs.org,angularjs.org,java.com,purl.org,/image,/img,/css,/wp-json,/wp-content,/wp-includes,/theme,/audio,/captcha,/font,robots.txt,node_modules,.wav,.gltf,.zip,.gz,.tar,.7z,.deb,.dmg"
 
 # A comma separated list of Content-Type exclusions used when the exclusions from config.yml cannot be found
 # These content types will NOT be checked
@@ -230,6 +230,7 @@ def includeLink(link):
         # Exclude if the finding is an endpoint link but has more than one newline character. This is a false
         # positive that can sometimes be raised by the regex
         # And exclude if the link:
+        # - has any characters that aren't printable
         # - starts with literal characters \n
         # - starts with #
         # - start with $
@@ -237,6 +238,8 @@ def includeLink(link):
         # - has any new line characters in
         # - doesn't have any letters or numbers in
         try:
+            if include:
+                include = link.isprintable()
             if link.count("\n") > 1 or link.startswith("#") or link.startswith("$"):
                 include = False
             if include:
@@ -467,6 +470,9 @@ def getResponseLinks(response, url):
         pattern = re.compile("(&#x3a;|%3a|\\u003a|\\\/)", re.IGNORECASE)
         body = pattern.sub(":", body)
 
+        # Replace occurrences of HTML entity &quot; with an actual double quote
+        body = body.replace('&quot;','"')
+        
         # Take the LINK_REGEX_FILES values and build a string of any values over 4 characters or has a number in it
         # This is used in the 4th capturing group Link Finding regexwebsocket
         lstFileExt = LINK_REGEX_FILES.split("|")
@@ -1673,7 +1679,7 @@ def processDirectory():
             for f in files:
                 if (
                     args.max_file_size == 0
-                    or (os.path.getsize(os.path.join(path, f))) / 1024
+                    or (os.path.getsize(os.path.join(path, f))) / (1024*1024)
                     < args.max_file_size
                 ):
                     totalResponses = totalResponses + 1
@@ -1710,7 +1716,7 @@ def processDirectory():
                     # Check if the file size is less than --max-file-size
                     if (
                         args.max_file_size == 0
-                        or (os.path.getsize(os.path.join(path, filename))) / 1024
+                        or (os.path.getsize(os.path.join(path, filename))) / (1024*1024)
                         < args.max_file_size
                     ):
 
