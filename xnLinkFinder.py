@@ -230,18 +230,18 @@ def includeLink(link):
         # Exclude if the finding is an endpoint link but has more than one newline character. This is a false
         # positive that can sometimes be raised by the regex
         # And exclude if the link:
+        # - starts with literal characters \n   
         # - has any characters that aren't printable
-        # - starts with literal characters \n
         # - starts with #
         # - start with $
         # - has any white space characters in
         # - has any new line characters in
         # - doesn't have any letters or numbers in
         try:
-            if include:
-                include = link.isprintable()
             if link.count("\n") > 1 or link.startswith("#") or link.startswith("$"):
                 include = False
+            if include:
+                include = link.isprintable()
             if include:
                 include = not (bool(re.search(r"\s", link)))
             if include:
