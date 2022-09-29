@@ -2,7 +2,7 @@
 # Python 3
 # Good luck and good hunting! If you really love the tool (or any others), or they helped you find an awesome bounty, consider BUYING ME A COFFEE! (https://ko-fi.com/xnlh4ck3r) ☕ (I could use the caffeine!)
 
-VERSION = "1.6"
+VERSION = "1.7"
 inScopePrefixDomains = None
 inScopeFilterDomains = None
 burpFile = False
@@ -17,6 +17,7 @@ linksFound = set()
 linksVisited = set()
 paramsFound = set()
 lstExclusions = {}
+lstFileExtExclusions = {}
 requestHeaders = {}
 totalRequests = 0
 skippedRequests = 0
@@ -78,6 +79,7 @@ stopProgram = None
 # Yaml config values
 LINK_EXCLUSIONS = ""
 CONTENTTYPE_EXCLUSIONS = ""
+FILEEXT_EXCLUSIONS = ""
 LINK_REGEX_FILES = ""
 RESP_PARAM_LINKSFOUND = True
 RESP_PARAM_PATHWORDS = True
@@ -93,7 +95,11 @@ DEFAULT_LINK_EXCLUSIONS = ".css,.jpg,.jpeg,.png,.svg,.img,.gif,.mp4,.flv,.ogv,.w
 
 # A comma separated list of Content-Type exclusions used when the exclusions from config.yml cannot be found
 # These content types will NOT be checked
-DEFAULT_CONTENTTYPE_EXCLUSIONS = "text/css,image/jpeg,image/jpg,image/png,image/svg+xml,image/gif,image/tiff,image/webp,image/bmp,image/x-icon,image/vnd.microsoft.icon,font/ttf,font/woff,font/woff2,font/x-woff2,font/x-woff,font/otf,audio/mpeg,audio/wav,audio/webm,audio/aac,audio/ogg,audio/wav,audio/webm,video/mp4,video/mpeg,video/webm,video/ogg,video/mp2t,video/webm,video/x-msvideo,application/font-woff,application/font-woff2,application/vnd.android.package-archive,binary/octet-stream,application/octet-stream,application/pdf,application/x-font-ttf,application/x-font-otf"
+DEFAULT_CONTENTTYPE_EXCLUSIONS = "text/css,image/jpeg,image/jpg,image/png,image/svg+xml,image/gif,image/tiff,image/webp,image/bmp,image/x-icon,image/vnd.microsoft.icon,font/ttf,font/woff,font/woff2,font/x-woff2,font/x-woff,font/otf,audio/mpeg,audio/wav,audio/webm,audio/aac,audio/ogg,audio/wav,audio/webm,video/mp4,video/mpeg,video/webm,video/ogg,video/mp2t,video/webm,video/x-msvideo,application/font-woff,application/font-woff2,application/vnd.android.package-archive,binary/octet-stream,application/octet-stream,application/pdf,application/x-font-ttf,application/x-font-otf,application/x-font-woff,application/vnd.ms-fontobject"
+
+# A comma separated list of file extension exclusions used when the file ext exclusions from config.yml cannot be found
+# In Directory mode, files with these extensions will NOT be checked
+DEFAULT_FILEEXT_EXCLUSIONS = ".zip,.dmg,.rpm,.deb,.gz,.tar,.jpg,.jpeg,.png,.svg,.img,.gif,.mp4,.flv,.ogv,.webm,.webp,.mov,.mp3,.m4a,.m4p,.scss,.tif,.tiff,.ttf,.otf,.woff,.woff2,.bmp,.ico,.eot,.htc,.rtf,.swf,.image,.wav,.gltf"
 
 # A list of files used in the Link Finding Regex when the exclusions from config.yml cannot be found.
 # These are used in the 5th capturing group that aren't obvious links, but could be files
@@ -234,11 +240,12 @@ def includeLink(link):
         # - has any characters that aren't printable
         # - starts with #
         # - start with $
+        # - starts with \
         # - has any white space characters in
         # - has any new line characters in
         # - doesn't have any letters or numbers in
         try:
-            if link.count("\n") > 1 or link.startswith("#") or link.startswith("$"):
+            if link.count("\n") > 1 or link.startswith("#") or link.startswith("$") or link.startswith("\\"):
                 include = False
             if include:
                 include = link.isprintable()
@@ -322,27 +329,18 @@ def includeFile(fileName):
     Returns whether the file should be included
     """
     try:
-        global lstExclusions
+        global lstFileExtExclusions
 
         include = True
 
-        # Go through lstExclusions and see if finding contains any. If not then continue
-        for exc in lstExclusions:
+        # Go through lstFileExtExclusions and see if finding contains any. If not then continue
+        for exc in lstFileExtExclusions:
             try:
-                if fileName.find(exc.lower()) >= 0:
+                if fileName.endswith(exc):
                     include = False
             except Exception as e:
                 if vverbose():
-                    writerr(
-                        colored(
-                            "ERROR includeFile 2: Failed to check exclusions for a finding on file: "
-                            + fileName
-                            + " ("
-                            + str(e)
-                            + ")",
-                            "red",
-                        )
-                    )
+                    writerr(colored("ERROR includeFile 2: Failed to check exclusions for a finding on file: " + fileName + " (" + str(e) + ")", "red"))
 
     except Exception as e:
         if vverbose():
@@ -497,7 +495,7 @@ def getResponseLinks(response, url):
                     + LINK_REGEX_NONSTANDARD_FILES
                     + ")(?:[\?|\/][^\"|']{0,}|))|([a-zA-Z0-9_\-]{1,}\.(?:"
                     + LINK_REGEX_FILES
-                    + ")(?:\?[^\"|^']{0,}|)))(?:\"|'|\\n|\\r|\n|\r|\s|$)|(?<=^Disallow:\s)[^\$\n]*|(?<=^Allow:\s)[^\$\n]*|(?<= Domain\=)[^\";']*|(?<=\<)https?:\/\/[^>\n]*"
+                    + ")(?:\?[^\"|^']{0,}|)))(?:\"|'|\\n|\\r|\n|\r|\s|$)|(?<=^Disallow:\s)[^\$\n]*|(?<=^Allow:\s)[^\$\n]*|(?<= Domain\=)[^\";']*|(?<=\<)https?:\/\/[^>\n]*|(?<=\=)\s*\/[0-9a-zA-Z]+[^>\n]*"
                 )
                 link_keys = re.finditer(reString, body, re.IGNORECASE)
 
@@ -545,11 +543,7 @@ def getResponseLinks(response, url):
 
                         except Exception as e:
                             if vverbose():
-                                writerr(
-                                    colored(
-                                        "ERROR getResponseLinks 2: " + str(e), "red"
-                                    )
-                                )
+                                writerr(colored(getSPACER("ERROR getResponseLinks 2: " + str(e)), "red"))
 
                         # If the link starts with a . and the  2nd character is not a . or / then remove the first .
                         if link[0] == "." and link[1] != "." and link[1] != "/":
@@ -650,7 +644,7 @@ def getResponseLinks(response, url):
 
         except Exception as e:
             if vverbose():
-                writerr(colored("ERROR getResponseLinks 3: " + str(e), "red"))
+                writerr(colored(getSPACER("ERROR getResponseLinks 3: " + str(e)), "red"))
 
         # Also add a link of a js.map file if the X-SourceMap or SourceMap header exists
         if not dirPassed:
@@ -682,11 +676,11 @@ def getResponseLinks(response, url):
 
             except Exception as e:
                 if vverbose():
-                    writerr(colored("ERROR getResponseLinks 4: " + str(e), "red"))
+                    writerr(colored(getSPACER("ERROR getResponseLinks 4: " + str(e)), "red"))
 
     except Exception as e:
         if vverbose():
-            writerr(colored("ERROR getResponseLinks 1: " + str(e), "red"))
+            writerr(colored(getSPACER("ERROR getResponseLinks 1: " + str(e)), "red"))
 
 
 def handler(signal_received, frame):
@@ -1166,7 +1160,7 @@ def processOutput():
 
 def getConfig():
     # Try to get the values from the config file, otherwise use the defaults
-    global LINK_EXCLUSIONS, CONTENTTYPE_EXCLUSIONS, LINK_REGEX_FILES, RESP_PARAM_LINKSFOUND, RESP_PARAM_PATHWORDS, RESP_PARAM_JSON, RESP_PARAM_JSVARS, RESP_PARAM_XML, RESP_PARAM_INPUTFIELD, RESP_PARAM_METANAME, terminalWidth
+    global LINK_EXCLUSIONS, CONTENTTYPE_EXCLUSIONS, FILEEXT_EXCLUSIONS, LINK_REGEX_FILES, RESP_PARAM_LINKSFOUND, RESP_PARAM_PATHWORDS, RESP_PARAM_JSON, RESP_PARAM_JSVARS, RESP_PARAM_XML, RESP_PARAM_INPUTFIELD, RESP_PARAM_METANAME, terminalWidth
     try:
 
         # Set terminal width
@@ -1203,6 +1197,17 @@ def getConfig():
                     )
                 )
             CONTENTTYPE_EXCLUSIONS = DEFAULT_CONTENTTYPE_EXCLUSIONS
+        try:
+            FILEEXT_EXCLUSIONS = config.get("fileExtExclude")
+        except:
+            if verbose():
+                writerr(
+                    colored(
+                        'Unable to read "fileExtExclude" from config.yml; defaults set',
+                        "red",
+                    )
+                )
+            FILEEXT_EXCLUSIONS = DEFAULT_FILEEXT_EXCLUSIONS
         try:
             LINK_REGEX_FILES = config.get("regexFiles")
         except:
@@ -1291,6 +1296,7 @@ def getConfig():
             )
             LINK_EXCLUSIONS = DEFAULT_LINK_EXCLUSIONS
             CONTENTTYPE_EXCLUSIONS = DEFAULT_CONTENTTYPE_EXCLUSIONS
+            FILEEXT_EXCLUSIONS = DEFAULT_FILEEXT_EXCLUSIONS
             LINK_REGEX_FILES = DEFAULT_LINK_REGEX_FILES
 
 
@@ -1320,7 +1326,7 @@ def printProgressBar(
     try:
         percent = ("{0:." + str(decimals) + "f}").format(
             100 * (iteration / float(total))
-        )
+        ).rjust(5)
         filledLength = int(length * iteration // total)
         bar = fill * filledLength + "-" * (length - filledLength)
         # If the program is not piped with something else, write to stdout, otherwise write to stderr
@@ -1386,7 +1392,7 @@ def showOptions():
     global burpFile, zapFile, stdFile, urlPassed, dirPassed, inScopePrefixDomains, inScopeFilterDomains
 
     try:
-        write(colored("Selected options:", "cyan"))
+        write(colored("Selected config and settings:", "cyan"))
         if urlPassed:
             write(
                 colored("-i: " + args.input + " (URL) ", "magenta")
@@ -1592,6 +1598,12 @@ def showOptions():
                     "white",
                 )
             )
+
+        write(colored('Link exclusions: ', 'magenta')+colored(LINK_EXCLUSIONS))
+        write(colored('Content-Type exclusions: ', 'magenta')+colored(CONTENTTYPE_EXCLUSIONS))    
+        if dirPassed:  
+            write(colored('File Extension exclusions: ', 'magenta')+colored(FILEEXT_EXCLUSIONS)) 
+        write(colored('Link Regex Files: ', 'magenta')+colored(LINK_REGEX_FILES))
         write()
 
     except Exception as e:
@@ -1660,8 +1672,7 @@ def getScopeDomains():
                 )
             )
             sys.exit()
-
-
+               
 # Get links from all files in a specified directory
 def processDirectory():
     global totalResponses
@@ -1741,7 +1752,7 @@ def processDirectory():
                                         + humanReadableSize(currentMemUsage)
                                         + ", Total Mem "
                                         + str(currentMemPercent)
-                                        + "%)"
+                                        + "%)   "
                                     )
                             except:
                                 if vverbose():
@@ -1821,7 +1832,7 @@ def processZapMessage(zapMessage, responseCount):
                         + humanReadableSize(currentMemUsage)
                         + ", Total Mem "
                         + str(currentMemPercent)
-                        + "%)"
+                        + "%)   "
                     )
             except:
                 if vverbose():
@@ -2038,7 +2049,7 @@ def processBurpFile():
                                     + humanReadableSize(currentMemUsage)
                                     + ", Total Mem "
                                     + str(currentMemPercent)
-                                    + "%)"
+                                    + "%)   "
                                 )
                         except:
                             if vverbose():
@@ -2254,7 +2265,7 @@ def processInput():
     # Tell Python to run the handler() function when SIGINT is received
     signal(SIGINT, handler)
 
-    global lstExclusions, burpFile, zapFile, stdFile, inputFile, urlPassed, dirPassed, stdinMultiple, stopProgram, stdinFile
+    global lstExclusions, lstFileExtExclusions, burpFile, zapFile, stdFile, inputFile, urlPassed, dirPassed, stdinMultiple, stopProgram, stdinFile
 
     try:
         # Set the link exclusions, and add any additional exclusions passed with -x (--exclude)
@@ -2262,6 +2273,9 @@ def processInput():
         if args.exclude != "":
             lstExclusions.extend(args.exclude.split(","))
 
+        # Set the file extension exclusions
+        lstFileExtExclusions = FILEEXT_EXCLUSIONS.split(",")
+        
         firstLine = ""
         if not sys.stdin.isatty():
             count = 1

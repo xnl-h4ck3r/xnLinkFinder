@@ -1,5 +1,20 @@
 ## Changelog
 
+- v1.7
+
+  - New
+
+    - Added a `fileExtExclude` section to `config.yml` and a `DEFAULT_FILEEXT_EXCLUSIONS` with the same file extensions that will be used to determine if a file should be excluded when the `-i` input is a Directory.
+    - Show the `config.yml` values if verbose option is selected.
+    - Added `application/x-font-woff,application/vnd.ms-fontobject` to the `DEFAULT_EXCLUSIONS` variable and in the `contentExclude` in `config.yml`/.
+    - Exclude links that start with a backslash. I have only ever seen false positives starting with \
+
+  - Changed
+
+    - Change the `includeFile` function to use the new list of file extensions mentioned above. This needs to be a separate list to the other exclusions for links because you would want to extract a link for a `.zip` file for example, but you wouldn't want to try and get links from a `.zip` file.
+    - Change the main regex to ensure that links in script src without quotes are extracted, e.g. get `/js/app.1d8eda0b.js` from `<script src=/js/app.1d8eda0b.js>`.
+    - Tidy up display of progress bar that is shown when input is a Directory, Burp or ZAP File.
+
 - v1.6
 
   - Changed

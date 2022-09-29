@@ -64,6 +64,7 @@ The `config.yml` file has the keys which can be updated to suit your needs:
 
 - `linkExclude` - A comma separated list of strings (e.g. `.css,.jpg,.jpeg` etc.) that all links are checked against. If a link includes any of the strings then it will be excluded from the output. If the input is a directory, then file names are checked against this list.
 - `contentExclude` - A comma separated list of strings (e.g. `text/css,image/jpeg,image/jpg` etc.) that all responses `Content-Type` headers are checked against. Any responses with the these content types will be excluded and not checked for links.
+- `fileExtExclude` - A comma separated list of strings (e.g. `.zip,.gz,.tar` etc.) that all files in Directory mode are checked against. If a file has one of those extensions it will not be searched for links.
 - `regexFiles` - A list of file types separated by a pipe character (e.g. `php|php3|php5` etc.). These are used in the Link Finding Regex when there are findings that aren't obvious links, but are interesting file types that you want to pick out. If you add to this list, ensure you escape any dots to ensure correct regex, e.g. `js\.map`
 - `respParamLinksFound` † - Whether to get potential parameters from links found in responses: `True` or `False`
 - `respParamPathWords` † - Whether to add path words in retrieved links as potential parameters: `True` or `False`
