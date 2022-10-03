@@ -1,5 +1,13 @@
 ## Changelog
 
+- v1.8
+
+  - New
+
+    - Added `-ascii-only` argument. If passed then only links and parameters will be output if they only contain ASCII characters. This can be useful when you know the target is likely to use ASCII characters and you also get a number of false positives from binary files for some reason.
+    - Added `.pict,.svgz,.eps,.midi,.mid` to `linkExclude` and `fileExtExclude` sections in `config.yml`, and to `DEFAULT_LINK_EXCLUSIONS` and `DEFAULT_FILEEXT_EXCLUSIONS` constants.
+    - Show the rest of the `config.yml` values if verbose option is selected (I forgot some of them in the previous versions change to do that!
+
 - v1.7
 
   - New

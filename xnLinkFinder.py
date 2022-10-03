@@ -2,7 +2,7 @@
 # Python 3
 # Good luck and good hunting! If you really love the tool (or any others), or they helped you find an awesome bounty, consider BUYING ME A COFFEE! (https://ko-fi.com/xnlh4ck3r) ☕ (I could use the caffeine!)
 
-VERSION = "1.7"
+VERSION = "1.8"
 inScopePrefixDomains = None
 inScopeFilterDomains = None
 burpFile = False
@@ -91,7 +91,7 @@ RESP_PARAM_METANAME = True
 
 # A comma separated list of Link exclusions used when the exclusions from config.yml cannot be found
 # Links are NOT output if they contain these strings. This just applies to the links found in endpoints, not the origin link in which it was found
-DEFAULT_LINK_EXCLUSIONS = ".css,.jpg,.jpeg,.png,.svg,.img,.gif,.mp4,.flv,.ogv,.webm,.webp,.mov,.mp3,.m4a,.m4p,.scss,.tif,.tiff,.ttf,.otf,.woff,.woff2,.bmp,.ico,.eot,.htc,.rtf,.swf,.image,w3.org,doubleclick.net,youtube.com,.vue,jquery,bootstrap,font,jsdelivr.net,vimeo.com,pinterest.com,facebook,linkedin,twitter,instagram,google,mozilla.org,jibe.com,schema.org,schemas.microsoft.com,wordpress.org,w.org,wix.com,parastorage.com,whatwg.org,polyfill.io,typekit.net,schemas.openxmlformats.org,openweathermap.org,openoffice.org,reactjs.org,angularjs.org,java.com,purl.org,/image,/img,/css,/wp-json,/wp-content,/wp-includes,/theme,/audio,/captcha,/font,robots.txt,node_modules,.wav,.gltf"
+DEFAULT_LINK_EXCLUSIONS = ".css,.jpg,.jpeg,.png,.svg,.img,.gif,.mp4,.flv,.ogv,.webm,.webp,.mov,.mp3,.m4a,.m4p,.scss,.tif,.tiff,.ttf,.otf,.woff,.woff2,.bmp,.ico,.eot,.htc,.rtf,.swf,.image,w3.org,doubleclick.net,youtube.com,.vue,jquery,bootstrap,font,jsdelivr.net,vimeo.com,pinterest.com,facebook,linkedin,twitter,instagram,google,mozilla.org,jibe.com,schema.org,schemas.microsoft.com,wordpress.org,w.org,wix.com,parastorage.com,whatwg.org,polyfill.io,typekit.net,schemas.openxmlformats.org,openweathermap.org,openoffice.org,reactjs.org,angularjs.org,java.com,purl.org,/image,/img,/css,/wp-json,/wp-content,/wp-includes,/theme,/audio,/captcha,/font,robots.txt,node_modules,.wav,.gltf,.pict,.svgz,.eps,.midi,.mid"
 
 # A comma separated list of Content-Type exclusions used when the exclusions from config.yml cannot be found
 # These content types will NOT be checked
@@ -99,7 +99,7 @@ DEFAULT_CONTENTTYPE_EXCLUSIONS = "text/css,image/jpeg,image/jpg,image/png,image/
 
 # A comma separated list of file extension exclusions used when the file ext exclusions from config.yml cannot be found
 # In Directory mode, files with these extensions will NOT be checked
-DEFAULT_FILEEXT_EXCLUSIONS = ".zip,.dmg,.rpm,.deb,.gz,.tar,.jpg,.jpeg,.png,.svg,.img,.gif,.mp4,.flv,.ogv,.webm,.webp,.mov,.mp3,.m4a,.m4p,.scss,.tif,.tiff,.ttf,.otf,.woff,.woff2,.bmp,.ico,.eot,.htc,.rtf,.swf,.image,.wav,.gltf"
+DEFAULT_FILEEXT_EXCLUSIONS = ".zip,.dmg,.rpm,.deb,.gz,.tar,.jpg,.jpeg,.png,.svg,.img,.gif,.mp4,.flv,.ogv,.webm,.webp,.mov,.mp3,.m4a,.m4p,.scss,.tif,.tiff,.ttf,.otf,.woff,.woff2,.bmp,.ico,.eot,.htc,.rtf,.swf,.image,.wav,.gltf,.pict,.svgz,.eps,.midi,.mid"
 
 # A list of files used in the Link Finding Regex when the exclusions from config.yml cannot be found.
 # These are used in the 5th capturing group that aren't obvious links, but could be files
@@ -218,10 +218,8 @@ def showBanner():
 def verbose():
     return args.verbose or args.vverbose
 
-
 def vverbose():
     return args.vverbose
-
 
 def includeLink(link):
     """
@@ -244,6 +242,7 @@ def includeLink(link):
         # - has any white space characters in
         # - has any new line characters in
         # - doesn't have any letters or numbers in
+        # - if the ascii-only argument was True AND the link contains non ASCII characters
         try:
             if link.count("\n") > 1 or link.startswith("#") or link.startswith("$") or link.startswith("\\"):
                 include = False
@@ -255,6 +254,8 @@ def includeLink(link):
                 include = not (bool(re.search(r"\n", link)))
             if include:
                 include = bool(re.search(r"[0-9a-zA-Z]", link))
+            if include and args.ascii_only:
+                include = link.isascii()
         except Exception as e:
             if vverbose():
                 writerr("ERROR includeLink 2: " + str(e))
@@ -418,7 +419,9 @@ def addLink(link, url):
                 param_keys = re.finditer(r"(?<=\?|&)[^\=\&\n].*?(?=\=|&|\n)", link)
                 for param in param_keys:
                     if param is not None and param.group() != "":
-                        paramsFound.add(param.group().strip())
+                        # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
+                        if not args.ascii_only or (args.ascii_only and param.group().strip().isascii()):
+                            paramsFound.add(param.group().strip())
             except Exception as e:
                 if vverbose():
                     writerr(colored("ERROR addLink 2: " + str(e), "red"))
@@ -1598,12 +1601,24 @@ def showOptions():
                     "white",
                 )
             )
-
+            
+        write(
+                colored("-ascii-only: " + str(args.ascii_only), "magenta")
+                + colored(" Whether links and parameters will only be added if they only contain ASCII characters.", "white")
+            )
+        
         write(colored('Link exclusions: ', 'magenta')+colored(LINK_EXCLUSIONS))
         write(colored('Content-Type exclusions: ', 'magenta')+colored(CONTENTTYPE_EXCLUSIONS))    
         if dirPassed:  
             write(colored('File Extension exclusions: ', 'magenta')+colored(FILEEXT_EXCLUSIONS)) 
         write(colored('Link Regex Files: ', 'magenta')+colored(LINK_REGEX_FILES))
+        write(colored('Get Links Found in Response as Params: ', 'magenta')+colored(str(RESP_PARAM_LINKSFOUND)))
+        write(colored('Get Path Words in Retrieved Links as Params: ', 'magenta')+colored(str(RESP_PARAM_PATHWORDS)))
+        write(colored('Get Response JSON Key Values as Params: ', 'magenta')+colored(str(RESP_PARAM_JSON)))
+        write(colored('Get Response JS Vars as Params: ', 'magenta')+colored(str(RESP_PARAM_JSVARS)))
+        write(colored('Get Response XML Attributes as Params: ', 'magenta')+colored(str(RESP_PARAM_XML)))
+        write(colored('Get Response Input Fields ID and Attribute as Params: ', 'magenta')+colored(str(RESP_PARAM_INPUTFIELD)))
+        write(colored('Get Response Meta tag Name as Params: ', 'magenta')+colored(str(RESP_PARAM_METANAME)))
         write()
 
     except Exception as e:
@@ -2395,7 +2410,9 @@ def getPathWords(url):
                 and (not word.isnumeric())
                 and not (len(word) == 1 and not word.isalpha())
             ):
-                paramsFound.add(word.strip())
+                # Only add the word if argument --ascii-only is False, or if its True and only contains ASCII characters
+                if not args.ascii_only or (args.ascii_only and word.strip().isascii()):
+                    paramsFound.add(word.strip())
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR getPathWords 1: " + str(e), "red"))
@@ -2449,7 +2466,9 @@ def getResponseParams(response):
                 )
                 for key in js_keys:
                     if key is not None and key.group() != "":
-                        paramsFound.add(key.group().strip())
+                        # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
+                        if not args.ascii_only or (args.ascii_only and key.group().strip().isascii()):
+                            paramsFound.add(key.group().strip())
             except Exception as e:
                 if vverbose():
                     writerr(colored("ERROR getResponseParams 2: " + str(e), "red"))
@@ -2463,7 +2482,9 @@ def getResponseParams(response):
                 )
                 for key in js_keys:
                     if key is not None and key.group() != "":
-                        paramsFound.add(key.group().strip())
+                        # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
+                        if not args.ascii_only or (args.ascii_only and key.group().strip().isascii()):
+                            paramsFound.add(key.group().strip())
             except Exception as e:
                 if vverbose():
                     writerr(colored("ERROR getResponseParams 3: " + str(e), "red"))
@@ -2477,7 +2498,9 @@ def getResponseParams(response):
                 )
                 for key in js_keys:
                     if key is not None and key.group() != "":
-                        paramsFound.add(key.group().strip())
+                        # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
+                        if not args.ascii_only or (args.ascii_only and key.group().strip().isascii()):
+                            paramsFound.add(key.group().strip())
             except Exception as e:
                 if vverbose():
                     writerr(colored("ERROR getResponseParams 4: " + str(e), "red"))
@@ -2491,7 +2514,9 @@ def getResponseParams(response):
                         '"([a-zA-Z0-9$_\.-]*?)":', body, re.IGNORECASE
                     )
                     for key in json_keys:
-                        paramsFound.add(key.strip())
+                        # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
+                        if not args.ascii_only or (args.ascii_only and key.strip().isascii()):
+                            paramsFound.add(key.strip())
                 except Exception as e:
                     if vverbose():
                         writerr(colored("ERROR getResponseParams 5: " + str(e), "red"))
@@ -2503,7 +2528,9 @@ def getResponseParams(response):
                     # Get XML attributes
                     xml_keys = re.findall("<([a-zA-Z0-9$_\.-]*?)>", body)
                     for key in xml_keys:
-                        paramsFound.add(key.strip())
+                        # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
+                        if not args.ascii_only or (args.ascii_only and key.strip().isascii()):
+                            paramsFound.add(key.strip())
                 except Exception as e:
                     if vverbose():
                         writerr(colored("ERROR getResponseParams 6: " + str(e), "red"))
@@ -2526,7 +2553,9 @@ def getResponseParams(response):
                             input_name_val = input_name_val.replace("=", "")
                             input_name_val = input_name_val.replace('"', "")
                             input_name_val = input_name_val.replace("'", "")
-                            paramsFound.add(input_name_val.strip())
+                            # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
+                            if not args.ascii_only or (args.ascii_only and input_name_val.strip().isascii()):
+                                paramsFound.add(input_name_val.strip())
                         input_id = re.search(
                             r"(?<=\sid)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|'))",
                             key,
@@ -2537,7 +2566,9 @@ def getResponseParams(response):
                             input_id_val = input_id_val.replace("=", "")
                             input_id_val = input_id_val.replace('"', "")
                             input_id_val = input_id_val.replace("'", "")
-                            paramsFound.add(input_id_val.strip())
+                            # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
+                            if not args.ascii_only or (args.ascii_only and input_id_val.strip().isascii()):
+                                paramsFound.add(input_id_val.strip())
                 except Exception as e:
                     if vverbose():
                         writerr(colored("ERROR getResponseParams 7: " + str(e), "red"))
@@ -2557,7 +2588,9 @@ def getResponseParams(response):
                             meta_name_val = meta_name_val.replace("=", "")
                             meta_name_val = meta_name_val.replace('"', "")
                             meta_name_val = meta_name_val.replace("'", "")
-                            paramsFound.add(meta_name_val.strip())
+                            # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
+                            if not args.ascii_only or (args.ascii_only and meta_name_val.strip().isascii()):
+                                paramsFound.add(meta_name_val.strip())
                 except Exception as e:
                     if vverbose():
                         writerr(colored("ERROR getResponseParams 8: " + str(e), "red"))
@@ -2786,6 +2819,11 @@ if __name__ == "__main__":
         action="store",
         help="For active link finding with URL (or file of URLs), replay the requests through this proxy.",
         default="",
+    )
+    parser.add_argument(
+        "-ascii-only",
+        action="store_true",
+        help="Whether links and parameters will only be added if they only contain ASCII characters (default: False). This can be useful when you know the target is likely to use ASCII characters and you also get a number of false positives from binary files for some reason.",
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     parser.add_argument(
