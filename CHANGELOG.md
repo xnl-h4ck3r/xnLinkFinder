@@ -1,5 +1,14 @@
 ## Changelog
 
+- v2.0
+
+  - Changed
+
+    - Made xnLinkFinder OS agnostic. It previously only worked on Linux due to calling OS commands. The method for removing tags from a Burp file no longer uses an OS subprocess. Also, the links and parameter files are no longer being de-duped using OS commands; the links from the existing file are loaded before writing output and added to the current set of results before writing to file again.
+    - Completed the last TODO item, so removed from README
+    - Fixed the description in the setup file
+    - Update images on README to reflect latest version
+
 - v1.8
 
   - New

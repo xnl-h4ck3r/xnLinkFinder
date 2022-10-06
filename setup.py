@@ -4,8 +4,8 @@ from setuptools import setup, find_packages
 setup(
     name="xnLinkFinder",
     packages=find_packages(),
-    version="1.8",
-    description="A python script to find endpoints from the from a URL, file of URLsm or a Burp xml file.",
+    version="2.0",
+    description="A python script to find endpoints from a URL, a file of URLs, a directory of files, a Burp XML file or a ZAP ASCII message file.",
     long_description=open("README.md").read(),
     author="@xnl-h4ck3r",
     url="https://github.com/xnl-h4ck3r/xnlLinkFinder",

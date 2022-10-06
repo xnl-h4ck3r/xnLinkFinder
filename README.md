@@ -20,7 +20,7 @@ xnLinkFinder supports **Python 3**.
 ```
 $ git clone https://github.com/xnl-h4ck3r/xnLinkFinder.git
 $ cd xnLinkFinder
-$ python setup.py install
+$ sudo python setup.py install
 ```
 
 ## Usage
@@ -197,7 +197,7 @@ If you come across any problems at all, or have ideas for improvements, please f
 
 ## TODO
 
-- Make it OS agnostic. Currently it only works properly on Linux due to direct OS command calls
+- I seem to have completed all the TODO's I originally had! If you think of any that need adding, let me know 🤘
 
 ## Example output
 

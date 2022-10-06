@@ -3,7 +3,7 @@
 
 # Good luck and good hunting! If you really love the tool (or any others), or they helped you find an awesome bounty, consider BUYING ME A COFFEE! (https://ko-fi.com/xnlh4ck3r) ☕ (I could use the caffeine!)
 
-VERSION = "1.8"
+VERSION = "2.0"
 inScopePrefixDomains = None
 inScopeFilterDomains = None
 burpFile = False
@@ -55,6 +55,7 @@ import enum
 from urllib3.exceptions import InsecureRequestWarning
 import sys
 from urllib.parse import urlparse
+from tempfile import NamedTemporaryFile
 
 # Try to import psutil to show memory usage
 try:
@@ -1008,14 +1009,21 @@ def processLinkOutput():
                 + colored(str(linkCount) + " 🤘\n", "white")
             )
 
+        # If the -ow / --output_overwrite argument was passed and the file exists already, get the contents of the file to include
+        appendedUrls = False
+        if args.output != "cli" and not args.output_overwrite:
+            try:
+                existingLinks = open(os.path.expanduser(args.output), "r")
+                for link in existingLinks.readlines():
+                    linksFound.add(link.strip())
+                appendedUrls = True
+            except:
+                pass
+            
         # If -o (--output) argument was not "cli" then open the output file
         if args.output != "cli":
             try:
-                # If argument -ow was passed and the file exists, overwrite it, otherwise append to it
-                if args.output_overwrite:
-                    outFile = open(os.path.expanduser(args.output), "w")
-                else:
-                    outFile = open(os.path.expanduser(args.output), "a")
+                outFile = open(os.path.expanduser(args.output), "w")
             except Exception as e:
                 if vverbose():
                     writerr(colored("ERROR processLinkOutput 2: " + str(e), "red"))
@@ -1067,12 +1075,15 @@ def processLinkOutput():
                     writerr(colored("ERROR processLinkOutput 4: " + str(e), "red"))
 
             if verbose():
-                write(
-                    colored(
-                        "Output successfully written to file " + args.output + "\n",
-                        "cyan",
-                    )
-                )
+                if outputCount == 0:
+                    write(colored('No links were found so nothing written to file.\n', 'cyan'))
+                else:   
+                    if appendedUrls:
+                        write(
+                            colored('Links successfully appended to file ', 'cyan')+colored(args.output,'white')+colored(' and duplicates removed.\n','cyan'))
+                    else:
+                        write(
+                            colored('Links successfully written to file ', 'cyan')+colored(args.output+'\n','white'))
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR processLinkOutput 1: " + str(e), "red"))
@@ -1088,14 +1099,21 @@ def processParamOutput():
             + colored(str(paramsCount) + " 🤘\n", "white")
         )
 
+        # If the -ow / --output_overwrite argument was passed and the file exists already, get the contents of the file to include
+        appendedParams = False
+        if args.output != "cli" and not args.output_overwrite:
+            try:
+                existingParams = open(os.path.expanduser(args.output_params), "r")
+                for param in existingParams.readlines():
+                    paramsFound.add(param.strip())
+                appendedParams = True
+            except:
+                pass
+            
         # If -op (--output_params) argument was not "cli" then open the output file
         if args.output_params != "cli":
             try:
-                # If argument -ow was passed and the file exists, overwrite it, otherwise append to it
-                if args.output_overwrite:
-                    outFile = open(os.path.expanduser(args.output_params), "w")
-                else:
-                    outFile = open(os.path.expanduser(args.output_params), "a")
+                outFile = open(os.path.expanduser(args.output_params), "w")
             except Exception as e:
                 if vverbose():
                     writerr(colored("ERROR processParamOutput 2: " + str(e), "red"))
@@ -1128,14 +1146,16 @@ def processParamOutput():
                     writerr(colored("ERROR processParamOutput 4: " + str(e), "red"))
 
             if verbose():
-                write(
-                    colored(
-                        "Output successfully written to file "
-                        + args.output_params
-                        + "\n",
-                        "cyan",
-                    )
-                )
+                if outputCount == 0:
+                    write(colored('No parameters were found so nothing written to file.\n', 'cyan'))
+                else:   
+                    if appendedParams:
+                        write(
+                            colored('Parameters successfully appended to file ', 'cyan')+colored(args.output_params,'white')+colored(' and duplicates removed.\n','cyan'))
+                    else:
+                        write(
+                            colored('Parameters successfully written to file ', 'cyan')+colored(args.output_params+'\n','white'))
+                        
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR processParamOutput 1: " + str(e), "red"))
@@ -1998,18 +2018,15 @@ def processBurpFile():
 
             if reply.lower() == "y":
                 try:
-                    cmd = (
-                        "sed -i -E '/(<time|<host|<port|<prot|<meth|<path|<exte|<requ|<stat|<responselength|<mime|<comm)/d' "
-                        + filePath
-                    )
-                    run = subprocess.run(
-                        cmd,
-                        shell=True,
-                        text=True,
-                        stdout=subprocess.PIPE,
-                        check=True,
-                    )
+                    matched = re.compile('(<time|<host|<port|<prot|<meth|<path|<exte|<requ|<stat|<responselength|<mime|<comm)').search
+                    with open(filePath, encoding='utf-8') as burpFile:
+                        with NamedTemporaryFile(mode='w', encoding='utf-8', dir=os.path.dirname(filePath), delete=False) as tempFile:
+                            for line in burpFile:
+                                if not matched(line):
+                                    print(line, end='', file=tempFile)
+                    os.replace(tempFile.name, burpFile.name)
                 except Exception as e:
+                    writerr(colored("Unable to remove the tags, but that's fine!","yellow"))
                     if verbose():
                         writerr(colored("There was a problem: " + str(e)))
 
