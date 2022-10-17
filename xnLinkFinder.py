@@ -3,7 +3,6 @@
 
 # Good luck and good hunting! If you really love the tool (or any others), or they helped you find an awesome bounty, consider BUYING ME A COFFEE! (https://ko-fi.com/xnlh4ck3r) ☕ (I could use the caffeine!)
 
-VERSION = "2.0"
 inScopePrefixDomains = None
 inScopeFilterDomains = None
 burpFile = False
@@ -36,6 +35,8 @@ tooManyTimeouts = 0
 tooManyConnectionErrors = 0
 stopProgramCount = 0
 terminalWidth = 120
+waymoreMode = False
+waymoreFiles = set()
 
 import re
 import os
@@ -93,11 +94,11 @@ RESP_PARAM_METANAME = True
 
 # A comma separated list of Link exclusions used when the exclusions from config.yml cannot be found
 # Links are NOT output if they contain these strings. This just applies to the links found in endpoints, not the origin link in which it was found
-DEFAULT_LINK_EXCLUSIONS = ".css,.jpg,.jpeg,.png,.svg,.img,.gif,.mp4,.flv,.ogv,.webm,.webp,.mov,.mp3,.m4a,.m4p,.scss,.tif,.tiff,.ttf,.otf,.woff,.woff2,.bmp,.ico,.eot,.htc,.rtf,.swf,.image,w3.org,doubleclick.net,youtube.com,.vue,jquery,bootstrap,font,jsdelivr.net,vimeo.com,pinterest.com,facebook,linkedin,twitter,instagram,google,mozilla.org,jibe.com,schema.org,schemas.microsoft.com,wordpress.org,w.org,wix.com,parastorage.com,whatwg.org,polyfill.io,typekit.net,schemas.openxmlformats.org,openweathermap.org,openoffice.org,reactjs.org,angularjs.org,java.com,purl.org,/image,/img,/css,/wp-json,/wp-content,/wp-includes,/theme,/audio,/captcha,/font,robots.txt,node_modules,.wav,.gltf,.pict,.svgz,.eps,.midi,.mid"
+DEFAULT_LINK_EXCLUSIONS = ".css,.jpg,.jpeg,.png,.svg,.img,.gif,.mp4,.flv,.ogv,.webm,.webp,.mov,.mp3,.m4a,.m4p,.scss,.tif,.tiff,.ttf,.otf,.woff,.woff2,.bmp,.ico,.eot,.htc,.rtf,.swf,.image,w3.org,doubleclick.net,youtube.com,.vue,jquery,bootstrap,font,jsdelivr.net,vimeo.com,pinterest.com,facebook,linkedin,twitter,instagram,google,mozilla.org,jibe.com,schema.org,schemas.microsoft.com,wordpress.org,w.org,wix.com,parastorage.com,whatwg.org,polyfill.io,typekit.net,schemas.openxmlformats.org,openweathermap.org,openoffice.org,reactjs.org,angularjs.org,java.com,purl.org,/image,/img,/css,/wp-json,/wp-content,/wp-includes,/theme,/audio,/captcha,/font,robots.txt,node_modules,.wav,.gltf,.pict,.svgz,.eps,.midi,.mid,.avif"
 
 # A comma separated list of Content-Type exclusions used when the exclusions from config.yml cannot be found
 # These content types will NOT be checked
-DEFAULT_CONTENTTYPE_EXCLUSIONS = "text/css,image/jpeg,image/jpg,image/png,image/svg+xml,image/gif,image/tiff,image/webp,image/bmp,image/x-icon,image/vnd.microsoft.icon,font/ttf,font/woff,font/woff2,font/x-woff2,font/x-woff,font/otf,audio/mpeg,audio/wav,audio/webm,audio/aac,audio/ogg,audio/wav,audio/webm,video/mp4,video/mpeg,video/webm,video/ogg,video/mp2t,video/webm,video/x-msvideo,application/font-woff,application/font-woff2,application/vnd.android.package-archive,binary/octet-stream,application/octet-stream,application/pdf,application/x-font-ttf,application/x-font-otf,application/x-font-woff,application/vnd.ms-fontobject"
+DEFAULT_CONTENTTYPE_EXCLUSIONS = "text/css,image/jpeg,image/jpg,image/png,image/svg+xml,image/gif,image/tiff,image/webp,image/bmp,image/x-icon,image/vnd.microsoft.icon,font/ttf,font/woff,font/woff2,font/x-woff2,font/x-woff,font/otf,audio/mpeg,audio/wav,audio/webm,audio/aac,audio/ogg,audio/wav,audio/webm,video/mp4,video/mpeg,video/webm,video/ogg,video/mp2t,video/webm,video/x-msvideo,application/font-woff,application/font-woff2,application/vnd.android.package-archive,binary/octet-stream,application/octet-stream,application/pdf,application/x-font-ttf,application/x-font-otf,application/x-font-woff,application/vnd.ms-fontobject,image/avif"
 
 # A comma separated list of file extension exclusions used when the file ext exclusions from config.yml cannot be found
 # In Directory mode, files with these extensions will NOT be checked
@@ -118,6 +119,14 @@ UA_DESKTOP = [
     "Mozilla/5.0 (Windows NT 10.0; WOW64; Trident/7.0; rv:11.0) like Gecko",
     "Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.75 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:105.0) Gecko/20100101 Firefox/105.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 12.6; rv:105.0) Gecko/20100101 Firefox/105.0",
+    "Mozilla/5.0 (X11; Linux i686; rv:105.0) Gecko/20100101 Firefox/105.0",
+    "Mozilla/5.0 (X11; Linux x86_64; rv:105.0) Gecko/20100101 Firefox/105.0",
+    "Mozilla/5.0 (X11; Fedora; Linux x86_64; rv:105.0) Gecko/20100101 Firefox/105.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36 Edg/106.0.1370.34",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36 Edg/106.0.1370.34",
+    "Mozilla/5.0 (Windows NT 10.0; Trident/7.0; rv:11.0) like Gecko"
 ]
 UA_MOBILE_APPLE = [
     "Mozilla/5.0 (iPhone; CPU iPhone OS 12_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0 Mobile/15E148 Safari/604.1",
@@ -128,7 +137,7 @@ UA_MOBILE_APPLE = [
     "Mozilla/5.0 (iPhone; CPU iPhone OS 11_0 like Mac OS X) AppleWebKit/604.1.38 (KHTML, like Gecko) Version/11.0 Mobile/15A5370a Safari/604.1",
     "Mozilla/5.0 (iPhone9,3; U; CPU iPhone OS 10_0_1 like Mac OS X) AppleWebKit/602.1.50 (KHTML, like Gecko) Version/10.0 Mobile/14A403 Safari/602.1",
     "Mozilla/5.0 (iPhone9,4; U; CPU iPhone OS 10_0_1 like Mac OS X) AppleWebKit/602.1.50 (KHTML, like Gecko) Version/10.0 Mobile/14A403 Safari/602.1",
-    "Mozilla/5.0 (Apple-iPhone7C2/1202.466; U; CPU like Mac OS X; en) AppleWebKit/420+ (KHTML, like Gecko) Version/3.0 Mobile/1A543 Safari/419.3",
+    "Mozilla/5.0 (Apple-iPhone7C2/1202.466; U; CPU like Mac OS X; en) AppleWebKit/420+ (KHTML, like Gecko) Version/3.0 Mobile/1A543 Safari/419.3"
 ]
 UA_MOBILE_ANDROID = [
     "Mozilla/5.0 (Linux; Android 8.0.0; SM-G960F Build/R16NW) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.84 Mobile Safari/537.36",
@@ -212,7 +221,7 @@ def showBanner():
     write(colored("   o  |  | |    | |  | | \  |    | |  | |  | |-' |   ", "cyan"))
     write(colored("  / \ o  o O---o| o  o o  o o    | o  o  o-o o-o o   ", "magenta"))
     write(colored("                |                |                   ", "blue"))
-    write(colored("                ' by @Xnl-h4ck3r '              v" + VERSION))
+    write(colored("                ' by @Xnl-h4ck3r '              v" + __import__('xnLinkFinder').__version__))
     write("")
 
 
@@ -391,6 +400,13 @@ def includeContentType(header):
 # Add a link to the list and potential parameters from the link if required
 def addLink(link, url):
 
+    link = link.replace("&amp;", "&")
+    link = link.replace("\\x26", "&")
+    link = link.replace("\\u0026", "&")
+    link = link.replace("&equals;", "=")
+    link = link.replace("\\x3d", "=")
+    link = link.replace("\\u003d", "=")
+                
     # Add the link to the list
     try:
         if args.origin:
@@ -412,12 +428,6 @@ def addLink(link, url):
         if RESP_PARAM_LINKSFOUND and link.count("?") > 0:
             # Get parameters from the link
             try:
-                link = link.replace("&amp;", "&")
-                link = link.replace("\\x26", "&")
-                link = link.replace("\\u0026", "&")
-                link = link.replace("&equals;", "=")
-                link = link.replace("\\x3d", "=")
-                link = link.replace("\\u003d", "=")
                 param_keys = re.finditer(r"(?<=\?|&)[^\=\&\n].*?(?=\=|&|\n)", link)
                 for param in param_keys:
                     if param is not None and param.group() != "":
@@ -494,9 +504,8 @@ def getResponseLinks(response, url):
             if (dirPassed and includeFile(url)) or (
                 not dirPassed and includeContentType(header)
             ):
-
                 reString = (
-                    r"(?:\"|'|\\n|\\r|\n|\r|\s)(((?:[a-zA-Z]{1,10}:\/\/|\/\/)([^\"'\/]{1,}\.[a-zA-Z]{2,}|localhost)[^\"'\n]{0,})|((?:\/|\.\.\/|\.\/)[^\"'><,;| *()(%%$^\/\\\[\]][^\"'><,;|()\s]{1,})|([a-zA-Z0-9_\-\/]{1,}\/[a-zA-Z0-9_\-\/]{1,}\.(?:[a-zA-Z]{1,4}"
+                    r"(?:^|\"|'|\\n|\\r|\n|\r|\s)(((?:[a-zA-Z]{1,10}:\/\/|\/\/)([^\"'\/]{1,}\.[a-zA-Z]{2,}|localhost)[^\"'\n\s]{0,})|((?:\/|\.\.\/|\.\/)[^\"'><,;| *()(%%$^\/\\\[\]][^\"'><,;|()\s]{1,})|([a-zA-Z0-9_\-\/]{1,}\/[a-zA-Z0-9_\-\/]{1,}\.(?:[a-zA-Z]{1,4}"
                     + LINK_REGEX_NONSTANDARD_FILES
                     + ")(?:[\?|\/][^\"|']{0,}|))|([a-zA-Z0-9_\-]{1,}\.(?:"
                     + LINK_REGEX_FILES
@@ -725,7 +734,7 @@ def handler(signal_received, frame):
         stopProgram = StopProgram.SIGINT
         writerr(
             colored(
-                getSPACER('>>> "Oh my God, they killed Kenny... and waymore!" - Kyle'),
+                getSPACER('>>> "Oh my God, they killed Kenny... and xnLinkFinder!" - Kyle'),
                 "red",
             )
         )
@@ -764,19 +773,32 @@ def shouldMakeRequest(url):
 
 def processUrl(url):
 
-    global burpFile, zapFile, totalRequests, skippedRequests, failedRequests, userAgent, requestHeaders, tooManyRequests, tooManyForbidden, tooManyTimeouts, tooManyConnectionErrors, stopProgram
+    global burpFile, zapFile, totalRequests, skippedRequests, failedRequests, userAgent, requestHeaders, tooManyRequests, tooManyForbidden, tooManyTimeouts, tooManyConnectionErrors, stopProgram, waymoreMode
 
     # Choose a random user agent string to use from the current group
     userAgent = random.choice(userAgents[currentUAGroup])
     requestHeaders["User-Agent"] = userAgent
 
-    url = url.strip().rstrip("\n")
-
-    # If the url has the origin at the end (.e.g [...]) then strip it pff before processing
-    if url.find("[") > 0:
-        url = str(url[0 : url.find("[") - 2])
-
+    try: 
+        # If waymore Mode then the url maybe from index.txt get the source URL from the line
+        if waymoreMode and args.input.endswith("index.txt") :
+            values = url.split(",")
+            archiveUrl = values[1]
+            index = archiveUrl.index("http",5)
+            url = archiveUrl[index:]
+    except Exception as e:
+        pass
+        
     try:
+        url = url.strip().rstrip("\n")
+        
+        # If the url has the origin at the end (.e.g [...]) then strip it off before processing
+        if url.find("[") > 0:
+            url = str(url[0 : url.find("[") - 2])
+
+        # If the url has *. in it, remove that before we try to request it
+        url = url.replace("*.","") 
+        
         # If we should make the current request
         if shouldMakeRequest(url):
 
@@ -841,19 +863,19 @@ def processUrl(url):
                                     "yellow",
                                 )
                             )
-                        # If argument -s429 was passed, keep a count of "429 Too Many Requests" and stop the program if > 95% of responses have status 429
+                        # If argument -s429 was passed, keep a count of "429 Too Many Requests" and stop the program if > 95% of responses have status 429, but only if at least 10 requests have already been made
                         if args.s429 and resp.status_code == 429:
                             tooManyRequests = tooManyRequests + 1
                             try:
-                                if (tooManyRequests / totalRequests * 100) > 95:
+                                if (tooManyRequests / totalRequests * 100) > 95 and totalRequests > 10:
                                     stopProgram = StopProgram.TOO_MANY_REQUESTS
                             except:
                                 pass
-                        # If argument -s403 was passed, keep a count of "403 Forbidden" and stop the program if > 95% of responses have status 403
+                        # If argument -s403 was passed, keep a count of "403 Forbidden" and stop the program if > 95% of responses have status 403, but only if at least 10 requests have already been made
                         if args.s403 and resp.status_code == 403:
                             tooManyForbidden = tooManyForbidden + 1
                             try:
-                                if (tooManyForbidden / totalRequests * 100) > 95:
+                                if (tooManyForbidden / totalRequests * 100) > 95  and totalRequests > 10:
                                     stopProgram = StopProgram.TOO_MANY_FORBIDDEN
                             except:
                                 pass
@@ -885,20 +907,16 @@ def processUrl(url):
                                 )
                             )
                         else:
-                            writerr(
-                                colored(
-                                    "Connection Error: "
-                                    + url
-                                    + " (Please check this is a valid URL)",
-                                    "red",
-                                )
-                            )
+                            if url.find("://") > 0:
+                                writerr(colored("Connection Error: " + url + " (Please check this is a valid URL)","red"))
+                            else:
+                                writerr(colored("Connection Error: " + url + " (Consider passing --scope-prefix argument)","red"))
 
-                    # If argument -sCE (Stop on Connection Error) passed, keep a count of Connection Errors and stop the program if > 95% of responses have this error
+                    # If argument -sCE (Stop on Connection Error) passed, keep a count of Connection Errors and stop the program if > 95% of responses have this error, but only if at least 10 requests have already been made
                     if args.sCE:
                         tooManyConnectionErrors = tooManyConnectionErrors + 1
                         try:
-                            if (tooManyConnectionErrors / totalRequests * 100) > 95:
+                            if (tooManyConnectionErrors / totalRequests * 100) > 95 and totalRequests > 10:
                                 stopProgram = StopProgram.TOO_MANY_CONNECTION_ERRORS
                         except:
                             pass
@@ -906,11 +924,11 @@ def processUrl(url):
                     failedRequests = failedRequests + 1
                     if verbose():
                         writerr(colored("Request Timeout: " + url, "red"))
-                    # If argument -sTO (Stop on Timeouts) passed, keep a count of timeouts and stop the program if > 95% of responses have timed out
+                    # If argument -sTO (Stop on Timeouts) passed, keep a count of timeouts and stop the program if > 95% of responses have timed out, but only if at least 10 requests have already been made
                     if args.sTO:
                         tooManyTimeouts = tooManyTimeouts + 1
                         try:
-                            if (tooManyTimeouts / totalRequests * 100) > 95:
+                            if (tooManyTimeouts / totalRequests * 100) > 95 and totalRequests > 10:
                                 stopProgram = StopProgram.TOO_MANY_TIMEOUTS
                         except:
                             pass
@@ -922,19 +940,13 @@ def processUrl(url):
                     failedRequests = failedRequests + 1
                     if args.scope_filter is None:
                         if verbose():
-                            writerr(
-                                colored(
-                                    "Could not get a response for: "
-                                    + url
-                                    + " - Consider passing --scope argument.",
-                                    "red",
-                                )
-                            )
+                            writerr(colored("Could not get a response for: " + url + " (Consider passing --scope-filter argument)","red"))
                     else:
                         if verbose():
-                            writerr(
-                                colored("Could not get a response for: " + url, "red")
-                            )
+                            if url.find("://") > 0:
+                                writerr(colored("Could not get a response for: " + url, "red"))
+                            else:
+                                writerr(colored("Could not get a response for: " + url + " (Consider passing --scope-prefix argument)", "red"))
                 except Exception as e:
                     if vverbose():
                         writerr(colored("ERROR processUrl 2: " + str(e), "red"))
@@ -1032,8 +1044,6 @@ def processLinkOutput():
         # If the -ra --regex-after was passed then only output if it matches
         outputCount = 0
         for link in linksFound:
-            # Replace &amp; with &
-            link = link.replace("&amp;", "&")
 
             if args.output == "cli":
                 if args.regex_after is None or re.search(args.regex_after, link):
@@ -1711,9 +1721,7 @@ def getScopeDomains():
                
 # Get links from all files in a specified directory
 def processDirectory():
-    global totalResponses
-
-    write(colored("Processing files in directory " + args.input + ":\n", "cyan"))
+    global totalResponses, waymoreMode, waymoreFiles
 
     dirPath = args.input
     request = ""
@@ -1722,31 +1730,55 @@ def processDirectory():
     # Get the number of files in the directory (and sub directories) that are less than --max-file-size. If --max-file-size is Zero then process all files
     try:
         totalResponses = 0
+        xnlFileFound = False
         for path, subdirs, files in os.walk(dirPath):
             for f in files:
                 if (
                     args.max_file_size == 0
                     or (os.path.getsize(os.path.join(path, f))) / (1024*1024)
                     < args.max_file_size
-                ):
-                    totalResponses = totalResponses + 1
+                ):                    
+                    # Check if running against a waymore results directory
+                    # Waymore Mode will be if waymore.txt exists in the directory, or if index.txt exists and there
+                    # is at least one .xnl file
+                    if f.endswith("xnl"):
+                        xnlFileFound = True
+                    if f == "waymore.txt" or (xnlFileFound and f == "index.txt"):
+                        waymoreMode = True
+
+                    if f not in ("waymore.txt","waymore.new","waymore.old","index.txt"):
+                        totalResponses = totalResponses + 1
+                        
     except Exception as e:
         writerr(colored("ERROR processDirectory 1: " + str(e)))
 
+    if waymoreMode:
+        write(colored("Processing response files in ","cyan")+colored("Waymore Results Directory ","yellow")+colored(args.input + ":\n", "cyan"))
+        
+        # Iterate directory and sub directories
+        for path, subdirs, files in os.walk(dirPath):
+            for filename in files:
+                
+                # If file is waymore.txt or index.txt then save them for later
+                    if filename in ("waymore.txt","index.txt"):
+                        fullPath = path
+                        if not fullPath.endswith("/"):
+                            fullPath = fullPath + "/"
+                        fullPath = fullPath + filename
+                        waymoreFiles.add(fullPath)
+    else:
+        write(colored("Processing files in directory " + args.input + ":\n", "cyan"))
+            
     try:
         # If there are no files to process, tell the user
         if totalResponses == 0:
             if args.max_file_size == 0:
                 writerr(colored("There are no files to process.", "red"))
             else:
-                writerr(
-                    colored(
-                        "There are no files with a size greater than "
-                        + str(args.max_file_size)
-                        + " Mb to process.",
-                        "red",
-                    )
-                )
+                if waymoreMode:
+                    writerr(colored("There are no response files with a size greater than " + str(args.max_file_size) + " Mb to process (you can change the limit with -mfs).","red"))
+                else:
+                    writerr(colored("There are no files with a size greater than " + str(args.max_file_size) + " Mb to process (you can change the limit with -mfs).","red"))
         else:
             responseCount = 0
             printProgressBar(
@@ -1759,13 +1791,23 @@ def processDirectory():
             # Iterate directory and sub directories
             for path, subdirs, files in os.walk(dirPath):
                 for filename in files:
-
-                    # Check if the file size is less than --max-file-size
+                    
+                    # If waymore mode and the file is waymore.txt or index.txt then save them for later
+                    if waymoreMode:
+                        if filename in ("waymore.txt","index.txt"):
+                            fullPath = path
+                            if not fullPath.endswith("/"):
+                                fullPath = fullPath + "/"
+                            fullPath = fullPath + filename
+                            waymoreFiles.add(fullPath)
+                            
+                    # Check if the file size is less than --max-file-size 
+                    # AND if in waymore mode that it isn't one of "waymore.txt","waymore.new","waymore.old","index.txt"
                     if (
                         args.max_file_size == 0
                         or (os.path.getsize(os.path.join(path, filename))) / (1024*1024)
                         < args.max_file_size
-                    ):
+                    ) and (not waymoreMode or (waymoreMode and filename not in ("waymore.txt","waymore.new","waymore.old","index.txt"))):
 
                         if stopProgram is not None:
                             break
@@ -1817,16 +1859,8 @@ def processDirectory():
                             response = ""
                         except Exception as e:
                             if vverbose():
-                                writerr(
-                                    colored(
-                                        "ERROR processDirectory 2: Request "
-                                        + str(responseCount)
-                                        + ": "
-                                        + str(e),
-                                        "red",
-                                    )
-                                )
-
+                                writerr(colored("ERROR processDirectory 3: Request " + str(responseCount) + ": " + str(e),"red"))
+                                
     except Exception as e:
         if vverbose():
             writerr(
@@ -2153,12 +2187,42 @@ def processBurpFile():
                 )
             )
 
+def processWaymoreFile(input):
+    """
+    Process the waymore file
+    """
+    try:
+        # Set headers to use if going to be making requests
+        setHeaders()
+
+        # Get the scope -sp and -sf domains if required
+        getScopeDomains()
+
+        try:
+            inputFile = open(input, "r")
+            if verbose():
+                write(colored(getSPACER("Reading Waymore file " + input + ":"), "cyan"))
+            with inputFile as f:
+                if stopProgram is None:
+                    p = mp.Pool(args.processes)
+                    p.map(processUrl, f)
+                    p.close()
+                    p.join()
+            inputFile.close()
+
+        except Exception as e:
+            if vverbose():
+                writerr(colored("ERROR processWaymoreFile 2: Problem with standard file: " + str(e),"red"))
+  
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR processWaymoreFile 1: " + str(e), "red"))
 
 def processEachInput(input):
     """
     Process the input, whether its from -i or <stdin>
     """
-    global burpFile, zapFile, urlPassed, stdFile, stdinFile, dirPassed, stdinMultiple, linksFound, linksVisited, totalRequests, skippedRequests, failedRequests, paramsFound
+    global burpFile, zapFile, urlPassed, stdFile, stdinFile, dirPassed, stdinMultiple, linksFound, linksVisited, totalRequests, skippedRequests, failedRequests, paramsFound, waymoreMode
 
     # Set the -i / --input to the current input
     args.input = input
@@ -2205,8 +2269,8 @@ def processEachInput(input):
         if urlPassed or stdFile:
             setHeaders()
 
-        # Show the user their selected options if -vv is passed
-        if vverbose():
+        # Show the user their selected options if -vv is passed (but don't show in waymore mode)
+        if vverbose() and not waymoreMode:
             showOptions()
 
         # Get the scope -sp and -sf domains if required
@@ -2229,7 +2293,7 @@ def processEachInput(input):
 
             else:
                 # Show the current User Agent group
-                if verbose():
+                if len(args.user_agent) > 1:
                     write(
                         colored("\nUser-Agent Group: ", "cyan")
                         + colored(args.user_agent[currentUAGroup], "white")
@@ -2277,16 +2341,17 @@ def processEachInput(input):
             if stopProgram is None:
                 processDepth()
 
-        # Once all data has been found, process the output
-        processOutput()
+        if not waymoreMode:
+            # Once all data has been found, process the output
+            processOutput()
 
-        # Reset the variables
-        linksFound = set()
-        linksVisited = set()
-        paramsFound = set()
-        totalRequests = 0
-        skippedRequests = 0
-        failedRequests = 0
+            # Reset the variables
+            linksFound = set()
+            linksVisited = set()
+            paramsFound = set()
+            totalRequests = 0
+            skippedRequests = 0
+            failedRequests = 0
 
     except Exception as e:
         if vverbose():
@@ -2656,7 +2721,7 @@ if __name__ == "__main__":
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(
-        description="xnlLinkFinder (v" + VERSION + ") - by @Xnl-h4ck3r"
+        description="xnlLinkFinder (v" + __import__('xnLinkFinder').__version__ + ") - by @Xnl-h4ck3r"
     )
     parser.add_argument(
         "-i",
@@ -2847,8 +2912,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "-vv", "--vverbose", action="store_true", help="Increased verbose output"
     )
+    parser.add_argument('--version', action='store_true', help="Show version number")
     args = parser.parse_args()
 
+    # If --version was passed, display version and exit
+    if args.version:
+        write(colored('xnLinkFinder - v' + __import__('xnLinkFinder').__version__,'cyan'))
+        sys.exit()
+        
     # If no input was given, raise an error
     if sys.stdin.isatty():
         if args.input is None:
@@ -2890,6 +2961,44 @@ if __name__ == "__main__":
             if burpFile or zapFile or dirPassed:
                 break
 
+        # if waymore mode, then process the waymore.txt and index.txt file(s) next
+        if waymoreMode:
+            
+            # Reset directory flag to now process individual files
+            dirPassed = False
+            
+            # For waymore mode, set the -inc / --include flage to True and -s429
+            args.include = True
+            args.s429 = True
+            
+            # Save the original input directory to set back later
+            originalInput = args.input
+            
+            # Process each user agent group
+            for i in range(len(userAgents)):
+                if stopProgram is not None:
+                    break
+                
+                currentUAGroup = i
+            
+                # Process the waymore.txt and index.txt files
+                for wf in waymoreFiles:
+                    write(colored("\nProcessing links in ","cyan")+colored("Waymore File ","yellow")+colored(wf + ":", "cyan"))
+                    processEachInput(wf)
+                linksVisited = set()
+                    
+            # Once all data has been found, process the output
+            args.input = originalInput
+            processOutput()
+
+            # Reset the variables
+            linksFound = set()
+            linksVisited = set()
+            paramsFound = set()
+            totalRequests = 0
+            skippedRequests = 0
+            failedRequests = 0
+            
         # If the program was stopped then alert the user
         if stopProgram is not None:
             if stopProgram == StopProgram.MEMORY_THRESHOLD:
@@ -2929,30 +3038,6 @@ if __name__ == "__main__":
                         "red",
                     )
                 )
-
-        # De-deupe the output file
-        if args.output != "cli":
-            try:
-                filePath = os.path.abspath(args.output).replace(" ", "\ ")
-                cmd = "sort -u -o " + args.output + " " + args.output
-                sort = subprocess.run(
-                    cmd, shell=True, text=True, stdout=subprocess.PIPE, check=True
-                )
-            except Exception as e:
-                if vverbose():
-                    writerr(colored("ERROR main 2: " + str(e), "red"))
-
-        # De-deupe the parameters output file
-        if args.output_params != "cli":
-            try:
-                filePath = os.path.abspath(args.output_params).replace(" ", "\ ")
-                cmd = "sort -u -o " + args.output_params + " " + args.output_params
-                sort = subprocess.run(
-                    cmd, shell=True, text=True, stdout=subprocess.PIPE, check=True
-                )
-            except Exception as e:
-                if vverbose():
-                    writerr(colored("ERROR main 3: " + str(e), "red"))
 
     except Exception as e:
         if vverbose():

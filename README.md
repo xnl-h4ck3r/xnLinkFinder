@@ -1,6 +1,6 @@
-<center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/raw/main/title.png"></center>
+<center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/blob/main/xnLinkFinder/images/title.png"></center>
 
-## About - v2.0
+## About - v2.1
 
 This is a tool used to discover endpoints (and potential parameters) for a given target. It can find them by:
 
@@ -9,6 +9,7 @@ This is a tool used to discover endpoints (and potential parameters) for a given
 - searching files in a given directory (pass a directory name)
 - get them from a Burp project (pass location of a Burp XML file)
 - get them from an OWASP ZAP project (pass location of a ZAP ASCII message file)
+- processing a [waymore](https://github.com/xnl-h4ck3r/waymore) results directory (searching archived response files from `waymore -mode R` and also requesting URLs from `waymore.txt` and the original URLs from `index.txt` - see [waymore README.md](https://github.com/xnl-h4ck3r/waymore/blob/main/README.md))
 
 The python script is based on the link finding capabilities of my Burp extension [GAP](https://github.com/xnl-h4ck3r/burp-extensions).
 As a starting point, I took the amazing tool [LinkFinder](https://github.com/GerbenJavado/LinkFinder) by Gerben Javado, and used the Regex for finding links, but with additional improvements to find even more.
@@ -55,6 +56,7 @@ $ sudo python setup.py install
 | -ascii-only   |                         | Whether links and parameters will only be added if they only contain ASCII characters. This can be useful when you know the target is likely to use ASCII characters and you also get a number of false positives from binary files for some reason.                                                                                                                                       |
 | -v            | --verbose               | Verbose output                                                                                                                                                                                                                                                                                                                                                                             |
 | -vv           | --vverbose              | Increased verbose output                                                                                                                                                                                                                                                                                                                                                                   |
+|               | --version               | Show current version number.                                                                                                                                                                                                                                                                                                                                                               |
 | -h            | --help                  | show the help message and exit                                                                                                                                                                                                                                                                                                                                                             |
 
 † NOT RELEVANT FOR INPUT OF DIRECTORY, BURP XML FILE OR OWASP ZAP FILE
@@ -142,6 +144,16 @@ python3 xnLinkFinder.py -i target_zap.txt
 
 NOTE: xnLinkFinder makes the assumption that if the first line of the file passed with `-i` is in the format `==== 99 ==========` for example, then you are trying to process an OWASP ZAP ASCII text file.
 
+### Find Links from a Waymore results directory
+
+The [waymore](https://github.com/xnl-h4ck3r/waymore) tool can be used to get URLs from various third party APIs, and also download archived responses from archive.org (Wayback Machine). Passing a waymore results directory to xnLinKFinder will search the contents of archived responses, and also request URLs from `waymore.txt` and also the archived URLs from `index.txt` and get more links from those responses.
+
+```
+python3 xnLinkFinder.py -i ~/Tools/waymore/results/target.com
+```
+
+NOTE: It is passed as a normal directory, but xnLinkFinder will determine it is a waymore results directory and process respectively.
+
 ### Piping to other Tools
 
 You can pipe xnLinkFinder to other tools. Any errors are sent to `stderr` and any links found are sent to `stdout`. The output file is still created in addition to the links being piped to the next program. However, potential parameters are not piped to the next program, but they are still written to file. For example:
@@ -190,6 +202,7 @@ NOTE: You can't pipe in a Burp or ZAP file, these must be passed using `-i`.
 - When `-i` has been set to a directory, the contents of the files in the root of that directory will be searched for links. Files in sub-directories are not searched. Any files that are over the size set by `-mfs` (default: 500 MB) will be skipped.
 - When using the `-replay-proxy` option, sometimes requests can take longer. If you start seeing more `Request Timeout` errors (you'll see errors if you use `-v` or `-vv` options) then consider using `-t` to raise the timeout limit.
 - If you know a target will only have ASCII characters in links and parameters then consider passing `-ascii-only`. This can eliminate a number of false positives that can sometimes get returned from binary data.
+- If you pass a [waymore](https://github.com/xnl-h4ck3r/waymore) results directory, it is worth passing the `-d`/`--depth` argument to search any extra links found from URL requests and also the `-u`/`--user-agent` if you think there could be different content found, e.g. `-u desktop mobile`.
 
 ## Issues
 
@@ -203,13 +216,13 @@ If you come across any problems at all, or have ideas for improvements, please f
 
 Active link finding for a domain:
 
-<center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/raw/main/example1a.png"></center>
+<center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/blob/main/xnLinkFinder/images/example1a.png"></center>
 ...
-<center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/raw/main/example1b.png"></center>
+<center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/blob/main/xnLinkFinder/images/example1b.png"></center>
 
 Piped input and output:
 
-<center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/raw/main/example2.png"></center>
+<center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/blob/main/xnLinkFinder/images/example2.png"></center>
 
 Good luck and good hunting!
 If you really love the tool (or any others), or they helped you find an awesome bounty, consider [BUYING ME A COFFEE!](https://ko-fi.com/xnlh4ck3r) ☕ (I could use the caffeine!)

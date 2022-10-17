@@ -1,5 +1,36 @@
 ## Changelog
 
+- v2.1
+
+  - New
+
+    - Add a "Waymore" mode to process results more efficiently from the [waymore](https://github.com/xnl-h4ck3r/waymore) tool.
+      - A waymore results directory will automatically be detected if a directory has been passed, and at least one `waymore.txt` file exists OR an `index.txt` file and at least one `.xnl` file.
+      - The `-s429` and `--include` flags will be used with this mode.
+      - Firstly all archived response files will be processed in the normal directory mode.
+      - Secondly, any `waymore.txt` files will be processed as if the file had been passed as input.
+      - Thirdly, any `index.txt` files will be processed as if the file had been passed as input, but only the original target URL from the archived URL will be searched.
+      - Any `waymore.new` or `waymore.old` files will be skipped.
+      - The `-d`/`--depth` and `-u`/`--user-agent` fields can be passed to be used when calling links from `waymore.txt` and `index.txt`.
+    - Added a `xnLinkFinder` folder containing a new `__init__.py` file that contains the `__version__` value.
+    - Added argument `--version` to display the current version.
+    - Added some additional newer Desktop User-Agents in `UA_DESKTOP` constant.
+    - If a URL is going to be requested that has `*.` in it, this will be removed before trying to request. This at least gives a chance of connecting and getting some kind of response to find more links.
+
+  - Changed
+
+    - Changed the main regex in `getResponseLinks` to find more links. It wasn't finding links in files if the line was just a URL... Sorry about that!!
+    - Change `DEFAULT_LINK_EXCLUSIONS` and the `config.yml` section `linkExclude` to include `.avif`
+    - Change `DEFAULT_CONTENTTYPE_EXCLUSIONS` and the `config.yml` section `contentExclude` to include `image/avif`
+    - Change `.gitignore` to include `__pycache__` and `xnLinkFinder` folder.
+    - Move images to `xnLinkFinder/images` folder.
+    - Fixed the message when Ctrl-C is pressed to say xnLinkFinder instead of waymore
+    - Remove code that called the OS command `sort`. This should have been removed in the previous version and is no longer needed.
+    - Show the output of the current user-agent being processed if more than one was given.
+    - When checking the `-s429`, `-s403`, `-sTO` and `-sCE` values, only check the percentage if at least 10 requests have already been made, otherwise we can sometimes stop prematurely.
+    - Improved some error messages to suggest what argument to pass to resolve the problem in future.
+    - Change `addLink` function to replace characters in the links (e.g. `&amp;` for `&`) before adding the links to the `linksFound` set, not just for parameters.
+
 - v2.0
 
   - Changed

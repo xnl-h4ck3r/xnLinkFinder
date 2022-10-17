@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 setup(
     name="xnLinkFinder",
     packages=find_packages(),
-    version="2.0",
+    version=__import__('xnLinkFinder').__version__,
     description="A python script to find endpoints from a URL, a file of URLs, a directory of files, a Burp XML file or a ZAP ASCII message file.",
     long_description=open("README.md").read(),
     author="@xnl-h4ck3r",

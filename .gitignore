@@ -3,3 +3,5 @@ parameters.txt
 xnLinkFinder.egg-info
 dist/
 build/
+__pycache__
+xnLinkFinder
