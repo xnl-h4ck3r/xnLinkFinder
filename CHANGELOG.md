@@ -1,5 +1,11 @@
 ## Changelog
 
+- v2.2
+
+  - Changed
+
+    - Fixed a major bug where the `-c`/`--cookies` option would not correctly pass the cookies to requests. Sorry!!
+
 - v2.1
 
   - New
