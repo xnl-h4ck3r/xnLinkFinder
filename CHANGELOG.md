@@ -1,5 +1,17 @@
 ## Changelog
 
+- v2.3
+
+  - New
+
+    - If the `-replay-proxy` is being used, and the title in the response contains `Burp Suite` and has an error of `Unknown Host` then set the response code to 504. This is because if Burp is used for a proxy, it returns Status code 200 because the response is the error from Burp itself.
+    - Fix an issue with ZAP Proxy not having a response (due to a 502 for example) and an error being raised. It now just sets the response to blank and continues.
+
+  - Changed
+
+    - Change regex for recognising a ZAP Proxy file from `^={4}\s[0-9]+\s={10}$` to `^={3,4}\s?[0-9]+\s={10}$` to cater for v2.11.1 and v2.12
+    - Corrections to ZAP Proxy section in README.md
+
 - v2.2
 
   - Changed

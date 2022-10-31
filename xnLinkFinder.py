@@ -847,6 +847,18 @@ def processUrl(url):
                         verify=verify,
                         proxies=proxies,
                     )
+                    
+                    # If the replay proxy is being used, and the title in the response contains "Burp Suite" and has an error of "Unknown Host" then set the response code to 504. This is because if Burp is used for a proxy, it returns 200 because the response is the error from Burp.
+                    if args.replay_proxy and resp.text.find('<title>Burp Suite') > 0:
+                        if resp.text.find('Unknown&#32;host') > 0:
+                            resp.status_code = 504
+                        else:
+                            if os.environ.get('USER') == 'xnl':
+                                try:
+                                    writerr(colored(getSPACER('Burp Response - Code: '+str(resp.status_code)+'\nResp: ' + resp.text), 'yellow'))
+                                except:
+                                    pass
+                                    
                     if resp.status_code == 200:
                         if verbose():
                             write(
@@ -1883,8 +1895,16 @@ def processZapMessage(zapMessage, responseCount):
     global totalResponses, currentMemUsage, currentMemPercent
     try:
         # Split the message into request (just URL) and response
-        request = zapMessage.split("\n\n", 1)[0].strip().split(" ")[1].strip()
-        response = re.split(r"\nHTTP\/[0-9]", zapMessage)[1]
+        try:
+            request = zapMessage.split("\n\n", 1)[0].strip().split(" ")[1].strip()
+        except Exception as e:
+            if vverbose():
+                writerr(colored("ERROR processZapMessage 2: " + str(e), "red"))
+        try:
+            response = re.split(r"\nHTTP\/[0-9]", zapMessage)[1]
+        except Exception as e:
+            response = ''
+                    
         # Show progress bar
         fillTest = responseCount % 2
         if fillTest == 0:
@@ -1929,8 +1949,8 @@ def processZapFile():
     Process an ASCII text file that is output from OWASP ZAP.
     By selecting the requests/responses you want in ZAP, you can then select Report -> Export Messages to File...
     This will save a file of all responses to check for links.
-    It is assumed that each request/response "message" will start with a line matching REGEX ^={4}\s[0-9]+\s={10}$
-    (this was tested with ZAP v2.11.1)
+    It is assumed that each request/response "message" will start with a line matching REGEX ^={3,4}\s?[0-9]+\s={10}$
+    (this was tested with ZAP v2.11.1 and v2.12)
     """
     global totalResponses, currentMemUsage, currentMemPercent, stopProgram, stdinMultiple
 
@@ -1943,7 +1963,7 @@ def processZapFile():
                 fileSize = os.path.getsize(args.input)
                 filePath = os.path.abspath(args.input).replace(" ", "\ ")
 
-                cmd = "grep -Eo '^={4}\s[0-9]+\s={10}$' --text " + filePath + " | wc -l"
+                cmd = "grep -Eo '^={3,4}\s?[0-9]+\s={10}$' --text " + filePath + " | wc -l"
 
                 grep = subprocess.run(
                     cmd, shell=True, text=True, stdout=subprocess.PIPE, check=True
@@ -1983,7 +2003,7 @@ def processZapFile():
                         break
 
                     # Check for the separator lines
-                    match = re.search("={4}\s[0-9]+\s={10}", line)
+                    match = re.search("={3,4}\s?[0-9]+\s={10}", line)
 
                     # If it is the start of the ZAP message then process it
                     if match is not None and zapMessage != "":
@@ -2244,7 +2264,7 @@ def processEachInput(input):
 
                     # If not a Burp file, check of it is an OWASP ZAP file
                     if not burpFile:
-                        match = re.search("={4}\s[0-9]+\s={10}", firstLine)
+                        match = re.search("={3,4}\s?[0-9]+\s={10}", firstLine)
                         if match is not None:
                             zapFile = True
 
@@ -2396,7 +2416,7 @@ def processInput():
 
                 # If not a Burp file, check of it is an OWASP ZAP file
                 if not burpFile:
-                    match = re.search("={4}\s[0-9]+\s={10}", firstLine)
+                    match = re.search("={3,4}\s?[0-9]+\s={10}", firstLine)
                     if match is not None:
                         zapFile = True
 
