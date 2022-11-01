@@ -1687,7 +1687,8 @@ def getScopeDomains():
         scopePrefixError = False
         try:
             scopeFile = open(args.scope_prefix, "r")
-            inScopePrefixDomains = [line.rstrip() for line in scopeFile]
+            # Get all lines from the file, but remove any blank lines and remove any trailing spaces from a line
+            inScopePrefixDomains = [line.rstrip() for line in scopeFile if line.rstrip() != '']
             scopeFile.close()
 
             for prefix in inScopePrefixDomains:
@@ -2289,12 +2290,12 @@ def processEachInput(input):
         if urlPassed or stdFile:
             setHeaders()
 
+        # Get the scope -sp and -sf domains if required
+        getScopeDomains()
+        
         # Show the user their selected options if -vv is passed (but don't show in waymore mode)
         if vverbose() and not waymoreMode:
             showOptions()
-
-        # Get the scope -sp and -sf domains if required
-        getScopeDomains()
 
         # Process the correct input type...
         if burpFile:

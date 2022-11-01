@@ -1,5 +1,12 @@
 ## Changelog
 
+- v2.4
+
+  - Changed
+
+    - If a file is passed with `-sp` argument, any blank lines in the file will be allowed and removed instead of throwing an error.
+    - Also, if a file is passed with `-sp` argument it was showing as a URL in the options displayed if `-v` is used. It will now correctly show `(File)`
+
 - v2.3
 
   - New
