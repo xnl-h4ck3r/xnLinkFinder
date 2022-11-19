@@ -1,5 +1,11 @@
 ## Changelog
 
+- v2.5
+
+  - New
+
+    - Add `-mtl`/`--max-time-limit` argument (default: 0). This is the maximum number of minutes to run before stopping. If a value of 0 is passed, there is no limit.
+
 - v2.4
 
   - Changed

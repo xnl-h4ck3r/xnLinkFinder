@@ -57,6 +57,9 @@ from urllib3.exceptions import InsecureRequestWarning
 import sys
 from urllib.parse import urlparse
 from tempfile import NamedTemporaryFile
+from datetime import datetime
+
+startDateTime = datetime.now()
 
 # Try to import psutil to show memory usage
 try:
@@ -75,6 +78,7 @@ class StopProgram(enum.Enum):
     TOO_MANY_TIMEOUTS = 4
     TOO_MANY_CONNECTION_ERRORS = 5
     MEMORY_THRESHOLD = 6
+    MAX_TIME_LIMIT = 7
 
 
 stopProgram = None
@@ -758,6 +762,9 @@ def getMemory():
     if currentMemPercent > args.memory_threshold:
         stopProgram = StopProgram.MEMORY_THRESHOLD
 
+    # If memory limit hasn't been reached, check the max time limit
+    if stopProgram is None:
+        checkMaxTimeLimit()
 
 def shouldMakeRequest(url):
     # Should we request this url?
@@ -773,8 +780,8 @@ def shouldMakeRequest(url):
 
 def processUrl(url):
 
-    global burpFile, zapFile, totalRequests, skippedRequests, failedRequests, userAgent, requestHeaders, tooManyRequests, tooManyForbidden, tooManyTimeouts, tooManyConnectionErrors, stopProgram, waymoreMode
-
+    global burpFile, zapFile, totalRequests, skippedRequests, failedRequests, userAgent, requestHeaders, tooManyRequests, tooManyForbidden, tooManyTimeouts, tooManyConnectionErrors, stopProgram, waymoreMode, stopProgram
+    
     # Choose a random user agent string to use from the current group
     userAgent = random.choice(userAgents[currentUAGroup])
     requestHeaders["User-Agent"] = userAgent
@@ -1650,6 +1657,9 @@ def showOptions():
                 + colored(" Whether links and parameters will only be added if they only contain ASCII characters.", "white")
             )
         
+        if args.max_time_limit > 0:
+            write(colored('-mtl: ' + str(args.max_time_limit), 'magenta')+colored(" The maximum time limit (in minutes) to run before stopping.","white"))
+        
         write(colored('Link exclusions: ', 'magenta')+colored(LINK_EXCLUSIONS))
         write(colored('Content-Type exclusions: ', 'magenta')+colored(CONTENTTYPE_EXCLUSIONS))    
         if dirPassed:  
@@ -2243,8 +2253,11 @@ def processEachInput(input):
     """
     Process the input, whether its from -i or <stdin>
     """
-    global burpFile, zapFile, urlPassed, stdFile, stdinFile, dirPassed, stdinMultiple, linksFound, linksVisited, totalRequests, skippedRequests, failedRequests, paramsFound, waymoreMode
+    global burpFile, zapFile, urlPassed, stdFile, stdinFile, dirPassed, stdinMultiple, linksFound, linksVisited, totalRequests, skippedRequests, failedRequests, paramsFound, waymoreMode, stopProgram
 
+    if stopProgram is None:
+        checkMaxTimeLimit()
+    
     # Set the -i / --input to the current input
     args.input = input
 
@@ -2733,7 +2746,14 @@ def getSPACER(text):
     SPACER = " " * lenSpacer
     return text + SPACER
 
-
+# Check if the maximum time limit argument was passed and if it has been exceeded
+def checkMaxTimeLimit():
+    global startDateTime, stopProgram
+    if stopProgram is None and args.max_time_limit > 0:
+        runTime = datetime.now() - startDateTime
+        if runTime.seconds / 60 > args.max_time_limit:
+            stopProgram = StopProgram.MAX_TIME_LIMIT
+            
 # Run xnLinkFinder
 if __name__ == "__main__":
 
@@ -2929,6 +2949,15 @@ if __name__ == "__main__":
         action="store_true",
         help="Whether links and parameters will only be added if they only contain ASCII characters (default: False). This can be useful when you know the target is likely to use ASCII characters and you also get a number of false positives from binary files for some reason.",
     )
+    parser.add_argument(
+        "-mtl",
+        "--max-time-limit",
+        action="store",
+        help="The maximum time limit (in minutes) to run before stopping (default: 0). If 0 is passed, there is no limit.",
+        type=int,
+        default=0,
+        metavar="<integer>",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     parser.add_argument(
         "-vv", "--vverbose", action="store_true", help="Increased verbose output"
@@ -2967,7 +2996,7 @@ if __name__ == "__main__":
 
         # Set User Agents to use
         setUserAgents()
-
+           
         # Process each user agent group
         for i in range(len(userAgents)):
             if stopProgram is not None:
@@ -3049,6 +3078,13 @@ if __name__ == "__main__":
                 writerr(
                     colored(
                         "THE PROGRAM WAS STOPPED DUE TO TOO MANY REQUEST TIMEOUTS. DATA IS LIKELY TO BE INCOMPLETE.\n",
+                        "red",
+                    )
+                )
+            elif stopProgram == StopProgram.MAX_TIME_LIMIT:
+                writerr(
+                    colored(
+                        "THE PROGRAM WAS STOPPED DUE TO TOO MAXIMUM TIME LIMIT. DATA IS LIKELY TO BE INCOMPLETE.\n",
                         "red",
                     )
                 )
