@@ -1222,11 +1222,15 @@ def getConfig():
         except:
             terminalWidth = 120
 
-        configPath = os.path.dirname(__file__)
-        if configPath == "":
-            configPath = "config.yml"
+        # Get the path of the config file. If --config argument is not passed, then it defaults to config.yml in the same directory as the run file
+        if args.config is None:      
+            configPath = os.path.dirname(__file__)
+            if configPath == "":
+                configPath = "config.yml"
+            else:
+                configPath = configPath + "/config.yml"
         else:
-            configPath = configPath + "/config.yml"
+            configPath = args.config
         config = yaml.safe_load(open(configPath))
         try:
             LINK_EXCLUSIONS = config.get("linkExclude")
@@ -1344,9 +1348,10 @@ def getConfig():
                 )
     except Exception as e:
         if vverbose():
-            writerr(
-                colored("Unable to read config.yml; defaults set: " + str(e), "red")
-            )
+            if args.config is None:
+                writerr(colored('WARNING: Cannot find file "config.yml", so using default values', 'yellow'))
+            else:
+                writerr(colored('WARNING: Cannot find file "' + args.config + '", so using default values', 'yellow'))
             LINK_EXCLUSIONS = DEFAULT_LINK_EXCLUSIONS
             CONTENTTYPE_EXCLUSIONS = DEFAULT_CONTENTTYPE_EXCLUSIONS
             FILEEXT_EXCLUSIONS = DEFAULT_FILEEXT_EXCLUSIONS
@@ -1480,6 +1485,9 @@ def showOptions():
                         )
                     )
 
+        if args.config is not None:
+            write(colored('--config: ' + args.config, 'magenta')+colored(' The path of the YML config file.','white'))
+            
         write(
             colored("-o: " + args.output, "magenta")
             + colored(" Where the links output will be sent.", "white")
@@ -2957,6 +2965,11 @@ if __name__ == "__main__":
         type=int,
         default=0,
         metavar="<integer>",
+    )
+    parser.add_argument(
+        "--config",
+        action="store",
+        help="Path to the YML config file. If not passed, it looks for file 'config.yml' in the same directory as runtime file 'xnLinkFinder.py'.",
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     parser.add_argument(

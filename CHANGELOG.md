@@ -1,5 +1,10 @@
 ## Changelog
 
+- v2.6
+
+  - New
+    - Added argument `--config` to specify the full path of a YML config file. If not passed, it looks for file `config.yml` in the same directory as runtime file `xnLinkFinder.py`
+
 - v2.5
 
   - New
