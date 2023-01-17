@@ -16,6 +16,11 @@ inputFile = None
 linksFound = set()
 linksVisited = set()
 paramsFound = set()
+wordsFound = set()
+lstStopWords = {}
+lstPathWords = set() 
+extraStopWords = ""
+lstWordsContentTypes = {}
 lstExclusions = {}
 lstFileExtExclusions = {}
 requestHeaders = {}
@@ -58,6 +63,7 @@ import sys
 from urllib.parse import urlparse
 from tempfile import NamedTemporaryFile
 from datetime import datetime
+from bs4 import BeautifulSoup, Comment
 
 startDateTime = datetime.now()
 
@@ -95,6 +101,8 @@ RESP_PARAM_JSVARS = True
 RESP_PARAM_XML = True
 RESP_PARAM_INPUTFIELD = True
 RESP_PARAM_METANAME = True
+WORDS_CONTENT_TYPES = ""
+STOP_WORDS = ""
 
 # A comma separated list of Link exclusions used when the exclusions from config.yml cannot be found
 # Links are NOT output if they contain these strings. This just applies to the links found in endpoints, not the origin link in which it was found
@@ -188,6 +196,10 @@ UA_GAMECONSOLE = [
     "Mozilla/5.0 (Nintendo 3DS; U; ; en) Version/1.7412.EU",
 ]
 
+DEFAULT_WORDS_CONTENT_TYPES = "text/html,application/xml,application/json,text/plain"
+
+# Default english "stop word" list
+DEFAULT_STOP_WORDS = "a,aboard,about,above,across,after,afterwards,again,against,all,almost,alone,along,already,also,although,always,am,amid,among,amongst,amount,an,and,another,any,anyhow,anyone,anything,anyway,anywhere,are,around,as,at,back,be,became,because,become,becomes,becoming,been,before,beforehand,behind,being,below,beneath,beside,besides,between,beyond,both,bottom,but,by,call,can,cannot,cant,con,concerning,considering,could,couldnt,cry,de,describe,despite,do,done,down,due,during,each,eg,eight,either,eleven,else,elsewhere,empty,enough,etc,even,ever,every,everyone,everything,everywhere,except,few,fifteen,fifty,fill,find,fire,first,five,for,former,formerly,forty,found,four,from,full,further,get,give,go,had,has,hasnt,have,he,hence,her,here,hereafter,hereby,herein,hereupon,hers,herself,him,himself,his,how,however,hundred,i,ie,if,in,inc,indeed,inside,interest,into,is,it,its,itself,keep,last,latter,latterly,least,less,like,ltd,made,many,may,me,meanwhile,might,mill,mine,more,moreover,most,mostly,move,much,must,my,myself,name,namely,near,neither,never,nevertheless,next,nine,no,nobody,none,noone,nor,not,nothing,now,nowhere,of,off,often,on,once,one,only,onto,or,other,others,otherwise,our,ours,ourselves,out,outside,over,own,part,past,per,perhaps,please,put,rather,re,regarding,round,same,see,seem,seemed,seeming,seems,serious,several,she,should,show,side,since,sincere,six,sixty,so,some,somehow,someone,something,sometime,sometimes,somewhere,still,such,take,ten,than,that,the,their,them,themselves,then,thence,there,thereafter,thereby,therefore,therein,thereupon,these,they,thick,thin,third,this,those,though,three,through,throughout,thru,thus,to,together,too,top,toward,towards,twelve,twenty,two,un,under,underneath,until,unto,up,upon,us,very,via,want,was,we,well,went,were,weve,what,whatever,when,whence,whenever,where,whereafter,whereas,whereby,wherein,whereupon,wherever,whether,which,while,whilst,whither,who,whoever,whole,whom,whose,why,will,with,within,without,would,yet,you,youll,your,youre,yours,yourself,yourselves,youve"
 
 def write(text="", pipe=False):
     # Only send text to stdout if the tool isn't piped to pass output to something else,
@@ -423,8 +435,8 @@ def addLink(link, url):
 
     # Also add any relevant potential parameters
     try:
-        # Get words in the URL path to add as potential parameters
-        if RESP_PARAM_PATHWORDS:
+        # Get words in the URL path to add as potential parameters and words
+        if RESP_PARAM_PATHWORDS or args.output_wordlist != "":
             getPathWords(url)
             getPathWords(link)
 
@@ -828,7 +840,7 @@ def processUrl(url):
                     if not url.lower().startswith("http"):
                         requestUrl = "http://" + url
 
-                    # If the -replay-proxy argument was passed, try to use it
+                    # If the --replay-proxy argument was passed, try to use it
                     if args.replay_proxy != "":
                         proxies = {
                             "http": args.replay_proxy,
@@ -1005,11 +1017,11 @@ def processLinkOutput():
     try:
         linkCount = len(linksFound)
         if args.origin:
-            originLinks = set()
+            originalLinks = set()
             for index, item in enumerate(linksFound):
-                originLinks.add(str(item[0 : item.find("[") - 2]))
-            uniqLinkCount = len(originLinks)
-            originLinks = None
+                originalLinks.add(str(item[0 : item.find("[") - 2]))
+            uniqLinkCount = len(originalLinks)
+            originalLinks = None
             if linkCount > uniqLinkCount:
                 write(
                     colored(
@@ -1130,7 +1142,7 @@ def processParamOutput():
 
         # If the -ow / --output_overwrite argument was passed and the file exists already, get the contents of the file to include
         appendedParams = False
-        if args.output != "cli" and not args.output_overwrite:
+        if args.output_params != "cli" and not args.output_overwrite:
             try:
                 existingParams = open(os.path.expanduser(args.output_params), "r")
                 for param in existingParams.readlines():
@@ -1167,7 +1179,7 @@ def processParamOutput():
         paramsFound = None
 
         # If the output was a file, close the file
-        if args.output != "cli":
+        if args.output_params != "cli":
             try:
                 outFile.close()
             except Exception as e:
@@ -1189,7 +1201,123 @@ def processParamOutput():
         if vverbose():
             writerr(colored("ERROR processParamOutput 1: " + str(e), "red"))
 
+# Add certain words found in the passed list to the target specific wordlist. This is called for parameters and path words
+def addItemsToWordlist(inputList):
+    global wordsFound, lstStopWords
+    
+    try:
+        for item in inputList:
+            # Remove any % and proceeding 2 chars
+            newItem = re.sub("\%..", "", item)
+            if len(newItem) > 2 and not newItem.startswith("_") and newItem.count("-") < 3 and re.match('^[A-Za-z0-9\-_]*[A-Za-z]+[A-Za-z0-9\-_]*$', newItem) and newItem.lower() not in lstStopWords: 
+                # If -nwld argument was passed, only proceed with word if it has no digits
+                if not (args.no_wordlist_digits and any(char.isdigit() for char in newItem)):
+                    # Add the word if it is not over the max length
+                    if args.wordlist_maxlen == 0 or len(newItem) <= args.wordlist_maxlen:
+                        wordsFound.add(newItem)
+            # Split the item up into separate parts if there are delimiters and process each word separately too
+            newItem = newItem.replace("[","-").replace("]","-").replace("{","-").replace("}","-").replace("(","-").replace(")","-").replace("_","-")
+            lstItems = newItem.split("-")
+            for word in lstItems:
+                if len(word) > 2 and re.match('^[A-Za-z0-9\-_]*[A-Za-z]+[A-Za-z0-9\-_]*$', word) and word.lower() not in lstStopWords:
+                    # If -nwld argument was passed, only proceed with word if it has no digits
+                    if not (args.no_wordlist_digits and any(char.isdigit() for char in newItem)):
+                        # Add the word if it is not over the max length
+                        if args.wordlist_maxlen == 0 or len(word) <= args.wordlist_maxlen:
+                            wordsFound.add(word)
+                            wordsFound.add(word.lower())
+                            newWord = processPlural(word)
+                            if newWord != "" and len(newWord) > 3 and newWord.lower() not in lstStopWords:
+                                wordsFound.add(newWord)
+                                wordsFound.add(newWord.lower())
+                                # If the original word was uppercase and didn't end in "S" but the new one does, also add the original word with a lower case "s"
+                                if word.isupper() and word[-1:] != 'S' and newWord == word + 'S':
+                                    wordsFound.add(word + 's')
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR addItemsToWordlist 1: " + str(e), "red"))
+            
+# Process the output of any words found
+def processWordsOutput():
+    global totalRequests, skippedRequests, wordsFound, paramsFound, lstPathWords
+    try:
+        
+        # Get additional words from parameters found and add to the word list
+        if not args.no_wordlist_parameters:
+            addItemsToWordlist(paramsFound)
+        
+        # Get additional words from path words and add to the word list
+        if not args.no_wordlist_pathwords:
+            addItemsToWordlist(lstPathWords)
+        
+        wordsCount = len(wordsFound)
+        write(
+            colored("Words found for " + args.input + ": ", "cyan")
+            + colored(str(wordsCount) + " 🤘\n", "white")
+        )
 
+        # If the -ow / --output_overwrite argument was passed and the file exists already, get the contents of the file to include
+        appendedWords = False
+        if args.output_wordlist != "cli" and not args.output_overwrite:
+            try:
+                existingWords = open(os.path.expanduser(args.output_wordlist), "r")
+                for word in existingWords.readlines():
+                    existingWords.add(word.strip())
+                appendedWords = True
+            except:
+                pass
+            
+        # If -owl (--output_wordlist) argument was not "cli" then open the output file
+        if args.output_wordlist != "cli":
+            try:
+                outFile = open(os.path.expanduser(args.output_wordlist), "w")
+            except Exception as e:
+                if vverbose():
+                    writerr(colored("ERROR processWordsOutput 2: " + str(e), "red"))
+
+        # Go through all words, and output what was found
+        outputCount = 0
+        for word in wordsFound:
+            if args.output_wordlist == "cli":
+                if word != "":
+                    write(word, True)
+                    outputCount = outputCount + 1
+            else:  # file
+                try:
+                    if word != "":
+                        outFile.write(word + "\n")
+                        outputCount = outputCount + 1
+                except Exception as e:
+                    if vverbose():
+                        writerr(colored("ERROR processWordsOutput 3: " + str(e), "red"))
+
+        # Clean up
+        wordsFound = None
+        lstPathWords = None
+        
+        # If the output was a file, close the file
+        if args.output_wordlist != "cli":
+            try:
+                outFile.close()
+            except Exception as e:
+                if vverbose():
+                    writerr(colored("ERROR processWordsOutput 4: " + str(e), "red"))
+
+            if verbose():
+                if outputCount == 0:
+                    write(colored('No words were found so nothing written to file.\n', 'cyan'))
+                else:   
+                    if appendedWords:
+                        write(
+                            colored('Words successfully appended to file ', 'cyan')+colored(args.output_wordlist,'white')+colored(' and duplicates removed.\n','cyan'))
+                    else:
+                        write(
+                            colored('Words successfully written to file ', 'cyan')+colored(args.output_wordlist+'\n','white'))
+                        
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR processWordsOutput 1: " + str(e), "red"))
+            
 def processOutput():
     """
     Output the list of collected links and potential parameters files, or the cli
@@ -1199,9 +1327,13 @@ def processOutput():
         # Process output of the found links
         processLinkOutput()
 
+        # Process output of the found words if wordlist output was specified
+        if args.output_wordlist != "":
+            processWordsOutput()
+            
         # Process output of the found parameters
         processParamOutput()
-
+        
         # Output stats if -vv option was selected
         if vverbose():
             processStats()
@@ -1213,7 +1345,7 @@ def processOutput():
 
 def getConfig():
     # Try to get the values from the config file, otherwise use the defaults
-    global LINK_EXCLUSIONS, CONTENTTYPE_EXCLUSIONS, FILEEXT_EXCLUSIONS, LINK_REGEX_FILES, RESP_PARAM_LINKSFOUND, RESP_PARAM_PATHWORDS, RESP_PARAM_JSON, RESP_PARAM_JSVARS, RESP_PARAM_XML, RESP_PARAM_INPUTFIELD, RESP_PARAM_METANAME, terminalWidth
+    global LINK_EXCLUSIONS, CONTENTTYPE_EXCLUSIONS, FILEEXT_EXCLUSIONS, LINK_REGEX_FILES, RESP_PARAM_LINKSFOUND, RESP_PARAM_PATHWORDS, RESP_PARAM_JSON, RESP_PARAM_JSVARS, RESP_PARAM_XML, RESP_PARAM_INPUTFIELD, RESP_PARAM_METANAME, terminalWidth, WORDS_CONTENT_TYPES, STOP_WORDS, extraStopWords, lstStopWords
     try:
 
         # Set terminal width
@@ -1346,6 +1478,54 @@ def getConfig():
                         "red",
                     )
                 )
+        try:
+            WORDS_CONTENT_TYPES = config.get("wordsContentTypes")
+        except:
+            if verbose():
+                writerr(
+                    colored(
+                        'Unable to read "wordsContentTypes" from config.yml; defaults set',
+                        "red",
+                    )
+                )
+            WORDS_CONTENT_TYPES = DEFAULT_WORDS_CONTENT_TYPES
+        try:
+            STOP_WORDS = config.get("stopWords")
+        except:
+            if verbose():
+                writerr(
+                    colored(
+                        'Unable to read "stopWords" from config.yml; defaults set',
+                        "red",
+                    )
+                )
+            STOP_WORDS = DEFAULT_STOP_WORDS   
+        
+        # If there are extra stop words passed using the -swf / --stopwords-file then add them to STOP_WORDS
+        try:
+            if args.stopwords_file != "":
+                STOP_WORDS = STOP_WORDS + "," + extraStopWords
+        except:
+            if verbose():
+                writerr(
+                    colored(
+                        'Unable to add extra stop words from file "'+str(args.stopwords_file)+'"',
+                        "red",
+                    )
+                )
+        # Make the Stop Word list and make all lower case
+        try:
+            lstStopWords = STOP_WORDS.split(",")
+            lstStopWords = list(map(str.lower,lstStopWords))
+        except:
+            if verbose():
+                writerr(
+                    colored(
+                        "Unable to create Stop Word list.",
+                        "red",
+                    )
+                )
+            
     except Exception as e:
         if vverbose():
             if args.config is None:
@@ -1356,6 +1536,8 @@ def getConfig():
             CONTENTTYPE_EXCLUSIONS = DEFAULT_CONTENTTYPE_EXCLUSIONS
             FILEEXT_EXCLUSIONS = DEFAULT_FILEEXT_EXCLUSIONS
             LINK_REGEX_FILES = DEFAULT_LINK_REGEX_FILES
+            WORDS_CONTENT_TYPES = DEFAULT_WORDS_CONTENT_TYPES
+            STOP_WORDS = DEFAULT_STOP_WORDS
 
 
 # Print iterations progress
@@ -1496,6 +1678,11 @@ def showOptions():
             colored("-op: " + args.output_params, "magenta")
             + colored(" Where the parameter output will be sent.", "white")
         )
+        if args.output_wordlist != "":
+            write(
+                colored("-owl: " + args.output_wordlist, "magenta")
+                + colored(" Where the target speicifc wordlist output will be sent.", "white")
+            )
         write(
             colored("-ow: " + str(args.output_overwrite), "magenta")
             + colored(
@@ -1550,6 +1737,64 @@ def showOptions():
                 )
             )
 
+        if args.output_wordlist != "":
+            if args.no_wordlist_plurals:
+                write(
+                    colored("-nwlpl: " + str(args.no_wordlist_plurals), "magenta")
+                    + colored(
+                        " When words are found for a target specific wordlist, additional words will NOT be added for singular and plurals.", "white"
+                    )
+                )
+            if args.no_wordlist_pathwords:
+                write(
+                    colored("-nwlpw: " + str(args.no_wordlist_pathwords), "magenta")
+                    + colored(
+                        " Path words found in any links will NOT be processed to include as words in the target specific wordlist.", "white"
+                    )
+                )
+            if args.no_wordlist_parameters:
+                write(
+                    colored("-nwlpm: " + str(args.no_wordlist_parameters), "magenta")
+                    + colored(
+                        " Any parameters found will NOT be processed to include as words in the target specific wordlist.", "white"
+                    )
+                )
+            if args.no_wordlist_comments:
+                write(
+                    colored("-nwlc: " + str(args.no_wordlist_comments), "magenta")
+                    + colored(
+                        " Any comments found in repsonses will NOT be processed to include as words in the target specific wordlist.", "white"
+                    )
+                )
+            if args.no_wordlist_imgalt:
+                write(
+                    colored("-nwlia: " + str(args.no_wordlist_imgalt), "magenta")
+                    + colored(
+                        " Any image 'alt' attributes found in repsonses will NOT be processed to include as words in the target specific wordlist.", "white"
+                    )
+                )
+            if args.no_wordlist_digits:
+                write(
+                    colored("-nwld: " + str(args.no_wordlist_digits), "magenta")
+                    + colored(
+                        " When words are found for a target specific wordlist, words with any numerical digits in will NOT be added.", "white"
+                    )
+                )
+            if args.wordlist_maxlen > 0:
+                write(
+                    colored("-wlml: " + str(args.wordlist_maxlen), "magenta")
+                    + colored(
+                        " The maximum length of words to add to the target specific wordlist (excluding plurals).", "white"
+                    )
+                )    
+            if args.stopwords_file != "":
+                write(
+                    colored("-swf: " + str(args.stopwords_file), "magenta")
+                    + colored(
+                        " The file of additional Stop Words used to exlude words from the target specific wordlist.", "white"
+                    )
+                )
+            
         if not burpFile and not zapFile and not dirPassed:
             write(
                 colored("-d: " + str(args.depth), "magenta")
@@ -1647,7 +1892,7 @@ def showOptions():
             if proxy == "":
                 proxy = "{none}"
             write(
-                colored("-replay-proxy: " + proxy, "magenta")
+                colored("-rp: " + proxy, "magenta")
                 + colored(" Replay requests using this proxy.", "white")
             )
 
@@ -2307,6 +2552,16 @@ def processEachInput(input):
         else:
             stdFile = True
 
+        # If no scope filter was not passed and the input is a domain/URL (or file of domains/URLS), raise an error. This is now a mandatory field for this input (it wasn't in previous versions).
+        if args.scope_filter is None and (urlPassed or stdFile or stdinFile):
+            writerr(
+                colored(
+                    "You need to provide a Scope Filter with the -sf / --scope-filter argument. This was optional in previous versions but is now mandatory if input is a domain/URL (or file of domains/URLs) to prevent crawling sites that are not in scope, and also prevent misleading results. The value should be a valid file of domains, or a single domain. No schema should be included and wildacard is optional, e.g. example1.com, sub.example2.com, example3.*",
+                    "red",
+                )
+            )
+            sys.exit()
+            
         # Set headers to use if going to be making requests
         if urlPassed or stdFile:
             setHeaders()
@@ -2520,9 +2775,9 @@ def setHeaders():
                 )
 
 
-# Get all words from path and if they do not contain file extension add them to the param_list
+# Get all words from path and if they do not contain file extension add them to the wordsFound list, and also paramsFound list if RESP_PARAM_PATHWORDS is true
 def getPathWords(url):
-    global paramsFound
+    global paramsFound, lstPathWords
     path = urlparse(url).path
     try:
         # Split the URL on /
@@ -2537,16 +2792,87 @@ def getPathWords(url):
             ):
                 # Only add the word if argument --ascii-only is False, or if its True and only contains ASCII characters
                 if not args.ascii_only or (args.ascii_only and word.strip().isascii()):
-                    paramsFound.add(word.strip())
+                    # If a wordlist is requested then add to a list of path words unless the -nwlpw option was passed
+                    if args.output_wordlist != "" and not args.no_wordlist_pathwords:
+                        lstPathWords.add(word.strip())
+                    # Add to the list of parameters if requested
+                    if RESP_PARAM_PATHWORDS:
+                        paramsFound.add(word.strip())
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR getPathWords 1: " + str(e), "red"))
 
+# A function that attempts to take a given English word, determine if its a plural or singular.
+# If a plural, then return a new word as singular. If a singular, then return a new word as plural.
+# IMPORTANT: This is prone to error as the english language has many exceptions to rules!
+def processPlural(originalWord):
+    try:
+        newWord = ""
+        word = originalWord.strip().lower()
+        
+        # Process Plurals and get a new word for singular
+        
+        # If word is over 30 characters long 
+        # OR contains numbers and is over 10 characters long
+        # OR ends in "ous"
+        # then there will not be a new word
+        if len(word) > 30 or (any(char.isdigit() for char in word) and len(word) > 10) or word[-4:] == "ous":
+            newWord = ""
+        # If word ends in "xes", "oes" or "sses" then remove the last "es" for the new word
+        elif word[-3:] in ["xes","oes"] or word[-4:] == "sses":
+            newWord = originalWord[:-2]
+        # If word ends in "ies"
+        elif word[-3:] == "ies":
+            # If there is 1 letter before "ies" then the new word will just end "ie"
+            if len(word) == 4:
+                if originalWord.isupper():
+                    newWord = originalWord[1]+"IE"
+                else:
+                    newWord = originalWord[1]+"ie"
+            else: # the new word will just have "ies" replaced with "y"
+                if originalWord.isupper():
+                    newWord = originalWord[:-3]+"Y"
+                else: 
+                    newWord = originalWord[:-3]+"y"
+        # If the word ends in "s" and isn't proceeded by "s" then the new word will have the last "s" removed
+        elif word[-1:] == "s" and word[-2:-1] != "s":
+            newWord = originalWord[:-1]
+            
+        # Process Singular and get a new word for plural
+        
+        # If word ends in "x","o" or "ss" then add "es" for the new word
+        elif word[-1:] in ["x","o"] or word[-2:] == "ss":
+            if originalWord.isupper():
+                newWord = originalWord+"ES"
+            else:
+                newWord = originalWord+"es"
+        # If word ends in "y" and isn't proceeded by a vowel, then replace "y" with "ies" for new word
+        elif word[-1:] == "y" and word[-2:-1] not in ["a","e","i","o","u"]:
+            if originalWord.isupper():
+                newWord = originalWord[:-1]+"IES"
+            else:
+                newWord = originalWord[:-1]+"ies"    
+        # If word ends in "o" and not prefixed by a vowel, then add "es" to get a new plural
+        elif word[-1:] == "o" and word[-2:-1] not in ["a","e","i","o","u"]:
+            if originalWord.isupper():
+                newWord = originalWord[:-1]+"ES"
+            else:
+                newWord = originalWord[:-1]+"es"    
+        # Else just add an "s" to get a new plural word
+        else: 
+            if originalWord.isupper():
+                newWord = originalWord+"S"
+            else:
+                newWord = originalWord+"s"
+        return newWord
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR processPlural 1: " + str(e), "red"))
 
 # Get XML and JSON responses, extract keys and add them to the paramsFound list
 # In addition it will extract name and id from <input> fields in HTML
 def getResponseParams(response):
-    global paramsFound, inScopePrefixDomains, burpFile, zapFile, dirPassed
+    global paramsFound, inScopePrefixDomains, burpFile, zapFile, dirPassed, wordsFound, lstStopWords
     try:
 
         if burpFile or zapFile:
@@ -2562,13 +2888,16 @@ def getResponseParams(response):
                 bodyHeaderDivide = len(response)
             header = response[:bodyHeaderDivide]
             body = response
+            wordListBody = body
         else:
             if dirPassed:
                 body = response
+                wordListBody = body
                 header = ""
 
             else:
                 body = str(response.headers) + "\r\n\r\n" + response.text
+                wordListBody = response.text
                 header = response.headers
 
         # Get MIME content type
@@ -2578,6 +2907,63 @@ def getResponseParams(response):
         except:
             pass
 
+        # Get words from the body of the page if a wordlist output was given
+        try:
+            if args.output_wordlist != "" and contentType.lower() in WORDS_CONTENT_TYPES:
+                # Parse html content 
+                allText = ""
+                soup = BeautifulSoup(wordListBody, "html.parser")
+                
+                # Get words from meta tag contents
+                for tag in soup.find_all("meta", content=True):
+                    if tag.get("property", None) in ["og:title","og:description"] or tag.get("name", None) in ["description","keywords","twitter:title","twitter:description"]:
+                        allText = allText + tag['content'] + ' '
+
+                # Get words from any "alt" attribute of images if required
+                if not args.no_wordlist_imgalt:
+                    for img in soup.find_all('img', alt=True):
+                        allText = allText + img['alt'] + ' '
+                
+                # Get words from any comments if required
+                if not args.no_wordlist_comments:
+                    for comment in soup.findAll(text=lambda text:isinstance(text, Comment)):
+                        allText = allText + comment + ' '
+                    
+                # Remove tags we don't want content from
+                for data in soup(['style', 'script', 'link']): 
+                    data.decompose()
+                    
+                # Get words from the body text
+                allText = allText + " ".join(soup.stripped_strings)
+                
+                # Build list of potential words over 3 characters long
+                potentialWords = re.findall(r"[\w']{3,}", allText)
+
+                # Process all words found
+                for word in potentialWords:
+                     # If -nwld argument was passed, only proceed with word if it has no digits
+                    if not (args.no_wordlist_digits and any(char.isdigit() for char in word)):
+                        if re.search('[a-zA-Z]', word):
+                            # strip apostrophes
+                            word = word.replace("'", "")
+                            # add the word to the list if not a stop word and is not above the max length
+                            if word.lower() not in lstStopWords and (args.wordlist_maxlen == 0 or len(word) <= args.wordlist_maxlen):
+                                wordsFound.add(word)
+                                wordsFound.add(word.lower())
+                                # If --no-wordlist-plural option wasn't passed, check if there is a singular/plural word to add
+                                if not args.no_wordlist_plurals:
+                                    newWord = processPlural(word)
+                                    if newWord != "" and len(newWord) > 3 and newWord.lower() not in lstStopWords:
+                                        wordsFound.add(newWord)
+                                        wordsFound.add(newWord.lower())
+                                        # If the original word was uppercase and didn't end in "S" but the new one does, also add the original word with a lower case "s"
+                                        if word.isupper() and word[-1:] != 'S' and newWord == word + 'S':
+                                            wordsFound.add(word + 's')
+        except Exception as e:
+            if vverbose():
+                writerr(colored("ERROR getResponseParams 9: " + str(e), "red"))
+                                     
+            
         # Get regardless of the content type
         # Javascript variable could be in the html, script and even JSON response within a .js.map file
         if RESP_PARAM_JSVARS:
@@ -2733,6 +3119,23 @@ def argcheckPercent(value):
         )
     return ivalue
 
+# For validating -swf / --stopwords-file argument
+def argcheckStopwordsFile(filename):
+    global extraStopWords
+    try:
+        f = open(filename, "r")
+        data = f.read()
+        extraStopWords = data.strip().replace("\r\n",",").replace("\n",",").replace("'","").replace(" ",",")
+    except FileNotFoundError:
+        raise argparse.ArgumentTypeError(
+            "A valid file name must be provided."
+        )
+    finally:
+        try:
+            f.close()
+        except:
+            pass
+    return filename
 
 # Get width of the progress bar based on the width of the terminal
 def getProgressBarLength():
@@ -2793,6 +3196,13 @@ if __name__ == "__main__":
         default="parameters.txt",
     )
     parser.add_argument(
+        "-owl",
+        "--output-wordlist",
+        action="store",
+        help='The file to save the target specific Wordlist output to, including path if necessary (default: No wordlist output). If set to "cli" then output is only written to STDOUT (but not piped to another program). If the file already exist it will just be appended to (and de-duplicated) unless option -ow is passed.',
+        default="",
+    )
+    parser.add_argument(
         "-ow",
         "--output-overwrite",
         action="store_true",
@@ -2815,7 +3225,7 @@ if __name__ == "__main__":
         "-sf",
         "--scope-filter",
         action="store",
-        help="Will filter output links to only include them if the domain of the link is in the scope specified. If the passed value is a valid file name, that file will be used, otherwise the string literal will be used.",
+        help="Will filter output links to only include them if the domain of the link is in the scope specified. If the passed value is a valid file name, that file will be used, otherwise the string literal will be used. This argument is now mandatory if input is a domain/URL (or file of domains/URLs) to prevent crawling sites that are not in scope and also preventing misleading results.",
         metavar="<domain/file>",
     )
     parser.add_argument(
@@ -2947,7 +3357,8 @@ if __name__ == "__main__":
         metavar="<integer>",
     )
     parser.add_argument(
-        "-replay-proxy",
+        "-rp",
+        "--replay-proxy",
         action="store",
         help="For active link finding with URL (or file of URLs), replay the requests through this proxy.",
         default="",
@@ -2971,6 +3382,58 @@ if __name__ == "__main__":
         action="store",
         help="Path to the YML config file. If not passed, it looks for file 'config.yml' in the same directory as runtime file 'xnLinkFinder.py'.",
     )
+    parser.add_argument(
+        "-nwlpl",
+        "--no-wordlist-plurals",
+        action="store_true",
+        help="When words are found for a target specific wordlist, by default new words are added if there is a singular word from a plural, and vice versa. If this argument is used, this process is not done.",
+    )
+    parser.add_argument(
+        "-nwlpw",
+        "--no-wordlist-pathwords",
+        action="store_true",
+        help="By default, any path words found in the links will be processed for the target specific wordlist. If this argument is used, they will not be processed.",
+    )
+    parser.add_argument(
+        "-nwlpm",
+        "--no-wordlist-parameters",
+        action="store_true",
+        help="By default, any parameters found in the links will be processed for the target specific wordlist. If this argument is used, they will not be processed.",
+    )
+    parser.add_argument(
+        "-nwlc",
+        "--no-wordlist-comments",
+        action="store_true",
+        help="By default, any comments in pages will be processed for the target specific wordlist. If this argument is used, they will not be processed.",
+    )
+    parser.add_argument(
+        "-nwlia",
+        "--no-wordlist-imgalt",
+        action="store_true",
+        help="By default, any image 'alt' attributes will be processed for the target specific wordlist. If this argument is used, they will not be processed.",
+    )
+    parser.add_argument(
+        "-nwld",
+        "--no-wordlist-digits",
+        action="store_true",
+        help="Exclude any words from the target specific wordlist with numerical digits in.",
+    )
+    parser.add_argument(
+        "-wlml",
+        "--wordlist-maxlen",
+        action="store",
+        help="The maximum length of words to add to the target specific wordlist (excluding plurals).",
+        type=int,
+        default=0,
+    )
+    parser.add_argument(
+        "-swf",
+        "--stopwords-file",
+        action="store",
+        help='A file of additional Stop Words (in addition to "stopWords" in the YML Config file) used to exclude words from the target specific wordlist. Stop Words are used in Natural Language Processing and different lists can be found in different libraries. You may want to add words in different languages, depending on your target.',
+        type=argcheckStopwordsFile
+    )
+    parser.add_argument("-nb", "--no-banner", action="store_true", help="Hides the tool banner.")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     parser.add_argument(
         "-vv", "--vverbose", action="store_true", help="Increased verbose output"
@@ -2993,8 +3456,10 @@ if __name__ == "__main__":
                 )
             )
             sys.exit()
-
-    showBanner()
+            
+    # Show banner unless requested to hide
+    if not args.no_banner:
+        showBanner()
 
     # Get the config settings from the config.yml file
     getConfig()

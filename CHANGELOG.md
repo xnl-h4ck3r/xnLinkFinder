@@ -1,5 +1,27 @@
 ## Changelog
 
+- v2.7
+
+  - New
+
+    - Added argument `-owl`/`--output-wordlist` to specify output file name for a target specific wordlist to use for fuzzing.
+    - Added `wordsContentTypes` to the YML config file to specify which response content types will be searched for words to go in the target specific wordlist. Also added `DEFAULT_WORDS_CONTENT_TYPES` which is used if the config value isn't found.
+    - Added `stopWords` to the YML config file to specify words that are excluded from the target specific wordlist. This list is initially made up of English determiners, coordinating conjuctions and prepositions, plus a list of stop words from Scikit-Learn, a python machine learning library. Also added `DEFAULT_STOP_WORDS` which is used if the config value isn't found.
+    - Added argument `-swf`/`--stopwords-file`. A file of additional Stop Words (in addition to `stopWords` in the YML Config file) used to exclude words from the target specific wordlist. Stop Words are used in Natural Language Processing and different lists can be found in different libraries. You may want to add words in different languages, depending on your target.
+    - Added argument `-nwlpl`/`--no-wordlist-plurals`. When words are found for a target specific wordlist, by default new words are added if there is a singular word from a plural, and vice versa. If this argument is used, this process is not done.
+    - Added argument `-nwlpw`/`--no-wordlist-pathwords`. By default, any path words found in the links will be processed for the target specific wordlist. If this argument is used, they will not be processed.
+    - Added argument `-nwlpm`/`--no-wordlist-parameters`. By default, any parameters found in the links will be processed for the target specific wordlist. If this argument is used, they will not be processed.
+    - Added argument `-nwlc`/`--no-wordlist-comments`. By default, any comments in pages will be processed for the target specific wordlist. If this argument is used, they will not be processed.
+    - Added argument `-nwlia`/`--no-wordlist-imgalt`. By default, any image 'alt' attributes will be processed for the target specific wordlist. If this argument is used, they will not be processed.
+    - Added argument `-nwld`/`--no-wordlist-digits`. Exclude any words from the target specific wordlist with numerical digits in.
+    - Added argument `-wlml`/`--wordlist-maxlen`. The maximum length of words to add to the target specific wordlist (excluding plurals).
+    - Added Beautiful Soup 4 to the `setup.py` install list. This is needed to parse the responses for words to go in the target specific wordlist.
+    - Added argument `-nb`/`--no-banner` to hide the tools banner.
+
+  - Changed
+    - Made `-replay-proxy` argument either `-rp` or `--replay-proxy` (because I was always typing it wrong!)
+    - Make the `-sf`/`--scope-filter` argument mandatory if input is a domain/URL, or file of domains/URLS. This was optional in previous versions but is now mandatory to prevent crawling sites that are not in scope and also preventing misleading results.
+
 - v2.6
 
   - New
