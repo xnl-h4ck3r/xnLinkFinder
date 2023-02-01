@@ -196,7 +196,7 @@ UA_GAMECONSOLE = [
     "Mozilla/5.0 (Nintendo 3DS; U; ; en) Version/1.7412.EU",
 ]
 
-DEFAULT_WORDS_CONTENT_TYPES = "text/html,application/xml,application/json,text/plain"
+DEFAULT_WORDS_CONTENT_TYPES = "text/html,application/xml,application/json,text/plain,application/xhtml+xml,application/ld+json,text/xml"
 
 # Default english "stop word" list
 DEFAULT_STOP_WORDS = "a,aboard,about,above,across,after,afterwards,again,against,all,almost,alone,along,already,also,although,always,am,amid,among,amongst,amount,an,and,another,any,anyhow,anyone,anything,anyway,anywhere,are,around,as,at,back,be,became,because,become,becomes,becoming,been,before,beforehand,behind,being,below,beneath,beside,besides,between,beyond,both,bottom,but,by,call,can,cannot,cant,con,concerning,considering,could,couldnt,cry,de,describe,despite,do,done,down,due,during,each,eg,eight,either,eleven,else,elsewhere,empty,enough,etc,even,ever,every,everyone,everything,everywhere,except,few,fifteen,fifty,fill,find,fire,first,five,for,former,formerly,forty,found,four,from,full,further,get,give,go,had,has,hasnt,have,he,hence,her,here,hereafter,hereby,herein,hereupon,hers,herself,him,himself,his,how,however,hundred,i,ie,if,in,inc,indeed,inside,interest,into,is,it,its,itself,keep,last,latter,latterly,least,less,like,ltd,made,many,may,me,meanwhile,might,mill,mine,more,moreover,most,mostly,move,much,must,my,myself,name,namely,near,neither,never,nevertheless,next,nine,no,nobody,none,noone,nor,not,nothing,now,nowhere,of,off,often,on,once,one,only,onto,or,other,others,otherwise,our,ours,ourselves,out,outside,over,own,part,past,per,perhaps,please,put,rather,re,regarding,round,same,see,seem,seemed,seeming,seems,serious,several,she,should,show,side,since,sincere,six,sixty,so,some,somehow,someone,something,sometime,sometimes,somewhere,still,such,take,ten,than,that,the,their,them,themselves,then,thence,there,thereafter,thereby,therefore,therein,thereupon,these,they,thick,thin,third,this,those,though,three,through,throughout,thru,thus,to,together,too,top,toward,towards,twelve,twenty,two,un,under,underneath,until,unto,up,upon,us,very,via,want,was,we,well,went,were,weve,what,whatever,when,whence,whenever,where,whereafter,whereas,whereby,wherein,whereupon,wherever,whether,which,while,whilst,whither,who,whoever,whole,whom,whose,why,will,with,within,without,would,yet,you,youll,your,youre,yours,yourself,yourselves,youve"
@@ -1226,13 +1226,15 @@ def addItemsToWordlist(inputList):
                         if args.wordlist_maxlen == 0 or len(word) <= args.wordlist_maxlen:
                             wordsFound.add(word)
                             wordsFound.add(word.lower())
-                            newWord = processPlural(word)
-                            if newWord != "" and len(newWord) > 3 and newWord.lower() not in lstStopWords:
-                                wordsFound.add(newWord)
-                                wordsFound.add(newWord.lower())
-                                # If the original word was uppercase and didn't end in "S" but the new one does, also add the original word with a lower case "s"
-                                if word.isupper() and word[-1:] != 'S' and newWord == word + 'S':
-                                    wordsFound.add(word + 's')
+                             # If --no-wordlist-plural option wasn't passed, check if there is a singular/plural word to add
+                            if not args.no_wordlist_plurals:
+                                newWord = processPlural(word)
+                                if newWord != "" and len(newWord) > 3 and newWord.lower() not in lstStopWords:
+                                    wordsFound.add(newWord)
+                                    wordsFound.add(newWord.lower())
+                                    # If the original word was uppercase and didn't end in "S" but the new one does, also add the original word with a lower case "s"
+                                    if word.isupper() and word[-1:] != 'S' and newWord == word + 'S':
+                                        wordsFound.add(word + 's')
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR addItemsToWordlist 1: " + str(e), "red"))
@@ -1262,7 +1264,7 @@ def processWordsOutput():
             try:
                 existingWords = open(os.path.expanduser(args.output_wordlist), "r")
                 for word in existingWords.readlines():
-                    existingWords.add(word.strip())
+                    wordsFound.add(word.strip())
                 appendedWords = True
             except:
                 pass
@@ -2130,7 +2132,10 @@ def processDirectory():
                             response = file.read()
 
                         try:
+                            # Get potential links
                             getResponseLinks(response, request)
+                            # Get potential parameters from the response
+                            getResponseParams(response)
                             request = ""
                             response = ""
                         except Exception as e:
@@ -2162,10 +2167,13 @@ def processZapMessage(zapMessage, responseCount):
         try:
             request = zapMessage.split("\n\n", 1)[0].strip().split(" ")[1].strip()
         except Exception as e:
-            if vverbose():
-                writerr(colored("ERROR processZapMessage 2: " + str(e), "red"))
+            request = ''
         try:
-            response = re.split(r"\nHTTP\/[0-9]", zapMessage)[1]
+            # If the request wasn't found then set the response as the whole Zap message
+            if request == '':
+                response = zapMessage
+            else:
+                response = re.split(r"\nHTTP\/[0-9]", zapMessage)[1]
         except Exception as e:
             response = ''
                     
@@ -2202,7 +2210,10 @@ def processZapMessage(zapMessage, responseCount):
 
         # Get the links
         getResponseLinks(response, request)
-
+        
+        # Get potential parameters from the response
+        getResponseParams(response)
+                    
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR processZapMessage 1: " + str(e), "red"))
@@ -2442,7 +2453,10 @@ def processBurpFile():
             ):
                 try:
                     elem.clear()
+                    # Get potential links
                     getResponseLinks(response, request)
+                    # Get potential parameters from the response
+                    getResponseParams(response)
                     request = ""
                     response = ""
                 except Exception as e:
@@ -2553,7 +2567,7 @@ def processEachInput(input):
             stdFile = True
 
         # If no scope filter was not passed and the input is a domain/URL (or file of domains/URLS), raise an error. This is now a mandatory field for this input (it wasn't in previous versions).
-        if args.scope_filter is None and (urlPassed or stdFile or stdinFile):
+        if args.scope_filter is None and not waymoreMode and (urlPassed or stdFile or stdinFile):
             writerr(
                 colored(
                     "You need to provide a Scope Filter with the -sf / --scope-filter argument. This was optional in previous versions but is now mandatory if input is a domain/URL (or file of domains/URLs) to prevent crawling sites that are not in scope, and also prevent misleading results. The value should be a valid file of domains, or a single domain. No schema should be included and wildacard is optional, e.g. example1.com, sub.example2.com, example3.*",
@@ -2778,26 +2792,32 @@ def setHeaders():
 # Get all words from path and if they do not contain file extension add them to the wordsFound list, and also paramsFound list if RESP_PARAM_PATHWORDS is true
 def getPathWords(url):
     global paramsFound, lstPathWords
-    path = urlparse(url).path
     try:
-        # Split the URL on /
-        words = re.compile(r"[\:/?=&#]+", re.UNICODE).split(path)
-        # Add the word to the parameter list, unless it has a . in it or is a number, or it is a single character that isn't a letter
-        for word in words:
-            if (
-                word != ""
-                and ("." not in word)
-                and (not word.isnumeric())
-                and not (len(word) == 1 and not word.isalpha())
-            ):
-                # Only add the word if argument --ascii-only is False, or if its True and only contains ASCII characters
-                if not args.ascii_only or (args.ascii_only and word.strip().isascii()):
-                    # If a wordlist is requested then add to a list of path words unless the -nwlpw option was passed
-                    if args.output_wordlist != "" and not args.no_wordlist_pathwords:
-                        lstPathWords.add(word.strip())
-                    # Add to the list of parameters if requested
-                    if RESP_PARAM_PATHWORDS:
-                        paramsFound.add(word.strip())
+        # Get the path from the passed string. If it isn't a valid path then an error will be raised so ignore 
+        try:
+            path = urlparse(url).path
+        except:
+            path = ''
+        
+        if path != '':    
+            # If found, split the path on /
+            words = re.compile(r"[\:/?=&#]+", re.UNICODE).split(path)
+            # Add the word to the parameter list, unless it has a . in it or is a number, or it is a single character that isn't a letter
+            for word in words:
+                if (
+                    word != ""
+                    and ("." not in word)
+                    and (not word.isnumeric())
+                    and not (len(word) == 1 and not word.isalpha())
+                ):
+                    # Only add the word if argument --ascii-only is False, or if its True and only contains ASCII characters
+                    if not args.ascii_only or (args.ascii_only and word.strip().isascii()):
+                        # If a wordlist is requested then add to a list of path words unless the -nwlpw option was passed
+                        if args.output_wordlist != "" and not args.no_wordlist_pathwords:
+                            lstPathWords.add(word.strip())
+                        # Add to the list of parameters if requested
+                        if RESP_PARAM_PATHWORDS:
+                            paramsFound.add(word.strip())
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR getPathWords 1: " + str(e), "red"))

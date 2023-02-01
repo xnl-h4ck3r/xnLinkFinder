@@ -1,6 +1,6 @@
 <center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/blob/main/xnLinkFinder/images/title.png"></center>
 
-## About - v2.7
+## About - v3.0
 
 This is a tool used to discover endpoints (and potential parameters) for a given target. It can find them by:
 
@@ -58,7 +58,7 @@ $ sudo python setup.py install
 | -mtl        | --max-time-limit         | The maximum time limit (in minutes) to run before stopping (default: 0). If 0 is passed, there is no limit.                                                                                                                                                                                                                                                                                |
 |             | --config                 | Path to the YML config file. If not passed, it looks for file `config.yml` in the same directory as runtime file `xnLinkFinder.py`                                                                                                                                                                                                                                                         |
 | -nwlpl      | --no-wordlist-plurals    | When words are found for a target specific wordlist, by default new words are added if there is a singular word from a plural, and vice versa. If this argument is used, this process is not done.                                                                                                                                                                                         |
-| -nwlpw      | --no-wordlist-pathwords  | By default, any path words found in the links will be processed for the target specific wordlist. If this argument is used, they will not be processed.                                                                                                                                                                                                                                    |
+| -nwlpw      | --no-wordlist-pathwords  | By default, any path words found in the links will be processed for the target specific wordlist. If this argument is used, they will not be processed. **NOTE: if the YAML config value of `respParamPathWords` is `True` then this argument will not have any effect unless `-nwlpm`/`--no-wordlist-parameters` is also passed.**                                                        |
 | -nwlpm      | --no-wordlist-parameters | By default, any parameters found in the links will be processed for the target specific wordlist. If this argument is used, they will not be processed.                                                                                                                                                                                                                                    |
 | -nwlc       | --no-wordlist-comments   | By default, any comments in pages will be processed for the target specific wordlist. If this argument is used, they will not be processed.                                                                                                                                                                                                                                                |
 | -nwlia      | --no-wordlist-imgalt     | By default, any image 'alt' attributes will be processed for the target specific wordlist. If this argument is used, they will not be processed.                                                                                                                                                                                                                                           |
@@ -160,13 +160,13 @@ NOTE: xnLinkFinder makes the assumption that if the first line of the file passe
 
 ### Find Links from a Waymore results directory
 
-The [waymore](https://github.com/xnl-h4ck3r/waymore) tool can be used to get URLs from various third party APIs, and also download archived responses from archive.org (Wayback Machine). Passing a waymore results directory to xnLinKFinder will search the contents of archived responses, and also request URLs from `waymore.txt` and also the archived URLs from `index.txt` and get more links from those responses.
+The [waymore](https://github.com/xnl-h4ck3r/waymore) tool can be used to get URLs from various third party APIs, and also download archived responses from archive.org (Wayback Machine). Passing a waymore results directory to `xnLinKFinder` will search the contents of archived responses, and also request URLs from `waymore.txt` and also the archived URLs from `index.txt` and get more links from those responses.
 
 ```
 python3 xnLinkFinder.py -i ~/Tools/waymore/results/target.com
 ```
 
-NOTE: It is passed as a normal directory, but xnLinkFinder will determine it is a waymore results directory and process respectively.
+NOTE: It is passed as a normal directory, but xnLinkFinder will determine it is a waymore results directory and process respectively. This relies on the default naming convention of the URLs file being `waymore.txt` and that file being in the same directory as the archived files (which it is by default).
 
 ### Piping to other Tools
 

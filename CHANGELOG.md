@@ -1,5 +1,19 @@
 ## Changelog
 
+- v3.0
+
+  - Changed
+
+    - Not all words were added to the custom wordlist file for input of Burp, Zap and Directory of files. This has been fixed.
+    - Not all parameters were added to the output file for input of Burp, Zap and Directory of files. This has been fixed.
+    - Fix a bug in `addItemsToWordlist` where the argument `-nwlpl`/`--no-wordlist-plurals` was not being checked.
+    - Fix a bug where existing words in the custom wordlist file were not being preserved if the argument `-ow`/`--overwrite` isn't passed.
+    - Change the `DEFAULT_WORDS_CONTENT_TYPES` constant and YML config `wordsContentTypes` to include the content types `application/xhtml+xml`,`application/ld+json` and `text/xml`.
+    - Change description for `-nwlpw`/`--no-wordlist-pathwords` to explain that if the YAML config value if `respParamPathWords` is `True` then this argument will not have any effect unless `-nwlpm`/`--no-wordlist-parameters` is also passed.
+    - Prevent error `ERROR: addlink 3 Invalid IPv6 URL` when invalid paths are found and checked for words.
+    - If a waymore directory is passed then don't show the message requesting `-sf` argument should be used.
+    - Change `processZapMessage` to set the response to the full Zap message if the request wasn't found. This deals with different Zap file formats.
+
 - v2.7
 
   - New
