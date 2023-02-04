@@ -1,5 +1,11 @@
 ## Changelog
 
+- v3.1
+
+  - Changed
+
+    - Fixed a bug with using a file for the `-sp`/`--scope-prefix` argument. Before the fix, it would ignore the input.
+
 - v3.0
 
   - Changed

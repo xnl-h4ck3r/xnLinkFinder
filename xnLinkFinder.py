@@ -619,7 +619,7 @@ def getResponseLinks(response, url):
                                     processLink = True
                                     for domain in inScopePrefixDomains:
                                         # Get the domain without a schema
-                                        domainTest = args.input
+                                        domainTest = link
                                         if domainTest.find("//") >= 0:
                                             domainTest = domainTest.split("//")[1]
                                         # Get the prefix without a schema
@@ -2699,7 +2699,7 @@ def processInput():
                     break
                 count = count + 1
 
-            # If multiple lines passed, check if its a Burp or Xap file
+            # If multiple lines passed, check if its a Burp or Zap file
             if stdinMultiple:
 
                 # Check if the stdin passed is a Burp file
