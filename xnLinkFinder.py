@@ -14,6 +14,7 @@ stdinMultiple = False
 stdinFile = []
 inputFile = None
 linksFound = set()
+failedPrefixLinks = set()
 linksVisited = set()
 paramsFound = set()
 wordsFound = set()
@@ -414,7 +415,7 @@ def includeContentType(header):
 
 
 # Add a link to the list and potential parameters from the link if required
-def addLink(link, url):
+def addLink(link, url, prefixed=False):
 
     link = link.replace("&amp;", "&")
     link = link.replace("\\x26", "&")
@@ -425,10 +426,12 @@ def addLink(link, url):
                 
     # Add the link to the list
     try:
+        linkDetail = link
         if args.origin:
-            linksFound.add(link + "  [" + url + "]")
-        else:
-            linksFound.add(link)
+            linkDetail = linkDetail + "  [" + url + "]"
+        if prefixed:
+            linkDetail = linkDetail + " (PREFIXED)"
+        linksFound.add(linkDetail)    
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR addLink 1: " + str(e), "red"))
@@ -643,7 +646,7 @@ def getResponseLinks(response, url):
                                             count += 1
                                             prefix = "{}".format(domain.strip())
                                             if prefix != "":
-                                                addLink(prefix + link, responseUrl)
+                                                addLink(prefix + link, responseUrl, True)
 
                                 else:  # else just prefix wit the -sp value
                                     prefix = args.scope_prefix
@@ -667,7 +670,7 @@ def getResponseLinks(response, url):
                                             link = "/" + link
                                         if not prefix.lower().startswith("http"):
                                             prefix = "http://" + prefix
-                                        addLink(prefix + link, responseUrl)
+                                        addLink(prefix + link, responseUrl, True)
 
                             else:
                                 addLink(link, responseUrl)
@@ -792,7 +795,7 @@ def shouldMakeRequest(url):
 
 def processUrl(url):
 
-    global burpFile, zapFile, totalRequests, skippedRequests, failedRequests, userAgent, requestHeaders, tooManyRequests, tooManyForbidden, tooManyTimeouts, tooManyConnectionErrors, stopProgram, waymoreMode, stopProgram
+    global burpFile, zapFile, totalRequests, skippedRequests, failedRequests, userAgent, requestHeaders, tooManyRequests, tooManyForbidden, tooManyTimeouts, tooManyConnectionErrors, stopProgram, waymoreMode, stopProgram, failedPrefixLinks
     
     # Choose a random user agent string to use from the current group
     userAgent = random.choice(userAgents[currentUAGroup])
@@ -809,6 +812,16 @@ def processUrl(url):
         pass
         
     try:
+        
+        # Check if the URL was prefixed and remove the tag
+        originalUrl = url
+        prefixed = False
+        failedPrefix = False
+        prefix = " (PREFIXED)"
+        if url.find(prefix) > 0:
+            prefixed = True
+            url = url.replace(prefix,"")
+            
         url = url.strip().rstrip("\n")
         
         # If the url has the origin at the end (.e.g [...]) then strip it off before processing
@@ -880,20 +893,17 @@ def processUrl(url):
                                     
                     if resp.status_code == 200:
                         if verbose():
-                            write(
-                                colored(
-                                    "Response " + str(resp.status_code) + ": " + url,
-                                    "green",
-                                )
-                            )
+                            msg = "Response " + str(resp.status_code) + ": " + url
+                            if prefixed: 
+                                msg = msg + prefix
+                            write(colored(msg,"green"))
                     else:
                         if verbose():
-                            write(
-                                colored(
-                                    "Response " + str(resp.status_code) + ": " + url,
-                                    "yellow",
-                                )
-                            )
+                            msg = "Response " + str(resp.status_code) + ": " + url
+                            if prefixed:
+                                msg = msg + prefix
+                            write(colored(msg,"yellow"))
+                            
                         # If argument -s429 was passed, keep a count of "429 Too Many Requests" and stop the program if > 95% of responses have status 429, but only if at least 10 requests have already been made
                         if args.s429 and resp.status_code == 429:
                             tooManyRequests = tooManyRequests + 1
@@ -911,11 +921,16 @@ def processUrl(url):
                             except:
                                 pass
 
-                    getResponseLinks(resp, url)
-                    totalRequests = totalRequests + 1
+                    # If the -spkf wasn't passed, the response was 404, and the URL was prefixed, flag it as a failed link, else get links and parameters from the response
+                    if not args.scope_prefix_keep_failed and prefixed and resp.status_code == 404:
+                        failedPrefix = True
+                    else:
+                        # Get potential links from the response
+                        getResponseLinks(resp, url)
+                        totalRequests = totalRequests + 1
 
-                    # Get potential parameters from the response
-                    getResponseParams(resp)
+                        # Get potential parameters from the response
+                        getResponseParams(resp)
 
                 except requests.exceptions.ProxyError as pe:
                     writerr(
@@ -969,6 +984,7 @@ def processUrl(url):
                         writerr(colored("Too Many Redirect: " + url, "red"))
                 except requests.exceptions.RequestException as e:
                     failedRequests = failedRequests + 1
+                    if prefixed: failedPrefix = True
                     if args.scope_filter is None:
                         if verbose():
                             writerr(colored("Could not get a response for: " + url + " (Consider passing --scope-filter argument)","red"))
@@ -981,6 +997,10 @@ def processUrl(url):
                 except Exception as e:
                     if vverbose():
                         writerr(colored("ERROR processUrl 2: " + str(e), "red"))
+                        
+                # If -spkf wasn't passed and the link was a prefixed one and it failed, add it to the failed list
+                if not args.scope_prefix_keep_failed and prefixed and failedPrefix:
+                    failedPrefixLinks.add(originalUrl)
         else:
             skippedRequests = skippedRequests + 1
     except Exception as e:
@@ -1013,7 +1033,7 @@ def processStats():
 
 # Process the output of all found links
 def processLinkOutput():
-    global totalRequests, skippedRequests, linksFound
+    global totalRequests, skippedRequests, linksFound, failedPrefixLinks
     try:
         linkCount = len(linksFound)
         if args.origin:
@@ -1075,7 +1095,9 @@ def processLinkOutput():
         # If the -ra --regex-after was passed then only output if it matches
         outputCount = 0
         for link in linksFound:
-
+            # Remove the prefix tag if it has one
+            if not args.prefixed:
+                link = link.replace(" (PREFIXED)","")
             if args.output == "cli":
                 if args.regex_after is None or re.search(args.regex_after, link):
                     write(link, True)
@@ -1106,6 +1128,7 @@ def processLinkOutput():
 
         # Clean up
         linksFound = None
+        failedPrefixLinks = None
 
         # If the output was a file, close the file
         if args.output != "cli":
@@ -1589,7 +1612,7 @@ def printProgressBar(
 
 
 def processDepth():
-    global stopProgram
+    global stopProgram, failedPrefixLinks
     try:
         # If the -d (--depth) argument was passed then do another search
         # This is only used for URL, std file of URLs, or multiple URLs passed in STDIN
@@ -1612,6 +1635,14 @@ def processDepth():
                 p.map(processUrl, oldList)
                 p.close()
                 p.join()
+
+                # If -spkf wasn't passed and there are any failed prefixed links, remove them from linksFound
+                if not args.scope_prefix_keep_failed:
+                    for fail in failedPrefixLinks:
+                        try:
+                            linksFound.remove(fail)
+                        except:
+                            pass
 
                 # Get the current number of Links found this time
                 linksFoundThisTime = len(linksFound)
@@ -1712,6 +1743,13 @@ def showOptions():
                 colored("-spo: " + str(args.scope_prefix_original), "magenta")
                 + colored(
                     " Whether the original domain starting with / will be output in addition to the prefixes.",
+                    "white",
+                )
+            )
+            write(
+                colored("-spkf: " + str(args.scope_prefix_keep_failed), "magenta")
+                + colored(
+                    " Whether prefixed links that return a 404 will be saved in the output.",
                     "white",
                 )
             )
@@ -1821,6 +1859,12 @@ def showOptions():
             colored("-orig: " + str(args.origin), "magenta")
             + colored(
                 " Whether the origin of a link is displayed in the output.", "white"
+            )
+        )
+        write(
+            colored("-prefixed: " + str(args.prefixed), "magenta")
+            + colored(
+                " Whether the link will be flagged as a prefixed URL in the output with '(PREFIXED)'.", "white"
             )
         )
         if not burpFile and not zapFile and not dirPassed:
@@ -3242,6 +3286,12 @@ if __name__ == "__main__":
         help="If argument -sp is passed, then this determines whether the original link starting with / is also included in the output (default: false).",
     )
     parser.add_argument(
+        "-spkf",
+        "--scope-prefix-keep-failed",
+        action="store_true",
+        help="If argument -spkf is passed, then this determines whether a prefixed link will be kept in the output if it was a 404 or a RequestException occurred (default: false).",
+    )
+    parser.add_argument(
         "-sf",
         "--scope-filter",
         action="store",
@@ -3297,6 +3347,11 @@ if __name__ == "__main__":
         "--origin",
         action="store_true",
         help="Whether you want the origin of the link to be in the output. Displayed as LINK-URL [ORIGIN-URL] in the output (default: false)",
+    )
+    parser.add_argument(
+        "-prefixed",
+        action="store_true",
+        help="Whether you want to see which links were prefixed in the output. Displays (PREFIXED) after link and origin in the output (default: false)",
     )
     default_timeout = 10
     parser.add_argument(

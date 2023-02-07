@@ -1,5 +1,13 @@
 ## Changelog
 
+- v3.2
+
+  - New
+
+    - Added argument `-spkf` / `--scope-prefix-keep-failed`. By default, if `-sp` was used and a prefixed link returns a 404 (or RequestException), then it will not be included in the output or searched for further links. Passing this argument returns to previous behaviour whee the link is output.
+    - Added argument `-prefixed` that can be passed if you want to see which links were prefixed in the output (if the `-sp` argument has been used). if passed, this displays `(PREFIXED)` after link and origin in the output.
+    - When option `-vv` is used and the response of each URL is shown, it will also include the text `(PREFIXED)` at the end if the URL was create by prefixing the found link with a domain passed with `-sp`
+
 - v3.1
 
   - Changed
