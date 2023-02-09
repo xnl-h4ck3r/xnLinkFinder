@@ -1,5 +1,11 @@
 ## Changelog
 
+- v3.3
+
+  - Changed
+
+    - If the output filename value passed to argument `-o`, `-op` or `-owl` has a "/" in it, remove the contents after the last one to just get the path and create the directories if necessary.
+
 - v3.2
 
   - New

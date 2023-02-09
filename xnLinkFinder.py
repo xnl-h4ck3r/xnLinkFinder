@@ -1086,6 +1086,15 @@ def processLinkOutput():
         # If -o (--output) argument was not "cli" then open the output file
         if args.output != "cli":
             try:
+                # If the filename has any "/" in it, remove the contents after the last one to just get the path and create the directories if necessary
+                try:
+                    f = os.path.basename(args.output)
+                    p = args.output[:-(len(f))-1]
+                    if p != "" and not os.path.exists(p):
+                        os.makedirs(p)
+                except Exception as e:
+                    if verbose():
+                        writerr(colored("ERROR processLinkOutput 5: " + str(e), "red"))
                 outFile = open(os.path.expanduser(args.output), "w")
             except Exception as e:
                 if vverbose():
@@ -1177,6 +1186,15 @@ def processParamOutput():
         # If -op (--output_params) argument was not "cli" then open the output file
         if args.output_params != "cli":
             try:
+                # If the filename has any "/" in it, remove the contents after the last one to just get the path and create the directories if necessary
+                try:
+                    f = os.path.basename(args.output_params)
+                    p = args.output_params[:-(len(f))-1]
+                    if p != ""''"" and not os.path.exists(p):
+                        os.makedirs(p)
+                except Exception as e:
+                    if verbose():
+                        writerr(colored("ERROR processParamOutput 5: " + str(e), "red"))
                 outFile = open(os.path.expanduser(args.output_params), "w")
             except Exception as e:
                 if vverbose():
@@ -1295,6 +1313,15 @@ def processWordsOutput():
         # If -owl (--output_wordlist) argument was not "cli" then open the output file
         if args.output_wordlist != "cli":
             try:
+                # If the filename has any "/" in it, remove the contents after the last one to just get the path and create the directories if necessary
+                try:
+                    f = os.path.basename(args.output_wordlist)
+                    p = args.output_wordlist[:-(len(f))-1]
+                    if p != "" and not os.path.exists(p):
+                        os.makedirs(p)
+                except Exception as e:
+                    if verbose():
+                        writerr(colored("ERROR processWordsOutput 5: " + str(e), "red"))
                 outFile = open(os.path.expanduser(args.output_wordlist), "w")
             except Exception as e:
                 if vverbose():
