@@ -66,6 +66,19 @@ from tempfile import NamedTemporaryFile
 from datetime import datetime
 from bs4 import BeautifulSoup, Comment
 
+# Try to import lxml to use with beautifulsoup4 instead of the default parser
+try:
+    lxmlInstalled = True
+    import lxml
+except:
+    lxmlInstalled = False
+# Try to import html5lib to use with beautifulsoup4 instead of the default parser
+try:
+    html5libInstalled = True
+    import html5lib
+except:
+    html5libInstalled = False
+
 startDateTime = datetime.now()
 
 # Try to import psutil to show memory usage
@@ -200,7 +213,7 @@ UA_GAMECONSOLE = [
 DEFAULT_WORDS_CONTENT_TYPES = "text/html,application/xml,application/json,text/plain,application/xhtml+xml,application/ld+json,text/xml"
 
 # Default english "stop word" list
-DEFAULT_STOP_WORDS = "a,aboard,about,above,across,after,afterwards,again,against,all,almost,alone,along,already,also,although,always,am,amid,among,amongst,amount,an,and,another,any,anyhow,anyone,anything,anyway,anywhere,are,around,as,at,back,be,became,because,become,becomes,becoming,been,before,beforehand,behind,being,below,beneath,beside,besides,between,beyond,both,bottom,but,by,call,can,cannot,cant,con,concerning,considering,could,couldnt,cry,de,describe,despite,do,done,down,due,during,each,eg,eight,either,eleven,else,elsewhere,empty,enough,etc,even,ever,every,everyone,everything,everywhere,except,few,fifteen,fifty,fill,find,fire,first,five,for,former,formerly,forty,found,four,from,full,further,get,give,go,had,has,hasnt,have,he,hence,her,here,hereafter,hereby,herein,hereupon,hers,herself,him,himself,his,how,however,hundred,i,ie,if,in,inc,indeed,inside,interest,into,is,it,its,itself,keep,last,latter,latterly,least,less,like,ltd,made,many,may,me,meanwhile,might,mill,mine,more,moreover,most,mostly,move,much,must,my,myself,name,namely,near,neither,never,nevertheless,next,nine,no,nobody,none,noone,nor,not,nothing,now,nowhere,of,off,often,on,once,one,only,onto,or,other,others,otherwise,our,ours,ourselves,out,outside,over,own,part,past,per,perhaps,please,put,rather,re,regarding,round,same,see,seem,seemed,seeming,seems,serious,several,she,should,show,side,since,sincere,six,sixty,so,some,somehow,someone,something,sometime,sometimes,somewhere,still,such,take,ten,than,that,the,their,them,themselves,then,thence,there,thereafter,thereby,therefore,therein,thereupon,these,they,thick,thin,third,this,those,though,three,through,throughout,thru,thus,to,together,too,top,toward,towards,twelve,twenty,two,un,under,underneath,until,unto,up,upon,us,very,via,want,was,we,well,went,were,weve,what,whatever,when,whence,whenever,where,whereafter,whereas,whereby,wherein,whereupon,wherever,whether,which,while,whilst,whither,who,whoever,whole,whom,whose,why,will,with,within,without,would,yet,you,youll,your,youre,yours,yourself,yourselves,youve"
+DEFAULT_STOP_WORDS = "a,aboard,about,above,across,after,afterwards,again,against,all,almost,alone,along,already,also,although,always,am,amid,among,amongst,an,and,another,any,anyhow,anyone,anything,anyway,anywhere,are,around,as,at,back,be,became,because,become,becomes,becoming,been,before,beforehand,behind,being,below,beneath,beside,besides,between,beyond,both,bottom,but,by,can,cannot,cant,con,concerning,considering,could,couldnt,cry,de,describe,despite,do,done,down,due,during,each,eg,eight,either,eleven,else,elsewhere,empty,enough,etc,even,ever,every,everyone,everything,everywhere,except,few,fifteen,fifty,fill,find,fire,first,five,for,former,formerly,forty,found,four,from,full,further,get,give,go,had,has,hasnt,have,he,hence,her,here,hereafter,hereby,herein,hereupon,hers,herself,him,himself,his,how,however,hundred,i,ie,if,in,inc,indeed,inside,interest,into,is,it,its,itself,keep,last,latter,latterly,least,less,like,ltd,made,many,may,me,meanwhile,might,mill,mine,more,moreover,most,mostly,move,much,must,my,myself,name,namely,near,neither,never,nevertheless,next,nine,no,nobody,none,noone,nor,not,nothing,now,nowhere,of,off,often,on,once,one,only,onto,or,other,others,otherwise,our,ours,ourselves,out,outside,over,own,part,past,per,perhaps,please,put,rather,re,regarding,round,same,see,seem,seemed,seeming,seems,serious,several,she,should,show,side,since,sincere,six,sixty,so,some,somehow,someone,something,sometime,sometimes,somewhere,still,such,take,ten,than,that,the,their,them,themselves,then,thence,there,thereafter,thereby,therefore,therein,thereupon,these,they,thick,thin,third,this,those,though,three,through,throughout,thru,thus,to,together,too,top,toward,towards,twelve,twenty,two,un,under,underneath,until,unto,up,upon,us,very,via,want,was,we,well,went,were,weve,what,whatever,when,whence,whenever,where,whereafter,whereas,whereby,wherein,whereupon,wherever,whether,which,while,whilst,whither,whoever,whole,whom,whose,why,will,with,within,without,would,yet,you,youll,your,youre,yours,yourself,yourselves,youve"
 
 def write(text="", pipe=False):
     # Only send text to stdout if the tool isn't piped to pass output to something else,
@@ -3001,9 +3014,23 @@ def getResponseParams(response):
         # Get words from the body of the page if a wordlist output was given
         try:
             if args.output_wordlist != "" and contentType.lower() in WORDS_CONTENT_TYPES:
-                # Parse html content 
+                # Parse html content with beautifulsoup4. If lxml is installed, use that as the parser because its quickest.
+                # If lxml isn't installed then try html5lib because that's the next quickest, but use deafult as last resort
                 allText = ""
-                soup = BeautifulSoup(wordListBody, "html.parser")
+                try:
+                    if lxmlInstalled:
+                        if contentType.lower().find("xml") > 0:
+                            soup = BeautifulSoup(wordListBody, "xml")
+                        else:
+                            soup = BeautifulSoup(wordListBody, "lxml")
+                    else:
+                        if html5libInstalled:
+                            soup = BeautifulSoup(wordListBody, "html5lib")
+                        else:
+                            soup = BeautifulSoup(wordListBody, "html.parser")
+                except Exception as e:
+                    if vverbose():
+                        writerr(colored("ERROR getResponseParams 10: " + str(e), "red"))
                 
                 # Get words from meta tag contents
                 for tag in soup.find_all("meta", content=True):
@@ -3029,6 +3056,7 @@ def getResponseParams(response):
                 
                 # Build list of potential words over 3 characters long
                 potentialWords = re.findall(r"[\w']{3,}", allText)
+                potentialWords = set(potentialWords)
 
                 # Process all words found
                 for word in potentialWords:

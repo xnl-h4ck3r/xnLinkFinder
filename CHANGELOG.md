@@ -1,5 +1,14 @@
 ## Changelog
 
+- v3.4
+
+  - Changed
+
+    - Use `lxml` as the parser for `beautifulsoup4`. If that isn't installed, use `html5lib`. And if that isn't installed, use the standard `html.parser` which is the slowest.
+    - Removed a few words from YML config `stopWords` value, and the `DEFAULT_STOP_WORDS` constant.
+    - When getting potential words in `getResponseParams`, convert the list to a **set** so it contains no duplicates so we don't waste time processing words more than once
+    - Add `lxml` and `html5lib` to the install requirements in `setup.py`
+
 - v3.3
 
   - Changed
