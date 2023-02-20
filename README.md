@@ -1,6 +1,6 @@
 <center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/blob/main/xnLinkFinder/images/title.png"></center>
 
-## About - v3.4
+## About - v3.5
 
 This is a tool used to discover endpoints (and potential parameters) for a given target. It can find them by:
 
@@ -259,3 +259,5 @@ Good luck and good hunting!
 If you really love the tool (or any others), or they helped you find an awesome bounty, consider [BUYING ME A COFFEE!](https://ko-fi.com/xnlh4ck3r) ☕ (I could use the caffeine!)
 
 🤘 /XNL-h4ck3r
+
+<a href='https://ko-fi.com/B0B3CZKR5' target='_blank'><img height='36' style='border:0px;height:36px;' src='https://storage.ko-fi.com/cdn/kofi2.png?v=3' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a>

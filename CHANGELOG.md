@@ -1,5 +1,11 @@
 ## Changelog
 
+- v3.5
+
+  - Changed
+
+    - Small improvements based on the same changes made for GAP v2.0
+
 - v3.4
 
   - Changed

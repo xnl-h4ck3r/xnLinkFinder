@@ -307,7 +307,7 @@ def includeLink(link):
             linkWithoutQueryString = link.split("?")[0].lower()
             for exc in lstExclusions:
                 try:
-                    if linkWithoutQueryString.find(exc.lower()) >= 0:
+                    if str(linkWithoutQueryString.encode(encoding="ascii",errors="ignore")).find(exc.lower()) >= 0:
                         include = False
                 except Exception as e:
                     if vverbose():
@@ -537,7 +537,7 @@ def getResponseLinks(response, url):
                 not dirPassed and includeContentType(header)
             ):
                 reString = (
-                    r"(?:^|\"|'|\\n|\\r|\n|\r|\s)(((?:[a-zA-Z]{1,10}:\/\/|\/\/)([^\"'\/]{1,}\.[a-zA-Z]{2,}|localhost)[^\"'\n\s]{0,})|((?:\/|\.\.\/|\.\/)[^\"'><,;| *()(%%$^\/\\\[\]][^\"'><,;|()\s]{1,})|([a-zA-Z0-9_\-\/]{1,}\/[a-zA-Z0-9_\-\/]{1,}\.(?:[a-zA-Z]{1,4}"
+                    r"(?:^|\"|'|\\n|\\r|\n|\r|\s?)(((?:[a-zA-Z]{1,10}:\/\/|\/\/)([^\"'\/]{1,}\.[a-zA-Z]{2,}|localhost)[^\"'\n\s]{0,})|((?:\/|\.\.\/|\.\/)[^\"'><,;| *()(%%$^\/\\\[\]][^\"'><,;|()\s]{1,})|([a-zA-Z0-9_\-\/]{1,}\/[a-zA-Z0-9_\-\/]{1,}\.(?:[a-zA-Z]{1,4}"
                     + LINK_REGEX_NONSTANDARD_FILES
                     + ")(?:[\?|\/][^\"|']{0,}|))|([a-zA-Z0-9_\-]{1,}\.(?:"
                     + LINK_REGEX_FILES
@@ -552,6 +552,7 @@ def getResponseLinks(response, url):
                         link = link.strip("\"'\n\r( ")
                         link = link.replace("\\n", "")
                         link = link.replace("\\r", "")
+                        link = link.replace("\\.",".")
 
                         try:
                             first = link[:1]
@@ -584,9 +585,26 @@ def getResponseLinks(response, url):
                                     end = 1
                                 link = link[start:-end]
 
-                            # If there are any trailing back slashes, remove them all
+                            # If there are any trailing back slashes, ; or >; remove them all
                             link = link.rstrip("\\")
-
+                            link = link.rstrip(">;")
+                            link = link.rstrip(";")
+                            
+                            # If there are any backticks in the URL, remove everything from the backtick onwards
+                            link = link.split("`")[0]
+                            
+                            # If there are any closing brackets of any kind without an opening bracket, remove everything from the closing bracket onwards
+                            if re.search(r"^[^(]*\)*$",link):
+                                link = link.split(")", 1)[0]
+                            if re.search(r"^[^{}]*\}*$",link):
+                                link = link.split("}", 1)[0]
+                            if re.search(r"^[^\[]]*\]*$",link):
+                                link = link.split("]", 1)[0]    
+                                
+                            # If there is a </ in the link then strip from that forward
+                            if re.search(r"<\/", link):
+                                link = link.split("</", 1)[0] 
+                               
                         except Exception as e:
                             if vverbose():
                                 writerr(colored(getSPACER("ERROR getResponseLinks 2: " + str(e)), "red"))
