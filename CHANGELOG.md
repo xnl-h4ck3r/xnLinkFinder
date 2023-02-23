@@ -1,5 +1,11 @@
 ## Changelog
 
+- v3.6
+
+  - Changed
+
+    - A very minor improvement to remove comma from the end of links
+
 - v3.5
 
   - Changed

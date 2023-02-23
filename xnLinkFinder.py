@@ -585,10 +585,12 @@ def getResponseLinks(response, url):
                                     end = 1
                                 link = link[start:-end]
 
-                            # If there are any trailing back slashes, ; or >; remove them all
+                            # If there are any trailing back slashes, comma, ; or >; remove them all
                             link = link.rstrip("\\")
                             link = link.rstrip(">;")
                             link = link.rstrip(";")
+                            link = link.rstrip(",")
+                            
                             
                             # If there are any backticks in the URL, remove everything from the backtick onwards
                             link = link.split("`")[0]
