@@ -1,5 +1,16 @@
 ## Changelog
 
+- v3.8
+
+  - New
+
+    - When argument `-vv` is passed, display the Content-Types that were processed for links and parameters. This can be used to identify any obscure content types that you would want to exclude in future, so that can be manually added to the `contentExclude` section of `config.yml` if required.
+
+  - Changed
+
+    - Add these content types to the `DEFAULT_CONTENTTYPE_EXCLUSIONS` constant, and the `contentExclude` section of `config.yml`: `application/zip,application/x-zip-compressed,application/x-msdownload,application/x-apple-diskimage,application/x-rpm,application/vnd.debian.binary-package`
+    - Check the File Extension exclusions for URLs too, if a content type wasn't found
+
 - v3.7
 
   - Changed

@@ -21,7 +21,7 @@ wordsFound = set()
 lstStopWords = {}
 lstPathWords = set() 
 extraStopWords = ""
-lstWordsContentTypes = {}
+contentTypesProcessed = set()
 lstExclusions = {}
 lstFileExtExclusions = {}
 requestHeaders = {}
@@ -124,7 +124,7 @@ DEFAULT_LINK_EXCLUSIONS = ".css,.jpg,.jpeg,.png,.svg,.img,.gif,.mp4,.flv,.ogv,.w
 
 # A comma separated list of Content-Type exclusions used when the exclusions from config.yml cannot be found
 # These content types will NOT be checked
-DEFAULT_CONTENTTYPE_EXCLUSIONS = "text/css,image/jpeg,image/jpg,image/png,image/svg+xml,image/gif,image/tiff,image/webp,image/bmp,image/x-icon,image/vnd.microsoft.icon,font/ttf,font/woff,font/woff2,font/x-woff2,font/x-woff,font/otf,audio/mpeg,audio/wav,audio/webm,audio/aac,audio/ogg,audio/wav,audio/webm,video/mp4,video/mpeg,video/webm,video/ogg,video/mp2t,video/webm,video/x-msvideo,application/font-woff,application/font-woff2,application/vnd.android.package-archive,binary/octet-stream,application/octet-stream,application/pdf,application/x-font-ttf,application/x-font-otf,application/x-font-woff,application/vnd.ms-fontobject,image/avif"
+DEFAULT_CONTENTTYPE_EXCLUSIONS = "text/css,image/jpeg,image/jpg,image/png,image/svg+xml,image/gif,image/tiff,image/webp,image/bmp,image/x-icon,image/vnd.microsoft.icon,font/ttf,font/woff,font/woff2,font/x-woff2,font/x-woff,font/otf,audio/mpeg,audio/wav,audio/webm,audio/aac,audio/ogg,audio/wav,audio/webm,video/mp4,video/mpeg,video/webm,video/ogg,video/mp2t,video/webm,video/x-msvideo,application/font-woff,application/font-woff2,application/vnd.android.package-archive,binary/octet-stream,application/octet-stream,application/pdf,application/x-font-ttf,application/x-font-otf,application/x-font-woff,application/vnd.ms-fontobject,image/avif,application/zip,application/x-zip-compressed,application/x-msdownload,application/x-apple-diskimage,application/x-rpm,application/vnd.debian.binary-package"
 
 # A comma separated list of file extension exclusions used when the file ext exclusions from config.yml cannot be found
 # In Directory mode, files with these extensions will NOT be checked
@@ -365,9 +365,9 @@ def includeLink(link):
     return include
 
 
-def includeFile(fileName):
+def includeFile(fileOrUrl):
     """
-    Determine if the passed file name should be excluded by checking the list of exclusions
+    Determine if the passed file name (or URL) should be excluded by checking the list of exclusions
     Returns whether the file should be included
     """
     try:
@@ -375,14 +375,17 @@ def includeFile(fileName):
 
         include = True
 
+        # If a URL is passed, we want to remove any query string or fragment
+        fileOrUrl = fileOrUrl.split("?")[0].split("#")[0].lower()
+        
         # Go through lstFileExtExclusions and see if finding contains any. If not then continue
         for exc in lstFileExtExclusions:
             try:
-                if fileName.endswith(exc):
+                if fileOrUrl.endswith(exc.lower()):
                     include = False
             except Exception as e:
                 if vverbose():
-                    writerr(colored("ERROR includeFile 2: Failed to check exclusions for a finding on file: " + fileName + " (" + str(e) + ")", "red"))
+                    writerr(colored("ERROR includeFile 2: Failed to check exclusions for a finding on file/url: " + fileOrUrl + " (" + str(e) + ")", "red"))
 
     except Exception as e:
         if vverbose():
@@ -391,7 +394,7 @@ def includeFile(fileName):
     return include
 
 
-def includeContentType(header):
+def includeContentType(header,url):
     """
     Determine if the content type is in the exclusions
     Returns whether the content type is included
@@ -420,10 +423,25 @@ def includeContentType(header):
         for excludeContentType in lstExcludeContentType:
             if contentType.lower() == excludeContentType.lower():
                 include = False
+        
+        # If the content type can be included and -vv option was passed, add to the set to display at the end
+        if vverbose():
+            try:
+                if include and contentType != '':
+                    contentTypesProcessed.add(contentType)
+            except:
+                pass
+        
+        # If the content type wasn't found, check against file extensions
+        if contentType == "":
+            url = url.split("?")[0].split("#")[0].split("/")[-1]
+            if url.find(".") > 0:
+                include = includeFile(url)
+            
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR includeContentType 1: " + str(e), "red"))
-
+            
     return include
 
 
@@ -534,7 +552,7 @@ def getResponseLinks(response, url):
         try:
             # If it is content-type we want to process then carry on, or if a directory was passed (so there is no content type) ensure the filename is not an exclusion
             if (dirPassed and includeFile(url)) or (
-                not dirPassed and includeContentType(header)
+                not dirPassed and includeContentType(header,responseUrl)
             ):
                 reString = (
                     r"(?:^|\"|'|\\n|\\r|\n|\r|\s?)(((?:[a-zA-Z]{1,10}:\/\/|\/\/)([^\"'\/]{1,}\.[a-zA-Z]{2,}|localhost)[^\"'\n\s]{0,})|((?:\/|\.\.\/|\.\/)[^\"'><,;| *()(%%$^\/\\\[\]][^\"'><,;|()\s]{1,})|([a-zA-Z0-9_\-\/]{1,}\/[a-zA-Z0-9_\-\/]{1,}\.(?:[a-zA-Z]{1,4}"
@@ -1409,6 +1427,10 @@ def processOutput():
     """
 
     try:
+        # Show the content types processed if verbose mode is on
+        if vverbose() and len(contentTypesProcessed) > 0:
+            write(colored("\nContent-types processed: ","cyan")+colored(str(contentTypesProcessed)+"\n","white"))
+            
         # Process output of the found links
         processLinkOutput()
 
@@ -2624,7 +2646,7 @@ def processEachInput(input):
     """
     Process the input, whether its from -i or <stdin>
     """
-    global burpFile, zapFile, urlPassed, stdFile, stdinFile, dirPassed, stdinMultiple, linksFound, linksVisited, totalRequests, skippedRequests, failedRequests, paramsFound, waymoreMode, stopProgram
+    global burpFile, zapFile, urlPassed, stdFile, stdinFile, dirPassed, stdinMultiple, linksFound, linksVisited, totalRequests, skippedRequests, failedRequests, paramsFound, waymoreMode, stopProgram, contentTypesProcessed
 
     if stopProgram is None:
         checkMaxTimeLimit()
@@ -2764,6 +2786,7 @@ def processEachInput(input):
             linksFound = set()
             linksVisited = set()
             paramsFound = set()
+            contentTypesProcessed = set()
             totalRequests = 0
             skippedRequests = 0
             failedRequests = 0
@@ -3673,6 +3696,7 @@ if __name__ == "__main__":
             linksFound = set()
             linksVisited = set()
             paramsFound = set()
+            contentTypesProcessed = set()
             totalRequests = 0
             skippedRequests = 0
             failedRequests = 0
