@@ -639,10 +639,10 @@ def getResponseLinks(response, url):
                             if link.startswith("//"):
                                 link = "http:" + link
 
-                            # If the -sp (--scope-prefix) option was passed and the link doesn't start with http
+                            # If the -sp (--scope-prefix) option was passed and the link doesn't start with any type of schema
                             if (
                                 args.scope_prefix is not None
-                                and not link.lower().startswith("http")
+                                and re.match(r"^[a-z0-9\-]{2,}\:\/\/", link.lower()) is None
                             ):
 
                                 # If -spo is passed, then add the original link

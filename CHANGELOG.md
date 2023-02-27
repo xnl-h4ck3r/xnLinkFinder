@@ -1,5 +1,11 @@
 ## Changelog
 
+- v3.7
+
+  - Changed
+
+    - The link prefix value was previously prefixed to links found that didn't start with `http`. This has been changed to not prefix if the link starts with any kind of schema already
+
 - v3.6
 
   - Changed
