@@ -1769,7 +1769,7 @@ def showOptions():
                     write(
                         colored("-i: " + args.input + " (Directory) ", "magenta")
                         + colored(
-                            "All files in the directory (and sub-directories) will be searched for links. Sub directories are not searched.",
+                            "All files in the directory (and sub-directories) will be searched for links.",
                             "white",
                         )
                     )
