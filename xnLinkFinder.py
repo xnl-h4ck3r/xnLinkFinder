@@ -7,6 +7,7 @@ inScopePrefixDomains = None
 inScopeFilterDomains = None
 burpFile = False
 zapFile = False
+caidoFile = False
 stdFile = False
 urlPassed = False
 dirPassed = False
@@ -65,6 +66,7 @@ from urllib.parse import urlparse
 from tempfile import NamedTemporaryFile
 from datetime import datetime
 from bs4 import BeautifulSoup, Comment
+import csv
 
 # Try to import lxml to use with beautifulsoup4 instead of the default parser
 try:
@@ -399,14 +401,14 @@ def includeContentType(header,url):
     Determine if the content type is in the exclusions
     Returns whether the content type is included
     """
-    global burpFile, zapFile
+    global burpFile, zapFile, caidoFile
 
     include = True
 
     try:
         # Get the content-type from the response
         try:
-            if burpFile or zapFile:
+            if burpFile or zapFile or caidoFile:
                 contentType = re.findall(
                     r"(?<=Content-Type\:\s)[a-zA-Z\-].+\/[a-zA-Z\-].+?(?=\s|\;)",
                     header,
@@ -496,14 +498,14 @@ def getResponseLinks(response, url):
     """
     Get a list of links found
     """
-    global inScopePrefixDomains, burpFile, zapFile, dirPassed
+    global inScopePrefixDomains, burpFile, zapFile, caidoFile, dirPassed
 
     try:
         # if the --include argument is True then add the input links to the output too (unless the input was a directory)
         if args.include and not dirPassed:
             addLink(url, url)
 
-        if burpFile or zapFile:
+        if burpFile or zapFile or caidoFile:
             if burpFile:
                 # \r\n\r\n separates the header and body. Get the position of this
                 # but if it is 0 then there is no body, so set it to the length of response
@@ -515,7 +517,9 @@ def getResponseLinks(response, url):
             if bodyHeaderDivide == 0:
                 bodyHeaderDivide = len(response)
             header = response[:bodyHeaderDivide]
-            body = response
+            # Remove the Status line and content-type from response so we don't mistakenly get "Links" from them
+            body = "\n".join(response.split("\n")[1:])
+            body = re.sub(r"(?m)^content-type:.*\n", "", body.lower())
             responseUrl = url
         else:
             if dirPassed:
@@ -735,7 +739,7 @@ def getResponseLinks(response, url):
             try:
                 # See if the SourceMap header exists
                 try:
-                    if burpFile or zapFile:
+                    if burpFile or zapFile or caidoFile:
                         mapFile = re.findall(
                             r"(?<=SourceMap\:\s).*?(?=\n)", header, re.IGNORECASE
                         )[0]
@@ -746,7 +750,7 @@ def getResponseLinks(response, url):
                 # If not found, try the deprecated X-SourceMap header
                 if mapFile != "":
                     try:
-                        if burpFile or zapFile:
+                        if burpFile or zapFile or caidoFile:
                             mapFile = re.findall(
                                 r"(?<=X-SourceMap\:\s).*?(?=\n)", header, re.IGNORECASE
                             )[0]
@@ -846,7 +850,7 @@ def shouldMakeRequest(url):
 
 def processUrl(url):
 
-    global burpFile, zapFile, totalRequests, skippedRequests, failedRequests, userAgent, requestHeaders, tooManyRequests, tooManyForbidden, tooManyTimeouts, tooManyConnectionErrors, stopProgram, waymoreMode, stopProgram, failedPrefixLinks
+    global burpFile, zapFile, caidoFile, totalRequests, skippedRequests, failedRequests, userAgent, requestHeaders, tooManyRequests, tooManyForbidden, tooManyTimeouts, tooManyConnectionErrors, stopProgram, waymoreMode, stopProgram, failedPrefixLinks
     
     # Choose a random user agent string to use from the current group
     userAgent = random.choice(userAgents[currentUAGroup])
@@ -886,8 +890,8 @@ def processUrl(url):
         if shouldMakeRequest(url):
 
             # Add the url to the list of visited URls so we don't visit again
-            # Don't do this for Burp or ZAP files as they can be huge, or for file names in directory mode
-            if not burpFile and not zapFile and not dirPassed:
+            # Don't do this for Burp, ZAP or Caido files as they can be huge, or for file names in directory mode
+            if not burpFile and not zapFile and not caidoFile and not dirPassed:
                 linksVisited.add(url)
 
             # Get memory usage every 25 requests
@@ -1061,7 +1065,7 @@ def processUrl(url):
 
 # Display stats if -vv argument was chosen
 def processStats():
-    if not burpFile and not zapFile and not dirPassed:
+    if not burpFile and not zapFile and not caidoFile and not dirPassed:
         write("TOTAL REQUESTS MADE: " + str(totalRequests))
         write("DUPLICATE REQUESTS SKIPPED: " + str(skippedRequests))
         write("FAILED REQUESTS: " + str(failedRequests))
@@ -1744,7 +1748,7 @@ def processDepth():
 
 def showOptions():
 
-    global burpFile, zapFile, stdFile, urlPassed, dirPassed, inScopePrefixDomains, inScopeFilterDomains
+    global burpFile, zapFile, caidoFile, stdFile, urlPassed, dirPassed, inScopePrefixDomains, inScopeFilterDomains
 
     try:
         write(colored("Selected config and settings:", "cyan"))
@@ -1763,6 +1767,11 @@ def showOptions():
                 write(
                     colored("-i: " + args.input + " (OWASP ZAP File) ", "magenta")
                     + colored("Links will be found in saved ZAP responses.", "white")
+                )
+            elif caidoFile:
+                write(
+                    colored("-i: " + args.input + " (Caido File) ", "magenta")
+                    + colored("Links will be found in saved Caido responses.", "white")
                 )
             else:
                 if dirPassed:
@@ -1917,7 +1926,7 @@ def showOptions():
                     )
                 )
             
-        if not burpFile and not zapFile and not dirPassed:
+        if not burpFile and not zapFile and not caidoFile and not dirPassed:
             write(
                 colored("-d: " + str(args.depth), "magenta")
                 + colored(
@@ -1949,7 +1958,7 @@ def showOptions():
                 " Whether the link will be flagged as a prefixed URL in the output with '(PREFIXED)'.", "white"
             )
         )
-        if not burpFile and not zapFile and not dirPassed:
+        if not burpFile and not zapFile and not caidoFile and not dirPassed:
             write(
                 colored("-p: " + str(args.processes), "magenta")
                 + colored(" The number of parallel requests made.", "white")
@@ -2281,6 +2290,138 @@ def processDirectory():
                     "red",
                 )
             )
+
+def processCaidoMessage(request, response, responseCount):
+    """
+    Process a specific message from an Caido CSV text output file. There is a "message" for each request and response
+    """
+    global totalResponses, currentMemUsage, currentMemPercent
+    try:
+                    
+        # Show progress bar
+        fillTest = responseCount % 2
+        if fillTest == 0:
+            fillChar = "O"
+        elif fillTest == 1:
+            fillChar = "o"
+        suffix = "Complete "
+        # Show memory usage if -vv option chosen, and check memory every 25 requests (or if its the last)
+        if responseCount % 25 == 0 or responseCount == totalResponses:
+            try:
+                getMemory()
+                if vverbose():
+                    suffix = (
+                        "Complete (Mem Usage "
+                        + humanReadableSize(currentMemUsage)
+                        + ", Total Mem "
+                        + str(currentMemPercent)
+                        + "%)   "
+                    )
+            except:
+                if vverbose():
+                    suffix = 'Complete (To show memory usage, run "pip install psutil")'
+        printProgressBar(
+            responseCount,
+            totalResponses,
+            prefix="Checking " + str(totalResponses) + " responses:",
+            suffix=suffix,
+            length=getProgressBarLength(),
+            fill=fillChar,
+        )
+
+        # Get the links
+        getResponseLinks(response, request)
+        
+        # Get potential parameters from the response
+        getResponseParams(response)
+                    
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR processCaudiMessage 1: " + str(e), "red"))
+
+def processCaidoFile():
+    """
+    Process an CSV text file that is output from Caido.
+    From History in Caido, you can then select Export -> Export All (or Export Current Rows if you have a paid subscription) and selct "As CSV"
+    This will save a file of all responses to check for links.
+    It is assumed that there is a line for each message that includes the request/response
+    """
+    global totalResponses, currentMemUsage, currentMemPercent, stopProgram, stdinMultiple
+
+    try:
+        try:
+            # If piped from stdin then
+            if stdinMultiple:
+                write(colored("\nProcessing Caido file from STDIN:", "cyan"))
+            else:
+                fileSize = os.path.getsize(args.input)
+                filePath = os.path.abspath(args.input).replace(" ", "\ ")
+                
+                cmd = "cat " + filePath + " | wc -l"
+                cat = subprocess.run(
+                    cmd, shell=True, text=True, stdout=subprocess.PIPE, check=True
+                )
+                totalResponses = int(cat.stdout) - 2
+
+                write(
+                    colored(
+                        "\nProcessing Caido file "
+                        + args.input
+                        + " ("
+                        + humanReadableSize(fileSize)
+                        + "):",
+                        "cyan",
+                    )
+                )
+        except:
+            write(colored("Processing Caido file " + args.input + ":", "cyan"))
+
+        try:
+            responseCount = 0
+            printProgressBar(
+                0,
+                totalResponses,
+                prefix="Checking " + str(totalResponses) + " responses:",
+                suffix="Complete ",
+                length=getProgressBarLength(),
+            )
+
+            # Open the Caido file and read line by line without loading into memory
+            with open(
+                args.input, "r", encoding="utf-8", errors="ignore"
+            ) as caidoFile:
+                csv.field_size_limit(sys.maxsize)
+                reader = csv.DictReader(caidoFile, delimiter=',')
+                for line in reader:
+        
+                    if stopProgram is not None:
+                        break
+
+                    # The first line of the CSV is the headers so ignore
+                    if responseCount > 0:
+
+                        # Get the Caido request (just the URL)
+                        port = line["port"]
+                        if port == "443":
+                            schema = "https://"
+                        else:
+                            schema = "http://"
+                        caidoRequest = schema + line["host"] + line["path"]
+                        
+                        # Get the Caido response
+                        caidoResponse = base64.b64decode(line["response_raw"]).decode("utf-8", "replace")
+                        
+                        # Process the Caido request and response
+                        processCaidoMessage(caidoRequest, caidoResponse, responseCount)
+
+                    responseCount = responseCount + 1
+        except Exception as e:
+            if vverbose():
+                writerr(colored("ERROR processCaidoFile 2: " + str(e), "red"))
+
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR processCaidoFile 1: " + str(e), "red"))
 
 
 def processZapMessage(zapMessage, responseCount):
@@ -2646,7 +2787,7 @@ def processEachInput(input):
     """
     Process the input, whether its from -i or <stdin>
     """
-    global burpFile, zapFile, urlPassed, stdFile, stdinFile, dirPassed, stdinMultiple, linksFound, linksVisited, totalRequests, skippedRequests, failedRequests, paramsFound, waymoreMode, stopProgram, contentTypesProcessed
+    global burpFile, zapFile, caidoFile, urlPassed, stdFile, stdinFile, dirPassed, stdinMultiple, linksFound, linksVisited, totalRequests, skippedRequests, failedRequests, paramsFound, waymoreMode, stopProgram, contentTypesProcessed
 
     if stopProgram is None:
         checkMaxTimeLimit()
@@ -2659,25 +2800,31 @@ def processEachInput(input):
         # or a directory containing files to search,
         # or a Burp XML file with Requests and Responses
         # or a OWASP ZAP ASCII text file with Requests and Responses
+        # or a Caido CSV text file with Requests and Responses
         # if the value passed is not a valid file, or a directory, then assume it is an individual URL:
         if not stdinMultiple:
             if os.path.isfile(input):
                 try:
                     inputFile = open(input, "r")
                     firstLine = inputFile.readline()
-
+                    
                     # Check if the file passed is a Burp file
-                    burpFile = firstLine.startswith("<?xml")
+                    burpFile = firstLine.lower().startswith("<?xml")
 
-                    # If not a Burp file, check of it is an OWASP ZAP file
+                    # If not a Burp file, check if it is an OWASP ZAP file
                     if not burpFile:
                         match = re.search("={3,4}\s?[0-9]+\s={10}", firstLine)
                         if match is not None:
                             zapFile = True
 
-                        # If it's not a burp or a zap file then assume it is a standard file or URLs
+                        # If it's not a Burp or ZAP file, check if it is a Caido file
                         if not zapFile:
-                            stdFile = True
+                            caidoFile = firstLine.lower().startswith("id,host,method")
+
+                            # If it's not a Burp, ZAP or Caido file then assume it is a standard file or URLs
+                            if not caidoFile:
+                                stdFile = True
+                                
                 except Exception as e:
                     writerr(
                         colored("Cannot read input file " + input + ":" + str(e), "red")
@@ -2721,6 +2868,10 @@ def processEachInput(input):
         elif zapFile:
             # If it's an OWASP ZAP file
             processZapFile()
+
+        elif caidoFile:
+            # If it's a Caido file
+            processCaidoFile()
 
         else:
 
@@ -2801,7 +2952,7 @@ def processInput():
     # Tell Python to run the handler() function when SIGINT is received
     signal(SIGINT, handler)
 
-    global lstExclusions, lstFileExtExclusions, burpFile, zapFile, stdFile, inputFile, urlPassed, dirPassed, stdinMultiple, stopProgram, stdinFile
+    global lstExclusions, lstFileExtExclusions, burpFile, zapFile, caidoFile, stdFile, inputFile, urlPassed, dirPassed, stdinMultiple, stopProgram, stdinFile
 
     try:
         # Set the link exclusions, and add any additional exclusions passed with -x (--exclude)
@@ -2830,13 +2981,17 @@ def processInput():
             if stdinMultiple:
 
                 # Check if the stdin passed is a Burp file
-                burpFile = firstLine.startswith("<?xml")
+                burpFile = firstLine.lower().startswith("<?xml")
 
                 # If not a Burp file, check of it is an OWASP ZAP file
                 if not burpFile:
                     match = re.search("={3,4}\s?[0-9]+\s={10}", firstLine)
                     if match is not None:
                         zapFile = True
+                        
+                    # If not a Burp or ZAP file, check if it is a Caido File
+                    if not zapFile:
+                        caidoFile = firstLine.lower().startswith("id,host,method")
 
         # If input wasn't piped then just process the -i / --input value
         if sys.stdin.isatty():
@@ -2848,12 +3003,12 @@ def processInput():
             else:
                 # Other wise there are multiple lines
                 # if it is multiple lines of stdin then process as a file of URLs
-                if stdinMultiple and not burpFile and not zapFile:
+                if stdinMultiple and not burpFile and not zapFile and not caidoFile:
                     processEachInput("<stdin>")
                 else:
                     writerr(
                         colored(
-                            "You cannot pass a Burp or ZAP file via <stdin>. Please call xnLinkFinder by itself and provide the file with -i",
+                            "You cannot pass a Burp, ZAP or Caiod file via <stdin>. Please call xnLinkFinder by itself and provide the file with -i",
                             "red",
                         )
                     )
@@ -3019,10 +3174,10 @@ def processPlural(originalWord):
 # Get XML and JSON responses, extract keys and add them to the paramsFound list
 # In addition it will extract name and id from <input> fields in HTML
 def getResponseParams(response):
-    global paramsFound, inScopePrefixDomains, burpFile, zapFile, dirPassed, wordsFound, lstStopWords
+    global paramsFound, inScopePrefixDomains, burpFile, zapFile, caidoFile, dirPassed, wordsFound, lstStopWords
     try:
 
-        if burpFile or zapFile:
+        if burpFile or zapFile or caidoFile:
             if burpFile:
                 # \r\n\r\n separates the header and body. Get the position of this
                 # but if it is 0 then there is no body, so set it to the length of response
@@ -3419,7 +3574,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-d",
         "--depth",
-        help="The level of depth to search. For example, if a value of 2 is passed, then all links initially found will then be searched for more links (default: 1). This option is ignored for Burp files because they can be huge and consume lots of memory. It is also advisable to use the -sp (--scope-prefix) argument to ensure a request to links found without a domain can be attempted.",
+        help="The level of depth to search. For example, if a value of 2 is passed, then all links initially found will then be searched for more links (default: 1). This option is ignored for Burp files, ZAP files and Caiod files because they can be huge and consume lots of memory. It is also advisable to use the -sp (--scope-prefix) argument to ensure a request to links found without a domain can be attempted.",
         action="store",
         type=int,  # choices=range(1,11),
         default=1,
@@ -3427,7 +3582,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-p",
         "--processes",
-        help="Basic multithreading is done when getting requests for a URL, or file of URLs (not a Burp file). This argument determines the number of processes (threads) used (default: 25)",
+        help="Basic multithreading is done when getting requests for a URL, or file of URLs (not a Burp file, ZAP file or Caido file). This argument determines the number of processes (threads) used (default: 25)",
         action="store",
         type=int,
         default=25,
@@ -3658,8 +3813,8 @@ if __name__ == "__main__":
             # Process the input given on -i (--input) and get all links
             processInput()
 
-            # If a Burp file, ZAP file or directory is processed then ignore userAgents if passed because they are not relevant
-            if burpFile or zapFile or dirPassed:
+            # If a Burp file, ZAP file, Caido file or directory is processed then ignore userAgents if passed because they are not relevant
+            if burpFile or zapFile or caidoFile or dirPassed:
                 break
 
         # if waymore mode, then process the waymore.txt and index.txt file(s) next

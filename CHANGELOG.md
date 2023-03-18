@@ -1,5 +1,15 @@
 ## Changelog
 
+- v3.9
+
+  - New
+
+    - Allow the input to be an exported Caido CSV file.
+
+  - Changed
+
+    - Don't try to get links from the Status line or the Content-Type header of the response for Burp, ZAP and Caido files
+
 - v3.8
 
   - New
