@@ -3286,7 +3286,7 @@ def getResponseParams(response, request):
             for key in possibleParams:
                 if key is not None and key.group() != "":
                     param = key.group().strip().replace("=","").replace("?","").replace("%3f","").replace("%3F","").replace("%26","").replace("&amp;","").replace("&","")
-                    paramsFound.add(param + " -XNL")
+                    paramsFound.add(param)
         except Exception as e:
             if vverbose():
                     writerr(colored("ERROR getResponseParams 10: " + str(e), "red"))
