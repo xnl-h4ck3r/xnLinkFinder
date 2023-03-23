@@ -985,7 +985,7 @@ def processUrl(url):
                         totalRequests = totalRequests + 1
 
                         # Get potential parameters from the response
-                        getResponseParams(resp)
+                        getResponseParams(resp, url)
 
                 except requests.exceptions.ProxyError as pe:
                     writerr(
@@ -2270,7 +2270,7 @@ def processDirectory():
                             # Get potential links
                             getResponseLinks(response, request)
                             # Get potential parameters from the response
-                            getResponseParams(response)
+                            getResponseParams(response, request)
                             request = ""
                             response = ""
                         except Exception as e:
@@ -2333,7 +2333,7 @@ def processCaidoMessage(request, response, responseCount):
         getResponseLinks(response, request)
         
         # Get potential parameters from the response
-        getResponseParams(response)
+        getResponseParams(response, request)
                     
     except Exception as e:
         if vverbose():
@@ -2479,7 +2479,7 @@ def processZapMessage(zapMessage, responseCount):
         getResponseLinks(response, request)
         
         # Get potential parameters from the response
-        getResponseParams(response)
+        getResponseParams(response, request)
                     
     except Exception as e:
         if vverbose():
@@ -2723,7 +2723,7 @@ def processBurpFile():
                     # Get potential links
                     getResponseLinks(response, request)
                     # Get potential parameters from the response
-                    getResponseParams(response)
+                    getResponseParams(response, request)
                     request = ""
                     response = ""
                 except Exception as e:
@@ -3173,7 +3173,7 @@ def processPlural(originalWord):
 
 # Get XML and JSON responses, extract keys and add them to the paramsFound list
 # In addition it will extract name and id from <input> fields in HTML
-def getResponseParams(response):
+def getResponseParams(response, request):
     global paramsFound, inScopePrefixDomains, burpFile, zapFile, caidoFile, dirPassed, wordsFound, lstStopWords
     try:
 
@@ -3279,153 +3279,165 @@ def getResponseParams(response):
         except Exception as e:
             if vverbose():
                 writerr(colored("ERROR getResponseParams 9: " + str(e), "red"))
-                                     
-            
-        # Get regardless of the content type
-        # Javascript variable could be in the html, script and even JSON response within a .js.map file
-        if RESP_PARAM_JSVARS:
+        
+         # Get parameters from the response where they are like &PARAM= or ?PARAM=
+        try:
+            possibleParams = re.finditer(r"(?<=[^\&])(\?|%3f|\&|%26|\&amp;)[a-z0-9_\-]{3,}=(?=[^=])", body, re.IGNORECASE)
+            for key in possibleParams:
+                if key is not None and key.group() != "":
+                    param = key.group().strip().replace("=","").replace("?","").replace("%3f","").replace("%3F","").replace("%26","").replace("&amp;","").replace("&","")
+                    paramsFound.add(param + " -XNL")
+        except Exception as e:
+            if vverbose():
+                    writerr(colored("ERROR getResponseParams 10: " + str(e), "red"))
+        
+        # If it is content-type we want to process then carry on
+        if includeContentType(header,request):
+        
+            # Get regardless of the content type
+            # Javascript variable could be in the html, script and even JSON response within a .js.map file
+            if RESP_PARAM_JSVARS:
 
-            # Get inline javascript variables defined with "let"
-            try:
-                js_keys = re.finditer(
-                    r"(?<=let[\s])[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*[\s]*(?=(\=|;|\n|\r))",
-                    body,
-                    re.IGNORECASE,
-                )
-                for key in js_keys:
-                    if key is not None and key.group() != "":
-                        # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
-                        if not args.ascii_only or (args.ascii_only and key.group().strip().isascii()):
-                            paramsFound.add(key.group().strip())
-            except Exception as e:
-                if vverbose():
-                    writerr(colored("ERROR getResponseParams 2: " + str(e), "red"))
-
-            # Get inline javascript variables defined with "var"
-            try:
-                js_keys = re.finditer(
-                    r"(?<=var\s)[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*?(?=(\s|=|,|;|\n))",
-                    body,
-                    re.IGNORECASE,
-                )
-                for key in js_keys:
-                    if key is not None and key.group() != "":
-                        # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
-                        if not args.ascii_only or (args.ascii_only and key.group().strip().isascii()):
-                            paramsFound.add(key.group().strip())
-            except Exception as e:
-                if vverbose():
-                    writerr(colored("ERROR getResponseParams 3: " + str(e), "red"))
-
-            # Get inline javascript constants
-            try:
-                js_keys = re.finditer(
-                    r"(?<=const\s)[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*?(?=(\s|=|,|;|\n))",
-                    body,
-                    re.IGNORECASE,
-                )
-                for key in js_keys:
-                    if key is not None and key.group() != "":
-                        # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
-                        if not args.ascii_only or (args.ascii_only and key.group().strip().isascii()):
-                            paramsFound.add(key.group().strip())
-            except Exception as e:
-                if vverbose():
-                    writerr(colored("ERROR getResponseParams 4: " + str(e), "red"))
-
-        # If mime type is JSON then get the JSON attributes
-        if contentType.find("JSON") > 0:
-            if RESP_PARAM_JSON:
+                # Get inline javascript variables defined with "let"
                 try:
-                    # Get only keys from json (everything between double quotes:)
-                    json_keys = re.findall(
-                        '"([a-zA-Z0-9$_\.-]*?)":', body, re.IGNORECASE
+                    js_keys = re.finditer(
+                        r"(?<=let[\s])[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*[\s]*(?=(\=|;|\n|\r))",
+                        body,
+                        re.IGNORECASE,
                     )
-                    for key in json_keys:
-                        # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
-                        if not args.ascii_only or (args.ascii_only and key.strip().isascii()):
-                            paramsFound.add(key.strip())
-                except Exception as e:
-                    if vverbose():
-                        writerr(colored("ERROR getResponseParams 5: " + str(e), "red"))
-
-        # If the mime type is XML then get the xml keys
-        elif contentType.find("XML") > 0:
-            if RESP_PARAM_XML:
-                try:
-                    # Get XML attributes
-                    xml_keys = re.findall("<([a-zA-Z0-9$_\.-]*?)>", body)
-                    for key in xml_keys:
-                        # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
-                        if not args.ascii_only or (args.ascii_only and key.strip().isascii()):
-                            paramsFound.add(key.strip())
-                except Exception as e:
-                    if vverbose():
-                        writerr(colored("ERROR getResponseParams 6: " + str(e), "red"))
-
-        # If the mime type is HTML then get <input> name and id values, and meta tag names
-        elif contentType.find("HTML") > 0:
-
-            if RESP_PARAM_INPUTFIELD:
-                # Get Input field name and id attributes
-                try:
-                    html_keys = re.findall("<input(.*?)>", body)
-                    for key in html_keys:
-                        input_name = re.search(
-                            r"(?<=\sname)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|\'))",
-                            key,
-                            re.IGNORECASE,
-                        )
-                        if input_name is not None and input_name.group() != "":
-                            input_name_val = input_name.group()
-                            input_name_val = input_name_val.replace("=", "")
-                            input_name_val = input_name_val.replace('"', "")
-                            input_name_val = input_name_val.replace("'", "")
+                    for key in js_keys:
+                        if key is not None and key.group() != "":
                             # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
-                            if not args.ascii_only or (args.ascii_only and input_name_val.strip().isascii()):
-                                paramsFound.add(input_name_val.strip())
-                        input_id = re.search(
-                            r"(?<=\sid)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|'))",
-                            key,
-                            re.IGNORECASE,
-                        )
-                        if input_id is not None and input_id.group() != "":
-                            input_id_val = input_id.group()
-                            input_id_val = input_id_val.replace("=", "")
-                            input_id_val = input_id_val.replace('"', "")
-                            input_id_val = input_id_val.replace("'", "")
-                            # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
-                            if not args.ascii_only or (args.ascii_only and input_id_val.strip().isascii()):
-                                paramsFound.add(input_id_val.strip())
+                            if not args.ascii_only or (args.ascii_only and key.group().strip().isascii()):
+                                paramsFound.add(key.group().strip())
                 except Exception as e:
                     if vverbose():
-                        writerr(colored("ERROR getResponseParams 7: " + str(e), "red"))
+                        writerr(colored("ERROR getResponseParams 2: " + str(e), "red"))
 
-            if RESP_PARAM_METANAME:
-                # Get meta tag name attribute
+                # Get inline javascript variables defined with "var"
                 try:
-                    meta_keys = re.findall("<meta(.*?)>", body)
-                    for key in meta_keys:
-                        meta_name = re.search(
-                            r"(?<=\sname)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|'))",
-                            key,
-                            re.IGNORECASE,
-                        )
-                        if meta_name is not None and meta_name.group() != "":
-                            meta_name_val = meta_name.group()
-                            meta_name_val = meta_name_val.replace("=", "")
-                            meta_name_val = meta_name_val.replace('"', "")
-                            meta_name_val = meta_name_val.replace("'", "")
+                    js_keys = re.finditer(
+                        r"(?<=var\s)[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*?(?=(\s|=|,|;|\n))",
+                        body,
+                        re.IGNORECASE,
+                    )
+                    for key in js_keys:
+                        if key is not None and key.group() != "":
                             # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
-                            if not args.ascii_only or (args.ascii_only and meta_name_val.strip().isascii()):
-                                paramsFound.add(meta_name_val.strip())
+                            if not args.ascii_only or (args.ascii_only and key.group().strip().isascii()):
+                                paramsFound.add(key.group().strip())
                 except Exception as e:
                     if vverbose():
-                        writerr(colored("ERROR getResponseParams 8: " + str(e), "red"))
+                        writerr(colored("ERROR getResponseParams 3: " + str(e), "red"))
+
+                # Get inline javascript constants
+                try:
+                    js_keys = re.finditer(
+                        r"(?<=const\s)[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*?(?=(\s|=|,|;|\n))",
+                        body,
+                        re.IGNORECASE,
+                    )
+                    for key in js_keys:
+                        if key is not None and key.group() != "":
+                            # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
+                            if not args.ascii_only or (args.ascii_only and key.group().strip().isascii()):
+                                paramsFound.add(key.group().strip())
+                except Exception as e:
+                    if vverbose():
+                        writerr(colored("ERROR getResponseParams 4: " + str(e), "red"))
+
+            # If mime type is JSON then get the JSON attributes
+            if contentType.find("JSON") > 0:
+                if RESP_PARAM_JSON:
+                    try:
+                        # Get only keys from json (everything between double quotes:)
+                        json_keys = re.findall(
+                            '"([a-zA-Z0-9$_\.-]*?)":', body, re.IGNORECASE
+                        )
+                        for key in json_keys:
+                            # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
+                            if not args.ascii_only or (args.ascii_only and key.strip().isascii()):
+                                paramsFound.add(key.strip())
+                    except Exception as e:
+                        if vverbose():
+                            writerr(colored("ERROR getResponseParams 5: " + str(e), "red"))
+
+            # If the mime type is XML then get the xml keys
+            elif contentType.find("XML") > 0:
+                if RESP_PARAM_XML:
+                    try:
+                        # Get XML attributes
+                        xml_keys = re.findall("<([a-zA-Z0-9$_\.-]*?)>", body)
+                        for key in xml_keys:
+                            # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
+                            if not args.ascii_only or (args.ascii_only and key.strip().isascii()):
+                                paramsFound.add(key.strip())
+                    except Exception as e:
+                        if vverbose():
+                            writerr(colored("ERROR getResponseParams 6: " + str(e), "red"))
+
+            # If the mime type is HTML then get <input> name and id values, and meta tag names
+            elif contentType.find("HTML") > 0:
+
+                if RESP_PARAM_INPUTFIELD:
+                    # Get Input field name and id attributes
+                    try:
+                        html_keys = re.findall("<input(.*?)>", body)
+                        for key in html_keys:
+                            input_name = re.search(
+                                r"(?<=\sname)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|\'))",
+                                key,
+                                re.IGNORECASE,
+                            )
+                            if input_name is not None and input_name.group() != "":
+                                input_name_val = input_name.group()
+                                input_name_val = input_name_val.replace("=", "")
+                                input_name_val = input_name_val.replace('"', "")
+                                input_name_val = input_name_val.replace("'", "")
+                                # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
+                                if not args.ascii_only or (args.ascii_only and input_name_val.strip().isascii()):
+                                    paramsFound.add(input_name_val.strip())
+                            input_id = re.search(
+                                r"(?<=\sid)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|'))",
+                                key,
+                                re.IGNORECASE,
+                            )
+                            if input_id is not None and input_id.group() != "":
+                                input_id_val = input_id.group()
+                                input_id_val = input_id_val.replace("=", "")
+                                input_id_val = input_id_val.replace('"', "")
+                                input_id_val = input_id_val.replace("'", "")
+                                # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
+                                if not args.ascii_only or (args.ascii_only and input_id_val.strip().isascii()):
+                                    paramsFound.add(input_id_val.strip())
+                    except Exception as e:
+                        if vverbose():
+                            writerr(colored("ERROR getResponseParams 7: " + str(e), "red"))
+
+                if RESP_PARAM_METANAME:
+                    # Get meta tag name attribute
+                    try:
+                        meta_keys = re.findall("<meta(.*?)>", body)
+                        for key in meta_keys:
+                            meta_name = re.search(
+                                r"(?<=\sname)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|'))",
+                                key,
+                                re.IGNORECASE,
+                            )
+                            if meta_name is not None and meta_name.group() != "":
+                                meta_name_val = meta_name.group()
+                                meta_name_val = meta_name_val.replace("=", "")
+                                meta_name_val = meta_name_val.replace('"', "")
+                                meta_name_val = meta_name_val.replace("'", "")
+                                # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
+                                if not args.ascii_only or (args.ascii_only and meta_name_val.strip().isascii()):
+                                    paramsFound.add(meta_name_val.strip())
+                    except Exception as e:
+                        if vverbose():
+                            writerr(colored("ERROR getResponseParams 8: " + str(e), "red"))
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR getResponseParams 1: " + str(e), "red"))
-
 
 # For validating -m / --memory-threshold argument
 def argcheckPercent(value):
