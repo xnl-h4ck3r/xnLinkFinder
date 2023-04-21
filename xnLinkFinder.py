@@ -49,6 +49,7 @@ import re
 import os
 import requests
 import argparse
+import warnings
 from termcolor import colored
 from signal import signal, SIGINT
 from sys import exit, stdin
@@ -66,6 +67,7 @@ from urllib.parse import urlparse
 from tempfile import NamedTemporaryFile
 from datetime import datetime
 from bs4 import BeautifulSoup, Comment
+warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 import csv
 
 # Try to import lxml to use with beautifulsoup4 instead of the default parser
@@ -286,6 +288,7 @@ def includeLink(link):
         # - has any new line characters in
         # - doesn't have any letters or numbers in
         # - if the ascii-only argument was True AND the link contains non ASCII characters
+        # - doesn't have | or \s in, because it's probably a regex, not a link
         try:
             if link.count("\n") > 1 or link.startswith("#") or link.startswith("$") or link.startswith("\\"):
                 include = False
@@ -297,6 +300,8 @@ def includeLink(link):
                 include = not (bool(re.search(r"\n", link)))
             if include:
                 include = bool(re.search(r"[0-9a-zA-Z]", link))
+            if include:
+                include = not (bool(re.search(r"\\(s|S)", link)))
             if include and args.ascii_only:
                 include = link.isascii()
         except Exception as e:

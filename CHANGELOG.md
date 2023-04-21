@@ -1,5 +1,15 @@
 ## Changelog
 
+- v3.11
+
+  - New
+
+    - Suppress warnings from the beautifulsoup library
+
+  - Changed
+
+    - If a link has `\s` or `\S` in it, don't include as it's most likely a regex string, not a link.
+
 - v3.10
 
   - New
