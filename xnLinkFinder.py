@@ -2164,7 +2164,7 @@ def processDirectory():
                     if f == "waymore.txt" or (xnlFileFound and f == "index.txt"):
                         waymoreMode = True
 
-                    if f not in ("waymore.txt","waymore.new","waymore.old","index.txt"):
+                    if f not in ("waymore.txt","waymore.new","waymore.old","index.txt","responses.tmp","continueResp.tmp"):
                         totalResponses = totalResponses + 1
                         
     except Exception as e:
@@ -2220,12 +2220,12 @@ def processDirectory():
                             waymoreFiles.add(fullPath)
                             
                     # Check if the file size is less than --max-file-size 
-                    # AND if in waymore mode that it isn't one of "waymore.txt","waymore.new","waymore.old","index.txt"
+                    # AND if in waymore mode that it isn't one of "waymore.txt","waymore.new","waymore.old","index.txt","responses.tmp","continueResp.tmp"
                     if (
                         args.max_file_size == 0
                         or (os.path.getsize(os.path.join(path, filename))) / (1024*1024)
                         < args.max_file_size
-                    ) and (not waymoreMode or (waymoreMode and filename not in ("waymore.txt","waymore.new","waymore.old","index.txt"))):
+                    ) and (not waymoreMode or (waymoreMode and filename not in ("waymore.txt","waymore.new","waymore.old","index.txt","responses.tmp","continueResp.tmp"))):
 
                         if stopProgram is not None:
                             break

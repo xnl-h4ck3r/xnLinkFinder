@@ -1,5 +1,11 @@
 ## Changelog
 
+- v3.12
+
+  - Changed
+
+    - In waymore mode, ignore the responses.tmp and continueResp.tmp files that waymore create
+
 - v3.11
 
   - New
