@@ -1,5 +1,11 @@
 ## Changelog
 
+- v3.13
+
+  - Changed
+
+    - Amend the main link finding regex string to avoid catastrophic backtracking errors that freeze the search and break xnLinkFinder
+
 - v3.12
 
   - Changed
