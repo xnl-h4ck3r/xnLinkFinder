@@ -3,6 +3,14 @@
 
 # Good luck and good hunting! If you really love the tool (or any others), or they helped you find an awesome bounty, consider BUYING ME A COFFEE! (https://ko-fi.com/xnlh4ck3r) ☕ (I could use the caffeine!)
 
+collection = None
+doc_id = None
+sendTelegramNotification = None
+sendDiscordNotification = None
+run_every = None
+client = None
+target_name = None
+sleep_counter = 0
 inScopePrefixDomains = None
 inScopeFilterDomains = None
 burpFile = False
@@ -47,6 +55,7 @@ waymoreFiles = set()
 
 import re
 import os
+import time
 import requests
 import argparse
 import warnings
@@ -67,6 +76,8 @@ from urllib.parse import urlparse
 from tempfile import NamedTemporaryFile
 from datetime import datetime
 from bs4 import BeautifulSoup, Comment
+import pymongo
+from pymongo import MongoClient
 warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 import csv
 
@@ -265,6 +276,103 @@ def verbose():
 
 def vverbose():
     return args.vverbose
+def storeindb():
+    return args.store_results
+def connectTomongoDB(target_name):
+    global collection, client, db, doc_id
+    hostname = 'localhost'
+    # port = 27017
+    if isinstance(args.mongo_port, int):
+        port = args.mongo_port
+    else:
+        port = 27017
+    try:
+        client = MongoClient(f'mongodb://{hostname}:{port}/')
+    except Exception as e:
+        writerr(colored("ERROR: Could not connect to MongoDB " + str(e), "red"))
+        # writerr(colored("ERROR: Please check that MongoDB is running, ", "red"))
+        exit(1)
+    db_name = 'bug-hunting'
+    if db_name not in client.list_database_names():
+        if verbose():
+            writerr(colored("INFO: Creating database: " + db_name, "yellow"))
+        db = client[db_name]
+    else:
+        db = client[db_name]
+
+    collection_name = 'xnLinkFinder'
+    if collection_name not in db.list_collection_names():
+        collection = db[collection_name]
+    else:
+        collection = db[collection_name]
+
+    existing_doc = collection.find_one({"target_name": f'{target_name}'})    
+    # query = {f'{target_name}': {'$exists': True}}
+    document = collection.find_one(existing_doc)
+    if document is None:
+        sample_document = {"target_name": f'{target_name}', "endpoints": []}
+        insert_sample = collection.insert_one(sample_document)
+        doc_id = insert_sample.inserted_id
+    else:
+        doc_id = document['_id']
+
+
+    
+def whichToSendNotification():
+    global sendTelegramNotification, sendDiscordNotification
+    if args.telegram_token and args.telegram_chat_id:
+        sendTelegramNotification = True
+    if args.discord_webhook:
+        sendDiscordNotification = True
+
+def send_telegram_message(token, chat_id, text):
+    """
+    Send a message to a Telegram chat via a bot.
+
+    Args:
+    token (str): The API token of the Telegram bot.
+    chat_id (str): The unique identifier for the target chat or username of the target channel (in the format @channelusername).
+    text (str): The text of the message.
+    """
+    url = f'https://api.telegram.org/bot{token}/sendMessage'
+    data = {'chat_id': chat_id, 'text': text}
+    response = requests.post(url, data=data)
+
+    if response.status_code != 200:
+        writerr(f'Error sending message to Telegram: {response.status_code}, {response.text}')
+
+def send_discord_message(webhook_url, text):
+    data = {'content': text}
+    response = requests.post(webhook_url, json=data)
+    if response.status_code != 204:
+        writerr(f'Error sending message to Discord: {response.status_code}, {response.text}')
+def check_and_send_to_db(target_name,url):
+    # A document with the target_name field exists, update the document with the new unique url
+    query = {'_id': doc_id}
+    document = collection.find_one(query)
+    # print(document)
+
+    if document is None:
+        print(f"No document found with _id: {doc_id}")
+    else:
+        if url not in document["endpoints"]:
+            # Endpoint not found, append it to the array
+            collection.update_one(
+                {"_id": doc_id},
+                {"$push": {"endpoints": url}}
+            )
+
+            # Check if the url is in the target_name array
+            if sendDiscordNotification:
+                send_discord_message(args.discord_webhook, f'Url "{url}" has been added to {target_name}')
+            if sendTelegramNotification:
+                send_telegram_message(args.telegram_token, args.telegram_chat_id, f'Url "{url}"has been added to {target_name}')
+            if verbose():
+                writerr(colored(f'INFO: Url "{url}" has been added to {target_name} database', 'yellow'))
+ 
+    # else:
+    #     # Element already exists, do nothing
+    #     pass
 
 def includeLink(link):
     """
@@ -784,32 +892,43 @@ def handler(signal_received, frame):
     global stopProgram, stopProgramCount
 
     if stopProgram is not None:
-        stopProgramCount = stopProgramCount + 1
-        if stopProgramCount == 1:
+        if sleep_counter == 0:
+            stopProgramCount = stopProgramCount + 1
+            if stopProgramCount == 1:
+                writerr(
+                    colored(
+                        getSPACER(
+                            ">>> Please be patient... Trying to save data and end gracefully!"
+                        ),
+                        "red",
+                    )
+                )
+            elif stopProgramCount == 2:
+                writerr(
+                    colored(
+                        getSPACER(">>> SERIOUSLY... YOU DON'T WANT YOUR DATA SAVED?!"),
+                        "red",
+                    )
+                )
+            elif stopProgramCount == 3:
+                writerr(
+                    colored(
+                        getSPACER(">>> Patience isn't your strong suit eh? ¯\_(ツ)_/¯"),
+                        "red",
+                    )
+                )
+                sys.exit()
+        else:
             writerr(
                 colored(
                     getSPACER(
-                        ">>> Please be patient... Trying to save data and end gracefully!"
+                        ">>> ⚡️ Ctrl+C intercepted! Mission aborted, Agent. Time to vanish into the digital shadows. 🌐💻"
                     ),
                     "red",
                 )
             )
-        elif stopProgramCount == 2:
-            writerr(
-                colored(
-                    getSPACER(">>> SERIOUSLY... YOU DON'T WANT YOUR DATA SAVED?!"),
-                    "red",
-                )
-            )
-        elif stopProgramCount == 3:
-            writerr(
-                colored(
-                    getSPACER(">>> Patience isn't your strong suit eh? ¯\_(ツ)_/¯"),
-                    "red",
-                )
-            )
             sys.exit()
-    else:
+    elif stopProgram is None:
         stopProgram = StopProgram.SIGINT
         writerr(
             colored(
@@ -817,11 +936,12 @@ def handler(signal_received, frame):
                 "red",
             )
         )
-        writerr(
-            colored(
-                getSPACER(">>> Attempting to rescue any data gathered so far..."), "red"
+        if sleep_counter == 0:
+            writerr(
+                colored(
+                    getSPACER(">>> Attempting to rescue any data gathered so far..."), "red"
+                )
             )
-        )
 
 
 def getMemory():
@@ -1182,6 +1302,13 @@ def processLinkOutput():
                 except Exception as e:
                     if vverbose():
                         writerr(colored("ERROR processLinkOutput 3: " + str(e), "red"))
+
+            if storeindb():
+                # Store the link in the database
+                
+                check_and_send_to_db(target_name, link)
+
+
 
         # If there are less links output because of filters, show the new total
         if args.regex_after is not None and linkCount > 0 and outputCount < linkCount:
@@ -1756,6 +1883,7 @@ def showOptions():
     global burpFile, zapFile, caidoFile, stdFile, urlPassed, dirPassed, inScopePrefixDomains, inScopeFilterDomains
 
     try:
+        whichToSendNotification()
         write(colored("Selected config and settings:", "cyan"))
         if urlPassed:
             write(
@@ -2051,7 +2179,41 @@ def showOptions():
                 colored("-ascii-only: " + str(args.ascii_only), "magenta")
                 + colored(" Whether links and parameters will only be added if they only contain ASCII characters.", "white")
             )
-        
+        if storeindb():
+            write(
+                colored("-sr: " + str(args.store_results), "magenta")
+                + colored(
+                    " Whether the results will be stored in the database.", "white"
+                )
+            )
+        if sendDiscordNotification:
+            write(
+                colored("-dw: " + str(args.discord_webhook  ), "magenta")
+                + colored(
+                    " Whether the results will be sent to Discord.", "white"
+                )
+            )
+        if args.mongo_port:
+            write(
+                colored("-mp: " + str(args.mongo_port), "magenta")
+                + colored(
+                    " The port of the MongoDB server.", "white"
+                )
+            )
+        if sendTelegramNotification:
+            write(
+                colored("-tt: " + str(args.telegram_token  ), "magenta") + colored("-tc: ", str(args.telegram_chatid), "magenta")
+                + colored(
+                    " Whether the results will be sent to Telegram.", "white"
+                )
+            )
+        if run_every:
+            write(
+                colored("-re: " + str(args.run_every), "magenta")
+                + colored(
+                    " Whether the script will run every X hours.", "white"
+                )
+            )
         if args.max_time_limit > 0:
             write(colored('-mtl: ' + str(args.max_time_limit), 'magenta')+colored(" The maximum time limit (in minutes) to run before stopping.","white"))
         
@@ -3499,6 +3661,115 @@ def checkMaxTimeLimit():
         if runTime.seconds / 60 > args.max_time_limit:
             stopProgram = StopProgram.MAX_TIME_LIMIT
             
+def main():
+    global args, terminalWidth, startDateTime, stopProgram, currentUAGroup, lstStopWords, lstPathWords, lstExclusions, lstFileExtExclusions, userAgents, requestHeaders, linksFound, linksVisited, paramsFound, contentTypesProcessed, totalRequests, skippedRequests, failedRequests, burpFile, zapFile, caidoFile, dirPassed, waymoreMode, waymoreFiles, wordsFound, extraStopWords, stdinMultiple, stdinFile, originalInput
+    try:
+        # Set User Agents to use
+        setUserAgents()
+        
+        # Process each user agent group
+        for i in range(len(userAgents)):
+            if stopProgram is not None:
+                break
+
+            currentUAGroup = i
+
+            # Process the input given on -i (--input) and get all links
+            processInput()
+
+            # If a Burp file, ZAP file, Caido file or directory is processed then ignore userAgents if passed because they are not relevant
+            if burpFile or zapFile or caidoFile or dirPassed:
+                break
+
+        # if waymore mode, then process the waymore.txt and index.txt file(s) next
+        if waymoreMode:
+            
+            # Reset directory flag to now process individual files
+            dirPassed = False
+            
+            # For waymore mode, set the -inc / --include flage to True and -s429
+            args.include = True
+            args.s429 = True
+            
+            # Save the original input directory to set back later
+            originalInput = args.input
+            
+            # Process each user agent group
+            for i in range(len(userAgents)):
+                if stopProgram is not None:
+                    break
+                
+                currentUAGroup = i
+            
+                # Process the waymore.txt and index.txt files
+                for wf in waymoreFiles:
+                    write(colored("\nProcessing links in ","cyan")+colored("Waymore File ","yellow")+colored(wf + ":", "cyan"))
+                    processEachInput(wf)
+                linksVisited = set()
+                    
+            # Once all data has been found, process the output
+            args.input = originalInput
+            processOutput()
+
+            # Reset the variables
+            linksFound = set()
+            linksVisited = set()
+            paramsFound = set()
+            contentTypesProcessed = set()
+            totalRequests = 0
+            skippedRequests = 0
+            failedRequests = 0
+            
+        # If the program was stopped then alert the user
+        if stopProgram is not None:
+            if stopProgram == StopProgram.MEMORY_THRESHOLD:
+                writerr(
+                    colored(
+                        "YOUR MEMORY USAGE REACHED "
+                        + str(maxMemoryPercent)
+                        + "% SO THE PROGRAM WAS STOPPED. DATA IS LIKELY TO BE INCOMPLETE.\n",
+                        "red",
+                    )
+                )
+            elif stopProgram == StopProgram.TOO_MANY_REQUESTS:
+                writerr(
+                    colored(
+                        "THE PROGRAM WAS STOPPED DUE TO TOO MANY REQUESTS (429 ERRORS). DATA IS LIKELY TO BE INCOMPLETE.\n",
+                        "red",
+                    )
+                )
+            elif stopProgram == StopProgram.TOO_MANY_FORBIDDEN:
+                writerr(
+                    colored(
+                        "THE PROGRAM WAS STOPPED DUE TO TOO MANY FORBIDDEN REQUESTS (403 ERRORS). DATA IS LIKELY TO BE INCOMPLETE.\n",
+                        "red",
+                    )
+                )
+            elif stopProgram == StopProgram.TOO_MANY_TIMEOUTS:
+                writerr(
+                    colored(
+                        "THE PROGRAM WAS STOPPED DUE TO TOO MANY REQUEST TIMEOUTS. DATA IS LIKELY TO BE INCOMPLETE.\n",
+                        "red",
+                    )
+                )
+            elif stopProgram == StopProgram.MAX_TIME_LIMIT:
+                writerr(
+                    colored(
+                        "THE PROGRAM WAS STOPPED DUE TO TOO MAXIMUM TIME LIMIT. DATA IS LIKELY TO BE INCOMPLETE.\n",
+                        "red",
+                    )
+                )
+            else:
+                writerr(
+                    colored(
+                        "THE PROGRAM WAS STOPPED. DATA IS LIKELY TO BE INCOMPLETE.\n",
+                        "red",
+                    )
+                )
+
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR main 1: " + str(e), "red"))
 # Run xnLinkFinder
 if __name__ == "__main__":
 
@@ -3778,6 +4049,14 @@ if __name__ == "__main__":
         help='A file of additional Stop Words (in addition to "stopWords" in the YML Config file) used to exclude words from the target specific wordlist. Stop Words are used in Natural Language Processing and different lists can be found in different libraries. You may want to add words in different languages, depending on your target.',
         type=argcheckStopwordsFile
     )
+    parser.add_argument('-sr','--store-results',action="store_true" , help="store results in mongodb")
+    parser.add_argument('-tn','--target-name', action='store', help="target name", type=str)
+    parser.add_argument("-re", "--run-every", action="store", help="run the script every n hours", type=int)
+    parser.add_argument("-mp", "--mongo-port", action="store", help="if you want to use a different port for mongodb", type=int)
+    parser.add_argument("-dw","--discord-webhook", action="store", help="discord webhook url")
+    parser.add_argument("-tt", "--telegram-token", action="store", help="telegram bot token")
+    parser.add_argument("-tc", "--telegram-chatid", action="store", help="telegram chat id")
+
     parser.add_argument("-nb", "--no-banner", action="store_true", help="Hides the tool banner.")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     parser.add_argument(
@@ -3785,7 +4064,13 @@ if __name__ == "__main__":
     )
     parser.add_argument('--version', action='store_true', help="Show version number")
     args = parser.parse_args()
+    if args.target_name is None:
+        target_name = args.input
+    else:
+        target_name = args.target_name
 
+    if args.run_every != None:
+        run_every = int(args.run_every)
     # If --version was passed, display version and exit
     if args.version:
         write(colored('xnLinkFinder - v' + __import__('xnLinkFinder').__version__,'cyan'))
@@ -3814,112 +4099,16 @@ if __name__ == "__main__":
         process = psutil.Process(os.getpid())
     except:
         pass
+    
+    connectTomongoDB(target_name)
+    while True:
+        main()
+        if run_every != None and run_every > 0:
+            if verbose():
+                write(colored("Sleeping for " + str(run_every) + " hours", "cyan"))
+                write(colored("Pro Tip: run nohup <your command> </dev/null >/dev/null 2>&1 & to run the script in the background and it will not be Killed! Except when memory is full for sure ", "yellow"))
+            sleep_counter += 1
+            time.sleep(run_every * 60 * 60)
+        else:
+            break
 
-    try:
-
-        # Set User Agents to use
-        setUserAgents()
-           
-        # Process each user agent group
-        for i in range(len(userAgents)):
-            if stopProgram is not None:
-                break
-
-            currentUAGroup = i
-
-            # Process the input given on -i (--input) and get all links
-            processInput()
-
-            # If a Burp file, ZAP file, Caido file or directory is processed then ignore userAgents if passed because they are not relevant
-            if burpFile or zapFile or caidoFile or dirPassed:
-                break
-
-        # if waymore mode, then process the waymore.txt and index.txt file(s) next
-        if waymoreMode:
-            
-            # Reset directory flag to now process individual files
-            dirPassed = False
-            
-            # For waymore mode, set the -inc / --include flage to True and -s429
-            args.include = True
-            args.s429 = True
-            
-            # Save the original input directory to set back later
-            originalInput = args.input
-            
-            # Process each user agent group
-            for i in range(len(userAgents)):
-                if stopProgram is not None:
-                    break
-                
-                currentUAGroup = i
-            
-                # Process the waymore.txt and index.txt files
-                for wf in waymoreFiles:
-                    write(colored("\nProcessing links in ","cyan")+colored("Waymore File ","yellow")+colored(wf + ":", "cyan"))
-                    processEachInput(wf)
-                linksVisited = set()
-                    
-            # Once all data has been found, process the output
-            args.input = originalInput
-            processOutput()
-
-            # Reset the variables
-            linksFound = set()
-            linksVisited = set()
-            paramsFound = set()
-            contentTypesProcessed = set()
-            totalRequests = 0
-            skippedRequests = 0
-            failedRequests = 0
-            
-        # If the program was stopped then alert the user
-        if stopProgram is not None:
-            if stopProgram == StopProgram.MEMORY_THRESHOLD:
-                writerr(
-                    colored(
-                        "YOUR MEMORY USAGE REACHED "
-                        + str(maxMemoryPercent)
-                        + "% SO THE PROGRAM WAS STOPPED. DATA IS LIKELY TO BE INCOMPLETE.\n",
-                        "red",
-                    )
-                )
-            elif stopProgram == StopProgram.TOO_MANY_REQUESTS:
-                writerr(
-                    colored(
-                        "THE PROGRAM WAS STOPPED DUE TO TOO MANY REQUESTS (429 ERRORS). DATA IS LIKELY TO BE INCOMPLETE.\n",
-                        "red",
-                    )
-                )
-            elif stopProgram == StopProgram.TOO_MANY_FORBIDDEN:
-                writerr(
-                    colored(
-                        "THE PROGRAM WAS STOPPED DUE TO TOO MANY FORBIDDEN REQUESTS (403 ERRORS). DATA IS LIKELY TO BE INCOMPLETE.\n",
-                        "red",
-                    )
-                )
-            elif stopProgram == StopProgram.TOO_MANY_TIMEOUTS:
-                writerr(
-                    colored(
-                        "THE PROGRAM WAS STOPPED DUE TO TOO MANY REQUEST TIMEOUTS. DATA IS LIKELY TO BE INCOMPLETE.\n",
-                        "red",
-                    )
-                )
-            elif stopProgram == StopProgram.MAX_TIME_LIMIT:
-                writerr(
-                    colored(
-                        "THE PROGRAM WAS STOPPED DUE TO TOO MAXIMUM TIME LIMIT. DATA IS LIKELY TO BE INCOMPLETE.\n",
-                        "red",
-                    )
-                )
-            else:
-                writerr(
-                    colored(
-                        "THE PROGRAM WAS STOPPED. DATA IS LIKELY TO BE INCOMPLETE.\n",
-                        "red",
-                    )
-                )
-
-    except Exception as e:
-        if vverbose():
-            writerr(colored("ERROR main 1: " + str(e), "red"))
