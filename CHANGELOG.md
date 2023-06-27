@@ -1,5 +1,12 @@
 ## Changelog
 
+- v3.14
+
+  - Changed
+
+    - Fix a bug where unicode characters weren't always being converted correctly so some links may not have been successfully extracted.
+    - Fix a bug where if a link of `*.example.com` was found then it would be reported as `http://.example.com`
+
 - v3.13
 
   - Changed

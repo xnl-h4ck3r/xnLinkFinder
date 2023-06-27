@@ -458,9 +458,15 @@ def addLink(link, url, prefixed=False):
     link = link.replace("&amp;", "&")
     link = link.replace("\\x26", "&")
     link = link.replace("\\u0026", "&")
+    link = link.replace(r"\x26", "&")
+    link = link.replace(r"\u0026", "&")
+    link = link.replace("&#38;","&")
     link = link.replace("&equals;", "=")
     link = link.replace("\\x3d", "=")
     link = link.replace("\\u003d", "=")
+    link = link.replace(r"\x3d", "=")
+    link = link.replace(r"\u003d", "=")
+    link = link.replace("&#61;", "=")
                 
     # Add the link to the list
     try:
@@ -537,10 +543,9 @@ def getResponseLinks(response, url):
                 responseUrl = response.url
 
         # Some URLs may be displayed in the body within strings that have different encodings of / and : so replace these
-        pattern = re.compile("(&#x2f;|%2f|\\u002f|\\\/)", re.IGNORECASE)
-        body = pattern.sub("/", body)
-        pattern = re.compile("(&#x3a;|%3a|\\u003a|\\\/)", re.IGNORECASE)
-        body = pattern.sub(":", body)
+        body = re.sub(r"(&#x2f;|%2f|\u002f|\/)", "/", body, flags=re.IGNORECASE)
+        body = re.sub(r"(&#x3a;|%3a|\u003a)", ":", body, flags=re.IGNORECASE)
+        body = body.replace("\/","/")
 
         # Replace occurrences of HTML entity &quot; with an actual double quote
         body = body.replace('&quot;','"')
@@ -889,7 +894,7 @@ def processUrl(url):
             url = str(url[0 : url.find("[") - 2])
 
         # If the url has *. in it, remove that before we try to request it
-        url = url.replace("*.","") 
+        url = url.replace("*.","").replace(":*","").replace("*","") 
         
         # If we should make the current request
         if shouldMakeRequest(url):
