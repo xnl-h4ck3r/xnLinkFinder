@@ -1,5 +1,42 @@
 ## Changelog
 
+- v4.0
+
+  - New
+
+    - Fix a bug that is always excluding relative links from the output, e.g. links starting with `./` or `../`
+    - Add argument `-xrel`/`--exclude-relative-links` to determine whether to NOT include links in the results if they start with `./` or `../`.
+    - Add argument `-nwll`/`--no-wordlist-lowercase` to determine whether to NOT add a lowercase version of a word if it contains any uppercase letters.
+    - Add `sanitizeWord` function which is used in GAP to URL encode any unicode characters in the word and also remove any unwanted characters. To do this, `urllib` needs to be imported.
+    - Do not get words from a `*.js.map` file. Sometimes these are JSON rather than javascript and end up adding a lot of pointless words like mapping names.
+    - Do not include words that are in paths. A lot of these were previously being included even if the `Include URL path words?` option wasn't selected because of the regex to get words was not good enough.
+    - Ignore certain words if found in `robots.txt`
+    - Added the regex part `(\"|\')([A-Za-z0-9_-]+\/)+[A-Za-z0-9_-]+(\.[A-Za-z0-9]{2,}|\/?(\?|\#)[A-Za-z0-9_\-&=\[\]]*)(\"|\')` to the main Link finder regex to get more potential links. Also, ignore any links that then start with `application/`, `image/`, `model/`, `video/`, `audio/` or `text/` because these are content-types that can be confused with links.
+    - Add `wasnt` to Stop Words list in default value and `config.yml`.
+    - Add `.pdf` to `DEFAULT_FILEEXT_EXCLUSIONS` constant and the `fileExtExclude` in `config.yml`.
+    - Ignore links if they start with `/=` (some false positives).
+    - Suppress warning messages that can arise from beautifulsoup4
+
+  - Changed
+
+    - If input is a `waymore` directory then passing `-d 0` will only search archived files, and not actively request links in `waymore.txt` and `index.txt`
+    - Improve regex to get more parameters from the response that could be parameters in encoded links
+    - Improve the regex for finding links in the response
+    - Remove the check for `X-SourceMap` because it is already covered by the existing regex
+    - Remove the `processWaymoreFile` function because it isn't called from anywhere!
+    - Get potential words from more `meta` tags, and also get from some relevant `link`-`rel` tags.
+    - Remove the `respParamMetaName` option from `config.yml` and associated processing because this has little to no value at all.
+    - Improve word list by splitting words with dash, and also by comma.
+    - Fix logic in `includeContentType` where unnecessary calls were being made.
+    - Only display parameters that contain at least one letter, number or \_.
+    - Improve `sanitizeWord` function to use regex and also remove spaces and `%20`. Also correct error not replacing `%29`.
+    - Replace regex `findall`and `search` with pre-compiled statements for better performance.
+    - Remove `robots.txt` in `DEFAULT_LINK_EXCLUSIONS` and `linkExclude` in `config.yml` (not sure why I put it in there in the first place!)
+    - Change `polyfill.io` to `polyfill` in `DEFAULT_LINK_EXCLUSIONS` and `linkExclude` in `config.yml`.
+    - Remove the test `(?<=\=)\s*\/[0-9a-zA-Z]+[^>\n]*` from the response link Regex because it gives too many false positives and can also end up selected a huge part of JS files and cause performance issues.
+    - Make a change to the Link regex to make sure that potential links that start with `//` are not followed by any spaces.
+    - Change the call `soup.findAll(text=lambda` to `soup.find_all(string=lambda` because `find_all` should be used instead of `findAll` and `text` has now been deprecated and raises a warning.
+
 - v3.14
 
   - Changed

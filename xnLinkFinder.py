@@ -69,6 +69,8 @@ from datetime import datetime
 from bs4 import BeautifulSoup, Comment
 warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 import csv
+import urllib
+import warnings
 
 # Try to import lxml to use with beautifulsoup4 instead of the default parser
 try:
@@ -118,13 +120,12 @@ RESP_PARAM_JSON = True
 RESP_PARAM_JSVARS = True
 RESP_PARAM_XML = True
 RESP_PARAM_INPUTFIELD = True
-RESP_PARAM_METANAME = True
 WORDS_CONTENT_TYPES = ""
 STOP_WORDS = ""
 
 # A comma separated list of Link exclusions used when the exclusions from config.yml cannot be found
 # Links are NOT output if they contain these strings. This just applies to the links found in endpoints, not the origin link in which it was found
-DEFAULT_LINK_EXCLUSIONS = ".css,.jpg,.jpeg,.png,.svg,.img,.gif,.mp4,.flv,.ogv,.webm,.webp,.mov,.mp3,.m4a,.m4p,.scss,.tif,.tiff,.ttf,.otf,.woff,.woff2,.bmp,.ico,.eot,.htc,.rtf,.swf,.image,w3.org,doubleclick.net,youtube.com,.vue,jquery,bootstrap,font,jsdelivr.net,vimeo.com,pinterest.com,facebook,linkedin,twitter,instagram,google,mozilla.org,jibe.com,schema.org,schemas.microsoft.com,wordpress.org,w.org,wix.com,parastorage.com,whatwg.org,polyfill.io,typekit.net,schemas.openxmlformats.org,openweathermap.org,openoffice.org,reactjs.org,angularjs.org,java.com,purl.org,/image,/img,/css,/wp-json,/wp-content,/wp-includes,/theme,/audio,/captcha,/font,robots.txt,node_modules,.wav,.gltf,.pict,.svgz,.eps,.midi,.mid,.avif"
+DEFAULT_LINK_EXCLUSIONS = ".css,.jpg,.jpeg,.png,.svg,.img,.gif,.mp4,.flv,.ogv,.webm,.webp,.mov,.mp3,.m4a,.m4p,.scss,.tif,.tiff,.ttf,.otf,.woff,.woff2,.bmp,.ico,.eot,.htc,.rtf,.swf,.image,w3.org,doubleclick.net,youtube.com,.vue,jquery,bootstrap,font,jsdelivr.net,vimeo.com,pinterest.com,facebook,linkedin,twitter,instagram,google,mozilla.org,jibe.com,schema.org,schemas.microsoft.com,wordpress.org,w.org,wix.com,parastorage.com,whatwg.org,polyfill,typekit.net,schemas.openxmlformats.org,openweathermap.org,openoffice.org,reactjs.org,angularjs.org,java.com,purl.org,/image,/img,/css,/wp-json,/wp-content,/wp-includes,/theme,/audio,/captcha,/font,node_modules,.wav,.gltf,.pict,.svgz,.eps,.midi,.mid,.avif"
 
 # A comma separated list of Content-Type exclusions used when the exclusions from config.yml cannot be found
 # These content types will NOT be checked
@@ -132,7 +133,7 @@ DEFAULT_CONTENTTYPE_EXCLUSIONS = "text/css,image/jpeg,image/jpg,image/png,image/
 
 # A comma separated list of file extension exclusions used when the file ext exclusions from config.yml cannot be found
 # In Directory mode, files with these extensions will NOT be checked
-DEFAULT_FILEEXT_EXCLUSIONS = ".zip,.dmg,.rpm,.deb,.gz,.tar,.jpg,.jpeg,.png,.svg,.img,.gif,.mp4,.flv,.ogv,.webm,.webp,.mov,.mp3,.m4a,.m4p,.scss,.tif,.tiff,.ttf,.otf,.woff,.woff2,.bmp,.ico,.eot,.htc,.rtf,.swf,.image,.wav,.gltf,.pict,.svgz,.eps,.midi,.mid"
+DEFAULT_FILEEXT_EXCLUSIONS = ".zip,.dmg,.rpm,.deb,.gz,.tar,.jpg,.jpeg,.png,.svg,.img,.gif,.mp4,.flv,.ogv,.webm,.webp,.mov,.mp3,.m4a,.m4p,.scss,.tif,.tiff,.ttf,.otf,.woff,.woff2,.bmp,.ico,.eot,.htc,.rtf,.swf,.image,.wav,.gltf,.pict,.svgz,.eps,.midi,.mid,.pdf"
 
 # A list of files used in the Link Finding Regex when the exclusions from config.yml cannot be found.
 # These are used in the 5th capturing group that aren't obvious links, but could be files
@@ -217,8 +218,49 @@ UA_GAMECONSOLE = [
 DEFAULT_WORDS_CONTENT_TYPES = "text/html,application/xml,application/json,text/plain,application/xhtml+xml,application/ld+json,text/xml"
 
 # Default english "stop word" list
-DEFAULT_STOP_WORDS = "a,aboard,about,above,across,after,afterwards,again,against,all,almost,alone,along,already,also,although,always,am,amid,among,amongst,an,and,another,any,anyhow,anyone,anything,anyway,anywhere,are,around,as,at,back,be,became,because,become,becomes,becoming,been,before,beforehand,behind,being,below,beneath,beside,besides,between,beyond,both,bottom,but,by,can,cannot,cant,con,concerning,considering,could,couldnt,cry,de,describe,despite,do,done,down,due,during,each,eg,eight,either,eleven,else,elsewhere,empty,enough,etc,even,ever,every,everyone,everything,everywhere,except,few,fifteen,fifty,fill,find,fire,first,five,for,former,formerly,forty,found,four,from,full,further,get,give,go,had,has,hasnt,have,he,hence,her,here,hereafter,hereby,herein,hereupon,hers,herself,him,himself,his,how,however,hundred,i,ie,if,in,inc,indeed,inside,interest,into,is,it,its,itself,keep,last,latter,latterly,least,less,like,ltd,made,many,may,me,meanwhile,might,mill,mine,more,moreover,most,mostly,move,much,must,my,myself,name,namely,near,neither,never,nevertheless,next,nine,no,nobody,none,noone,nor,not,nothing,now,nowhere,of,off,often,on,once,one,only,onto,or,other,others,otherwise,our,ours,ourselves,out,outside,over,own,part,past,per,perhaps,please,put,rather,re,regarding,round,same,see,seem,seemed,seeming,seems,serious,several,she,should,show,side,since,sincere,six,sixty,so,some,somehow,someone,something,sometime,sometimes,somewhere,still,such,take,ten,than,that,the,their,them,themselves,then,thence,there,thereafter,thereby,therefore,therein,thereupon,these,they,thick,thin,third,this,those,though,three,through,throughout,thru,thus,to,together,too,top,toward,towards,twelve,twenty,two,un,under,underneath,until,unto,up,upon,us,very,via,want,was,we,well,went,were,weve,what,whatever,when,whence,whenever,where,whereafter,whereas,whereby,wherein,whereupon,wherever,whether,which,while,whilst,whither,whoever,whole,whom,whose,why,will,with,within,without,would,yet,you,youll,your,youre,yours,yourself,yourselves,youve"
+DEFAULT_STOP_WORDS = "a,aboard,about,above,across,after,afterwards,again,against,all,almost,alone,along,already,also,although,always,am,amid,among,amongst,an,and,another,any,anyhow,anyone,anything,anyway,anywhere,are,around,as,at,back,be,became,because,become,becomes,becoming,been,before,beforehand,behind,being,below,beneath,beside,besides,between,beyond,both,bottom,but,by,can,cannot,cant,con,concerning,considering,could,couldnt,cry,de,describe,despite,do,done,down,due,during,each,eg,eight,either,eleven,else,elsewhere,empty,enough,etc,even,ever,every,everyone,everything,everywhere,except,few,fifteen,fifty,fill,find,fire,first,five,for,former,formerly,forty,found,four,from,full,further,get,give,go,had,has,hasnt,have,he,hence,her,here,hereafter,hereby,herein,hereupon,hers,herself,him,himself,his,how,however,hundred,i,ie,if,in,inc,indeed,inside,interest,into,is,it,its,itself,keep,last,latter,latterly,least,less,like,ltd,made,many,may,me,meanwhile,might,mill,mine,more,moreover,most,mostly,move,much,must,my,myself,name,namely,near,neither,never,nevertheless,next,nine,no,nobody,none,noone,nor,not,nothing,now,nowhere,of,off,often,on,once,one,only,onto,or,other,others,otherwise,our,ours,ourselves,out,outside,over,own,part,past,per,perhaps,please,put,rather,re,regarding,round,same,see,seem,seemed,seeming,seems,serious,several,she,should,show,side,since,sincere,six,sixty,so,some,somehow,someone,something,sometime,sometimes,somewhere,still,such,take,ten,than,that,the,their,them,themselves,then,thence,there,thereafter,thereby,therefore,therein,thereupon,these,they,thick,thin,third,this,those,though,three,through,throughout,thru,thus,to,together,too,top,toward,towards,twelve,twenty,two,un,under,underneath,until,unto,up,upon,us,very,via,want,was,wasnt,we,well,went,were,weve,what,whatever,when,whence,whenever,where,whereafter,whereas,whereby,wherein,whereupon,wherever,whether,which,while,whilst,whither,whoever,whole,whom,whose,why,will,with,within,without,would,yet,you,youll,your,youre,yours,yourself,yourselves,youve"
 
+# Regex for JSON keys
+REGEX_JSONKEYS = re.compile(r'"([a-zA-Z0-9$_\.-]*?)":')
+
+# Regex for XML attributes
+REGEX_XMLATTR = re.compile(r"<([a-zA-Z0-9$_\.-]*?)>")
+
+# Regex for HTML input fields
+REGEX_HTMLINP = re.compile(r"<input(.*?)>", re.IGNORECASE)
+REGEX_HTMLINP_NAME = re.compile(r"(?<=\sname)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|\'))", re.IGNORECASE)    
+REGEX_HTMLINP_ID = re.compile(r"(?<=\sid)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|'))", re.IGNORECASE)
+
+# Regex for Sourcemap
+REGEX_SOURCEMAP = re.compile(r"(?<=SourceMap\:\s).*?(?=\n)", re.IGNORECASE)
+
+# Regex for Potential Words
+REGEX_WORDS = re.compile(r"(?<![\/])\b\w{3,}\b(?![\/])")
+REGEX_WORDSUB = re.compile(r'\"|%22|<|%3c|>|%3e|\(|%28|\)|%29|\s|%20', re.IGNORECASE)
+
+# Regex for valid parameter
+REGEX_PARAM = re.compile(r"[0-9a-zA-Z_]")
+
+# Regex for param keys
+REGEX_PARAMKEYS = re.compile(r"(?<=\?|&)[^\=\&\n].*?(?=\=|&|\n)")
+
+# Regex for parameters
+REGEX_PARAMSPOSSIBLE = re.compile(r"(?<=[^\&|%26|\&amp;|\&#0?38;|\u0026|\\u0026|\\\\u0026|\\x26|\x26])(\?|%3f|\&#0?63;|\u003f|\\u003f|\\\\u003f|\&|%26|\&amp;|\&#0?38;|\u0026|\\u0026|\\\\u0026|\\x26|%3d|\&#0?61;|\u003d|\\u003d|\\\\u003d|\\x3d|\&quot;|\&#0?34;|\u0022|\\u0022|\\\\u0022|\&#0?39;)[a-z0-9_\-]{3,}(\=|%3d|\&#0?61;|\u003d|\\u003d|\\\\u003d|\x3d|\\x3d)(?=[^\=|%3d|\&#0?61;|\u003d|\\u003d|\\\\u003d|\x3d|\\x3d])", re.IGNORECASE)
+REGEX_PARAMSSUB = re.compile(r"\?|%3f|\&#0?63;|\u003f|\\u003f|\\\\u003f|\=|%3d|\&#0?61;|\u003d|\\u003d|\\\\u003d|\\x3d|\x3d|%26|\&amp;|\&#0?38;|\u0026|\\u0026|\\\\u0026|\\x26|\x26|\&quot;|\&#0?34;|\u0022|\\u0022|\\\\u0022|\\x22|\x22|\&#0?39;", re.IGNORECASE)
+REGEX_JSLET = re.compile(r"(?<=let[\s])[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*[\s]*(?=(\=|;|\n|\r))")
+REGEX_JSVAR = re.compile(r"(?<=var\s)[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*?(?=(\s|=|,|;|\n))")
+REGEX_JSCONSTS = re.compile(r"(?<=const\s)[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*?(?=(\s|=|,|;|\n))")
+
+# Regex for links
+REGEX_LINKSSLASH = re.compile(r"(\&#x2f;|\&#0?2f|%2f|\u002f|\\u002f|\\/)", re.IGNORECASE)
+REGEX_LINKSCOLON = re.compile(r"(\&#x3a;|\&#0?3a|%3a|\u003a|\\u003a)", re.IGNORECASE)
+REGEX_LINKSAND = re.compile(r"%26|\&amp;|\&#0?38;|\u0026|u0026|x26|\x26", re.IGNORECASE)
+REGEX_LINKSEQUAL = re.compile(r"%3d|\&equals;|\&#0?61;|\u003d|u003d|x3d|\x3d", re.IGNORECASE)
+REGEX_LINKSEARCH1 = re.compile(r"^[^(]*\)+$")
+REGEX_LINKSEARCH2 = re.compile(r"^[^{}]*\}+$")
+REGEX_LINKSEARCH3 = re.compile(r"^[^\[]]*\]+$")
+REGEX_LINKSEARCH4 = re.compile(r"<\/")
+        
 def write(text="", pipe=False):
     # Only send text to stdout if the tool isn't piped to pass output to something else,
     # or if the tool has been piped and the pipe parameter is True
@@ -289,8 +331,10 @@ def includeLink(link):
         # - doesn't have any letters or numbers in
         # - if the ascii-only argument was True AND the link contains non ASCII characters
         # - doesn't have | or \s in, because it's probably a regex, not a link
+        # - starts with /=
+        # - starts with application/, image/, model/, video/, audio/ or text/ as this is a content-type that can sometimes be confused for links
         try:
-            if link.count("\n") > 1 or link.startswith("#") or link.startswith("$") or link.startswith("\\"):
+            if link.count("\n") > 1 or link.startswith("#") or link.startswith("$") or link.startswith("\\") or link.startswith("/="):
                 include = False
             if include:
                 include = link.isprintable()
@@ -302,12 +346,14 @@ def includeLink(link):
                 include = bool(re.search(r"[0-9a-zA-Z]", link))
             if include:
                 include = not (bool(re.search(r"\\(s|S)", link)))
+            if include:
+                include = not (bool(re.match(r"^(application\/|image\/|model\/|video\/|audio\/|text\/)", link, re.IGNORECASE)))
             if include and args.ascii_only:
                 include = link.isascii()
         except Exception as e:
             if vverbose():
                 writerr("ERROR includeLink 2: " + str(e))
-
+         
         if include:
             # Go through lstExclusions and see if finding contains any. If not then continue
             # If it fails then try URL encoding and then checking
@@ -329,9 +375,13 @@ def includeLink(link):
                             )
                         )
 
+        # If the -xrel / --exclude-relative-links argument was passed, and the link starts with ./ or ../ then don't add
+        if args.exclude_relative_links and (link.startswith("./") or link.startswith("../")):
+            include = False
+    
         # If the -sf --scope-filter argument is True then a link should only be included if in the scope
-        # but ignore any links that just start with a single /
-        if not link.startswith("/") or link.startswith("//"):
+        # but ignore any links that just start with a single /, ./ or ../
+        if link.startswith("//") or (not link.startswith("/") and not link.startswith("./") and not link.startswith("../")):
             if include and args.scope_filter:
                 try:
                     include = False
@@ -424,27 +474,26 @@ def includeContentType(header,url):
             contentType = contentType.split(";")[0]
         except Exception as e:
             contentType = ""
-
-        # Check the content-type against the comma separated list of exclusions
-        lstExcludeContentType = CONTENTTYPE_EXCLUSIONS.split(",")
-        for excludeContentType in lstExcludeContentType:
-            if contentType.lower() == excludeContentType.lower():
-                include = False
-        
-        # If the content type can be included and -vv option was passed, add to the set to display at the end
-        if vverbose():
-            try:
-                if include and contentType != '':
-                    contentTypesProcessed.add(contentType)
-            except:
-                pass
         
         # If the content type wasn't found, check against file extensions
         if contentType == "":
             url = url.split("?")[0].split("#")[0].split("/")[-1]
             if url.find(".") > 0:
                 include = includeFile(url)
+        else:
+            # Check the content-type against the comma separated list of exclusions
+            lstExcludeContentType = CONTENTTYPE_EXCLUSIONS.split(",")
+            for excludeContentType in lstExcludeContentType:
+                if contentType.lower() == excludeContentType.lower():
+                    include = False
             
+            # If the content type can be included and -vv option was passed, add to the set to display at the end
+            if vverbose() and include:
+                try:
+                    contentTypesProcessed.add(contentType)
+                except:
+                    pass
+                
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR includeContentType 1: " + str(e), "red"))
@@ -491,7 +540,10 @@ def addLink(link, url, prefixed=False):
         if RESP_PARAM_LINKSFOUND and link.count("?") > 0:
             # Get parameters from the link
             try:
-                param_keys = re.finditer(r"(?<=\?|&)[^\=\&\n].*?(?=\=|&|\n)", link)
+                link = link.replace("%5c","").replace("\\","")
+                link = REGEX_LINKSAND.sub("&", link)
+                link = REGEX_LINKSEQUAL.sub("=", link)
+                param_keys = REGEX_PARAMKEYS.finditer(link)
                 for param in param_keys:
                     if param is not None and param.group() != "":
                         # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
@@ -543,13 +595,14 @@ def getResponseLinks(response, url):
                 responseUrl = response.url
 
         # Some URLs may be displayed in the body within strings that have different encodings of / and : so replace these
-        body = re.sub(r"(&#x2f;|%2f|\u002f|\/)", "/", body, flags=re.IGNORECASE)
-        body = re.sub(r"(&#x3a;|%3a|\u003a)", ":", body, flags=re.IGNORECASE)
-        body = body.replace("\/","/")
+        body = REGEX_LINKSSLASH.sub("/", body)
+        body = REGEX_LINKSCOLON.sub(":", body)
 
         # Replace occurrences of HTML entity &quot; with an actual double quote
         body = body.replace('&quot;','"')
-        
+        # Replace occurrences of HTML entity &nbsp; with an actual space
+        body = body.replace('&nbsp;',' ')
+            
         # Take the LINK_REGEX_FILES values and build a string of any values over 4 characters or has a number in it
         # This is used in the 4th capturing group Link Finding regexwebsocket
         lstFileExt = LINK_REGEX_FILES.split("|")
@@ -569,18 +622,18 @@ def getResponseLinks(response, url):
                 not dirPassed and includeContentType(header,responseUrl)
             ):
                 reString = (
-                    r"(?:^|\"|'|\\n|\\r|\n|\r|\s?)(((?:[a-zA-Z]{1,10}:\/\/|\/\/)([^\"'\/]{1,255}\.[a-zA-Z]{2,24}|localhost)[^\"'\n\s]{0,255})|((?:\/|\.\.\/|\.\/)[^\"'><,;| *()(%%$^\/\\\[\]][^\"'><,;|()\s]{1,255})|([a-zA-Z0-9_\-\/]{1,255}\/[a-zA-Z0-9_\-\/]{1,255}\.(?:[a-zA-Z]{1,4}"
+                    r"(?:^|\"|'|\\n|\\r|\n|\r|\s)(((?:[a-zA-Z]{1,10}:\/\/|\/\/)([^\"'\/\s]{1,255}\.[a-zA-Z]{2,24}|localhost)[^\"'\n\s]{0,255})|((?:\/|\.\.\/|\.\/)[^\"'><,;| *()(%%$^\/\\\[\]][^\"'><,;|()\s]{1,255})|([a-zA-Z0-9_\-\/]{1,}\/[a-zA-Z0-9_\-\/]{1,255}\.(?:[a-zA-Z]{1,4}"
                     + LINK_REGEX_NONSTANDARD_FILES
                     + ")(?:[\?|\/][^\"|']{0,}|))|([a-zA-Z0-9_\-]{1,255}\.(?:"
                     + LINK_REGEX_FILES
-                    + ")(?:\?[^\"|^']{0,255}|)))(?:\"|'|\\n|\\r|\n|\r|\s|$)|(?<=^Disallow:\s)[^\$\n]*|(?<=^Allow:\s)[^\$\n]*|(?<= Domain\=)[^\";']*|(?<=\<)https?:\/\/[^>\n]*|(?<=\=)\s*\/[0-9a-zA-Z]+[^>\n]*"
+                    + ")(?:\?[^\"|^']{0,255}|)))(?:\"|'|\\n|\\r|\n|\r|\s|$)|(?<=^Disallow:\s)[^\$\n]*|(?<=^Allow:\s)[^\$\n]*|(?<= Domain\=)[^\";']*|(?<=\<)https?:\/\/[^>\n]*|(\"|\')([A-Za-z0-9_-]+\/)+[A-Za-z0-9_-]+(\.[A-Za-z0-9]{2,}|\/?(\?|\#)[A-Za-z0-9_\-&=\[\]]*)(\"|\')"
                 )
                 link_keys = re.finditer(reString, body, re.IGNORECASE)
 
                 for key in link_keys:
 
-                    if key is not None and key.group() != "" and len(key.group()) > 2:
-                        link = key.group()
+                    if key is not None and key.group().strip() != "" and len(key.group().strip()) > 2:
+                        link = key.group().strip()
                         link = link.strip("\"'\n\r( ")
                         link = link.replace("\\n", "")
                         link = link.replace("\\r", "")
@@ -628,22 +681,22 @@ def getResponseLinks(response, url):
                             link = link.split("`")[0]
                             
                             # If there are any closing brackets of any kind without an opening bracket, remove everything from the closing bracket onwards
-                            if re.search(r"^[^(]*\)*$",link):
+                            if REGEX_LINKSEARCH1.search(link):
                                 link = link.split(")", 1)[0]
-                            if re.search(r"^[^{}]*\}*$",link):
+                            if REGEX_LINKSEARCH2.search(link):
                                 link = link.split("}", 1)[0]
-                            if re.search(r"^[^\[]]*\]*$",link):
+                            if REGEX_LINKSEARCH3.search(link):
                                 link = link.split("]", 1)[0]    
                                 
                             # If there is a </ in the link then strip from that forward
-                            if re.search(r"<\/", link):
+                            if REGEX_LINKSEARCH4.search(link):
                                 link = link.split("</", 1)[0] 
                                
                         except Exception as e:
                             if vverbose():
                                 writerr(colored(getSPACER("ERROR getResponseLinks 2: " + str(e)), "red"))
 
-                        # If the link starts with a . and the  2nd character is not a . or / then remove the first .
+                        # If the link starts with a . and the 2nd character is not a . or / then remove the first .
                         if link[0] == "." and link[1] != "." and link[1] != "/":
                             link = link[1:]
 
@@ -750,24 +803,11 @@ def getResponseLinks(response, url):
                 # See if the SourceMap header exists
                 try:
                     if burpFile or zapFile or caidoFile:
-                        mapFile = re.findall(
-                            r"(?<=SourceMap\:\s).*?(?=\n)", header, re.IGNORECASE
-                        )[0]
+                        mapFile = REGEX_SOURCEMAP.findall(header)[0]
                     else:
                         mapFile = header["sourcemap"]
                 except:
                     mapFile = ""
-                # If not found, try the deprecated X-SourceMap header
-                if mapFile != "":
-                    try:
-                        if burpFile or zapFile or caidoFile:
-                            mapFile = re.findall(
-                                r"(?<=X-SourceMap\:\s).*?(?=\n)", header, re.IGNORECASE
-                            )[0]
-                        else:
-                            mapFile = header["x-sourcemap"]
-                    except:
-                        mapFile = ""
                 # If a map file was found in the response, then add a link for it
                 if mapFile != "":
                     addLink(mapFile)
@@ -1265,11 +1305,11 @@ def processParamOutput():
                 if vverbose():
                     writerr(colored("ERROR processParamOutput 2: " + str(e), "red"))
 
-        # Go through all parameters, and output what was found
+        # Go through all parameters, and output what was found, only if the param does not contain at least 1 character that is a letter, number or _ 
         outputCount = 0
         for param in paramsFound:
             if args.output_params == "cli":
-                if param != "":
+                if param != "" and REGEX_PARAM.search(param) is not None:
                     write(param, True)
                     outputCount = outputCount + 1
             else:  # file
@@ -1466,7 +1506,7 @@ def processOutput():
 
 def getConfig():
     # Try to get the values from the config file, otherwise use the defaults
-    global LINK_EXCLUSIONS, CONTENTTYPE_EXCLUSIONS, FILEEXT_EXCLUSIONS, LINK_REGEX_FILES, RESP_PARAM_LINKSFOUND, RESP_PARAM_PATHWORDS, RESP_PARAM_JSON, RESP_PARAM_JSVARS, RESP_PARAM_XML, RESP_PARAM_INPUTFIELD, RESP_PARAM_METANAME, terminalWidth, WORDS_CONTENT_TYPES, STOP_WORDS, extraStopWords, lstStopWords
+    global LINK_EXCLUSIONS, CONTENTTYPE_EXCLUSIONS, FILEEXT_EXCLUSIONS, LINK_REGEX_FILES, RESP_PARAM_LINKSFOUND, RESP_PARAM_PATHWORDS, RESP_PARAM_JSON, RESP_PARAM_JSVARS, RESP_PARAM_XML, RESP_PARAM_INPUTFIELD, terminalWidth, WORDS_CONTENT_TYPES, STOP_WORDS, extraStopWords, lstStopWords
     try:
 
         # Set terminal width
@@ -1586,16 +1626,6 @@ def getConfig():
                 writerr(
                     colored(
                         'Unable to read "respParamInputField" from config.yml; defaults to True',
-                        "red",
-                    )
-                )
-        try:
-            RESP_PARAM_METANAME = config.get("respParamMetaName")
-        except:
-            if verbose():
-                writerr(
-                    colored(
-                        'Unable to read "respParamMetaName" from config.yml; defaults to True',
                         "red",
                     )
                 )
@@ -1815,7 +1845,7 @@ def showOptions():
         if args.output_wordlist != "":
             write(
                 colored("-owl: " + args.output_wordlist, "magenta")
-                + colored(" Where the target speicifc wordlist output will be sent.", "white")
+                + colored(" Where the target specific wordlist output will be sent.", "white")
             )
         write(
             colored("-ow: " + str(args.output_overwrite), "magenta")
@@ -1921,6 +1951,13 @@ def showOptions():
                         " When words are found for a target specific wordlist, words with any numerical digits in will NOT be added.", "white"
                     )
                 )
+            if args.no_wordlist_lowercase:
+                write(
+                    colored("-nwll: " + str(args.no_wordlist_lowercase), "magenta")
+                    + colored(
+                        " When words are found for a target specific wordlist, words with any uppercase characters in will NOT be added as an additonal lowercase word.", "white"
+                    )
+                )
             if args.wordlist_maxlen > 0:
                 write(
                     colored("-wlml: " + str(args.wordlist_maxlen), "magenta")
@@ -1966,6 +2003,12 @@ def showOptions():
             colored("-prefixed: " + str(args.prefixed), "magenta")
             + colored(
                 " Whether the link will be flagged as a prefixed URL in the output with '(PREFIXED)'.", "white"
+            )
+        )
+        write(
+            colored("-xrel: " + str(args.exclude_relative_links), "magenta")
+            + colored(
+                " Whether relative links (starting with ./ or ../) will be excluded.", "white"
             )
         )
         if not burpFile and not zapFile and not caidoFile and not dirPassed:
@@ -2071,7 +2114,6 @@ def showOptions():
         write(colored('Get Response JS Vars as Params: ', 'magenta')+colored(str(RESP_PARAM_JSVARS)))
         write(colored('Get Response XML Attributes as Params: ', 'magenta')+colored(str(RESP_PARAM_XML)))
         write(colored('Get Response Input Fields ID and Attribute as Params: ', 'magenta')+colored(str(RESP_PARAM_INPUTFIELD)))
-        write(colored('Get Response Meta tag Name as Params: ', 'magenta')+colored(str(RESP_PARAM_METANAME)))
         write()
 
     except Exception as e:
@@ -2762,37 +2804,6 @@ def processBurpFile():
                 )
             )
 
-def processWaymoreFile(input):
-    """
-    Process the waymore file
-    """
-    try:
-        # Set headers to use if going to be making requests
-        setHeaders()
-
-        # Get the scope -sp and -sf domains if required
-        getScopeDomains()
-
-        try:
-            inputFile = open(input, "r")
-            if verbose():
-                write(colored(getSPACER("Reading Waymore file " + input + ":"), "cyan"))
-            with inputFile as f:
-                if stopProgram is None:
-                    p = mp.Pool(args.processes)
-                    p.map(processUrl, f)
-                    p.close()
-                    p.join()
-            inputFile.close()
-
-        except Exception as e:
-            if vverbose():
-                writerr(colored("ERROR processWaymoreFile 2: Problem with standard file: " + str(e),"red"))
-  
-    except Exception as e:
-        if vverbose():
-            writerr(colored("ERROR processWaymoreFile 1: " + str(e), "red"))
-
 def processEachInput(input):
     """
     Process the input, whether its from -i or <stdin>
@@ -3093,7 +3104,11 @@ def getPathWords(url):
         
         if path != '':    
             # If found, split the path on /
-            words = re.compile(r"[\:/?=&#]+", re.UNICODE).split(path)
+            words = set(re.compile(r"[\:/?=&#]+", re.UNICODE).split(path) + path.split('/'))
+            temp = []
+            for x in words:
+                temp.extend(x.split(","))
+            words = set(temp)
             # Add the word to the parameter list, unless it has a . in it or is a number, or it is a single character that isn't a letter
             for word in words:
                 if (
@@ -3181,6 +3196,26 @@ def processPlural(originalWord):
         if vverbose():
             writerr(colored("ERROR processPlural 1: " + str(e), "red"))
 
+# URL encode any unicode characters in the word and also remove any unwanted characters
+def sanitizeWord(word):
+    try:
+    # If the word contains any non ASCII characters, then url encode them
+        try:
+            word.encode("ascii")
+        except:
+            try:
+                word = urllib.quote(word.encode('utf-8'))
+            except:
+                word = ""
+        
+        if word != '':
+            word = REGEX_WORDSUB.sub('', word)
+        
+        return word
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR sanitizeWord 1: " + str(e), "red"))
+            
 # Get XML and JSON responses, extract keys and add them to the paramsFound list
 # In addition it will extract name and id from <input> fields in HTML
 def getResponseParams(response, request):
@@ -3221,7 +3256,7 @@ def getResponseParams(response, request):
 
         # Get words from the body of the page if a wordlist output was given
         try:
-            if args.output_wordlist != "" and contentType.lower() in WORDS_CONTENT_TYPES:
+            if (args.output_wordlist != "" and contentType.lower() in WORDS_CONTENT_TYPES) and request.lower().find(".js.map") < 0:
                 # Parse html content with beautifulsoup4. If lxml is installed, use that as the parser because its quickest.
                 # If lxml isn't installed then try html5lib because that's the next quickest, but use deafult as last resort
                 allText = ""
@@ -3242,9 +3277,14 @@ def getResponseParams(response, request):
                 
                 # Get words from meta tag contents
                 for tag in soup.find_all("meta", content=True):
-                    if tag.get("property", None) in ["og:title","og:description"] or tag.get("name", None) in ["description","keywords","twitter:title","twitter:description"]:
+                    if tag.get("property", "").lower() in ["og:title","og:description","title","og:site_name","fb:admins"] or tag.get("name", "").lower() in ["description","keywords","twitter:title","twitter:description","application-name","author","subject","copyright","abstract","topic","summary","owner","directory","category","og:title","og:type","og:site_name","og:description","csrf-param","apple-mobile-web-app-title","twitter:label1","twitter:data1","twitter:label2","twitter:data2","twitter:title"]:
                         allText = allText + tag['content'] + ' '
 
+                # Get words from link tag titles
+                for tag in soup.find_all("link", content=True):
+                    if tag.get("rel", "").lower() in ["alternate","index","start","prev","next","search"]:
+                        allText = allText + tag['title']
+                        
                 # Get words from any "alt" attribute of images if required
                 if not args.no_wordlist_imgalt:
                     for img in soup.find_all('img', alt=True):
@@ -3252,7 +3292,7 @@ def getResponseParams(response, request):
                 
                 # Get words from any comments if required
                 if not args.no_wordlist_comments:
-                    for comment in soup.findAll(text=lambda text:isinstance(text, Comment)):
+                    for comment in soup.find_all(string=lambda text:isinstance(text, Comment)):
                         allText = allText + comment + ' '
                     
                 # Remove tags we don't want content from
@@ -3262,12 +3302,17 @@ def getResponseParams(response, request):
                 # Get words from the body text
                 allText = allText + " ".join(soup.stripped_strings)
                 
-                # Build list of potential words over 3 characters long
-                potentialWords = re.findall(r"[\w']{3,}", allText)
+                # Build list of potential words over 3 characters long, that don't appear in url paths
+                potentialWords = REGEX_WORDS.findall(allText)
                 potentialWords = set(potentialWords)
 
                 # Process all words found
                 for word in potentialWords:
+                    # Ignore certain words if found in robots.txt
+                    if request.lower().find("robots.txt") > 0 and word in ("allow","disallow","sitemap","user-agent"):
+                        continue
+                    word = sanitizeWord(word)
+                    
                      # If -nwld argument was passed, only proceed with word if it has no digits
                     if not (args.no_wordlist_digits and any(char.isdigit() for char in word)):
                         if re.search('[a-zA-Z]', word):
@@ -3276,15 +3321,17 @@ def getResponseParams(response, request):
                             # add the word to the list if not a stop word and is not above the max length
                             if word.lower() not in lstStopWords and (args.wordlist_maxlen == 0 or len(word) <= args.wordlist_maxlen):
                                 wordsFound.add(word)
-                                wordsFound.add(word.lower())
+                                if not args.no_wordlist_lowercase:
+                                    wordsFound.add(word.lower())
                                 # If --no-wordlist-plural option wasn't passed, check if there is a singular/plural word to add
                                 if not args.no_wordlist_plurals:
                                     newWord = processPlural(word)
                                     if newWord != "" and len(newWord) > 3 and newWord.lower() not in lstStopWords:
                                         wordsFound.add(newWord)
-                                        wordsFound.add(newWord.lower())
+                                        if not args.no_wordlist_lowercase:
+                                            wordsFound.add(newWord.lower())
                                         # If the original word was uppercase and didn't end in "S" but the new one does, also add the original word with a lower case "s"
-                                        if word.isupper() and word[-1:] != 'S' and newWord == word + 'S':
+                                        if not args.no_wordlist_lowercase and word.isupper() and word[-1:] != 'S' and newWord == word + 'S':
                                             wordsFound.add(word + 's')
         except Exception as e:
             if vverbose():
@@ -3292,10 +3339,12 @@ def getResponseParams(response, request):
         
          # Get parameters from the response where they are like &PARAM= or ?PARAM=
         try:
-            possibleParams = re.finditer(r"(?<=[^\&])(\?|%3f|\&|%26|\&amp;)[a-z0-9_\-]{3,}=(?=[^=])", body, re.IGNORECASE)
+            possibleParams = REGEX_PARAMSPOSSIBLE.finditer(body)
             for key in possibleParams:
                 if key is not None and key.group() != "":
-                    param = key.group().strip().replace("=","").replace("?","").replace("%3f","").replace("%3F","").replace("%26","").replace("&amp;","").replace("&","")
+                    param = key.group().replace("%5c","")
+                    param = REGEX_PARAMSSUB.sub("",param).strip()
+                    param = param.replace("\\","").replace("&","")
                     paramsFound.add(param)
         except Exception as e:
             if vverbose():
@@ -3310,11 +3359,7 @@ def getResponseParams(response, request):
 
                 # Get inline javascript variables defined with "let"
                 try:
-                    js_keys = re.finditer(
-                        r"(?<=let[\s])[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*[\s]*(?=(\=|;|\n|\r))",
-                        body,
-                        re.IGNORECASE,
-                    )
+                    js_keys = REGEX_JSLET.finditer(body)
                     for key in js_keys:
                         if key is not None and key.group() != "":
                             # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
@@ -3326,11 +3371,7 @@ def getResponseParams(response, request):
 
                 # Get inline javascript variables defined with "var"
                 try:
-                    js_keys = re.finditer(
-                        r"(?<=var\s)[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*?(?=(\s|=|,|;|\n))",
-                        body,
-                        re.IGNORECASE,
-                    )
+                    js_keys = REGEX_JSVAR.finditer(body)
                     for key in js_keys:
                         if key is not None and key.group() != "":
                             # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
@@ -3342,11 +3383,7 @@ def getResponseParams(response, request):
 
                 # Get inline javascript constants
                 try:
-                    js_keys = re.finditer(
-                        r"(?<=const\s)[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*?(?=(\s|=|,|;|\n))",
-                        body,
-                        re.IGNORECASE,
-                    )
+                    js_keys = REGEX_JSCONSTS.finditer(body)
                     for key in js_keys:
                         if key is not None and key.group() != "":
                             # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
@@ -3361,9 +3398,7 @@ def getResponseParams(response, request):
                 if RESP_PARAM_JSON:
                     try:
                         # Get only keys from json (everything between double quotes:)
-                        json_keys = re.findall(
-                            '"([a-zA-Z0-9$_\.-]*?)":', body, re.IGNORECASE
-                        )
+                        json_keys = REGEX_JSONKEYS.findall(body)
                         for key in json_keys:
                             # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
                             if not args.ascii_only or (args.ascii_only and key.strip().isascii()):
@@ -3377,7 +3412,7 @@ def getResponseParams(response, request):
                 if RESP_PARAM_XML:
                     try:
                         # Get XML attributes
-                        xml_keys = re.findall("<([a-zA-Z0-9$_\.-]*?)>", body)
+                        xml_keys = REGEX_XMLATTR.findall(body)
                         for key in xml_keys:
                             # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
                             if not args.ascii_only or (args.ascii_only and key.strip().isascii()):
@@ -3392,13 +3427,9 @@ def getResponseParams(response, request):
                 if RESP_PARAM_INPUTFIELD:
                     # Get Input field name and id attributes
                     try:
-                        html_keys = re.findall("<input(.*?)>", body)
+                        html_keys = REGEX_HTMLINP.findall(body)
                         for key in html_keys:
-                            input_name = re.search(
-                                r"(?<=\sname)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|\'))",
-                                key,
-                                re.IGNORECASE,
-                            )
+                            input_name = REGEX_HTMLINP_NAME.search(key)
                             if input_name is not None and input_name.group() != "":
                                 input_name_val = input_name.group()
                                 input_name_val = input_name_val.replace("=", "")
@@ -3407,11 +3438,7 @@ def getResponseParams(response, request):
                                 # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
                                 if not args.ascii_only or (args.ascii_only and input_name_val.strip().isascii()):
                                     paramsFound.add(input_name_val.strip())
-                            input_id = re.search(
-                                r"(?<=\sid)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|'))",
-                                key,
-                                re.IGNORECASE,
-                            )
+                            input_id = REGEX_HTMLINP_ID.search(key)
                             if input_id is not None and input_id.group() != "":
                                 input_id_val = input_id.group()
                                 input_id_val = input_id_val.replace("=", "")
@@ -3424,27 +3451,6 @@ def getResponseParams(response, request):
                         if vverbose():
                             writerr(colored("ERROR getResponseParams 7: " + str(e), "red"))
 
-                if RESP_PARAM_METANAME:
-                    # Get meta tag name attribute
-                    try:
-                        meta_keys = re.findall("<meta(.*?)>", body)
-                        for key in meta_keys:
-                            meta_name = re.search(
-                                r"(?<=\sname)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|'))",
-                                key,
-                                re.IGNORECASE,
-                            )
-                            if meta_name is not None and meta_name.group() != "":
-                                meta_name_val = meta_name.group()
-                                meta_name_val = meta_name_val.replace("=", "")
-                                meta_name_val = meta_name_val.replace('"', "")
-                                meta_name_val = meta_name_val.replace("'", "")
-                                # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
-                                if not args.ascii_only or (args.ascii_only and meta_name_val.strip().isascii()):
-                                    paramsFound.add(meta_name_val.strip())
-                    except Exception as e:
-                        if vverbose():
-                            writerr(colored("ERROR getResponseParams 8: " + str(e), "red"))
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR getResponseParams 1: " + str(e), "red"))
@@ -3510,6 +3516,9 @@ if __name__ == "__main__":
     # Tell Python to run the handler() function when SIGINT is received
     signal(SIGINT, handler)
 
+    # Suppress warning messages that can arise from beautifulsoup4
+    warnings.filterwarnings('ignore')
+    
     # Parse command line arguments
     parser = argparse.ArgumentParser(
         description="xnlLinkFinder (v" + __import__('xnLinkFinder').__version__ + ") - by @Xnl-h4ck3r"
@@ -3627,6 +3636,12 @@ if __name__ == "__main__":
         "-prefixed",
         action="store_true",
         help="Whether you want to see which links were prefixed in the output. Displays (PREFIXED) after link and origin in the output (default: false)",
+    )
+    parser.add_argument(
+        "-xrel",
+        "--exclude-relative-links",
+        action="store_true",
+        help="By default, if any links in the results start with `./` or `../`, they will be included. If this argument is used, these relative links will not be added.",
     )
     default_timeout = 10
     parser.add_argument(
@@ -3769,6 +3784,12 @@ if __name__ == "__main__":
         help="Exclude any words from the target specific wordlist with numerical digits in.",
     )
     parser.add_argument(
+        "-nwll",
+        "--no-wordlist-lowercase",
+        action="store_true",
+        help="By default, any word added with any uppercase characters in will also add the word in lowercase. If this argument is used, the lowercase words will not be added.",
+    )
+    parser.add_argument(
         "-wlml",
         "--wordlist-maxlen",
         action="store",
@@ -3852,18 +3873,21 @@ if __name__ == "__main__":
             # Save the original input directory to set back later
             originalInput = args.input
             
-            # Process each user agent group
-            for i in range(len(userAgents)):
-                if stopProgram is not None:
-                    break
+            # Only process the files if depth is not set to zero
+            if args.depth > 0:
                 
-                currentUAGroup = i
-            
-                # Process the waymore.txt and index.txt files
-                for wf in waymoreFiles:
-                    write(colored("\nProcessing links in ","cyan")+colored("Waymore File ","yellow")+colored(wf + ":", "cyan"))
-                    processEachInput(wf)
-                linksVisited = set()
+                # Process each user agent group
+                for i in range(len(userAgents)):
+                    if stopProgram is not None:
+                        break
+                    
+                    currentUAGroup = i
+                
+                    # Process the waymore.txt and index.txt files
+                    for wf in waymoreFiles:
+                        write(colored("\nProcessing links in ","cyan")+colored("Waymore File ","yellow")+colored(wf + ":", "cyan"))
+                        processEachInput(wf)
+                    linksVisited = set()
                     
             # Once all data has been found, process the output
             args.input = originalInput
