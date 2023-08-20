@@ -1,5 +1,11 @@
 ## Changelog
 
+- v4.1
+
+  - Changed
+
+    - Changed `urllib` to `urllib3` in `setup.py`
+
 - v4.0
 
   - New
