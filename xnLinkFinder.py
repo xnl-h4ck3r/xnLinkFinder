@@ -129,7 +129,7 @@ DEFAULT_LINK_EXCLUSIONS = ".css,.jpg,.jpeg,.png,.svg,.img,.gif,.mp4,.flv,.ogv,.w
 
 # A comma separated list of Content-Type exclusions used when the exclusions from config.yml cannot be found
 # These content types will NOT be checked
-DEFAULT_CONTENTTYPE_EXCLUSIONS = "text/css,image/jpeg,image/jpg,image/png,image/svg+xml,image/gif,image/tiff,image/webp,image/bmp,image/x-icon,image/vnd.microsoft.icon,font/ttf,font/woff,font/woff2,font/x-woff2,font/x-woff,font/otf,audio/mpeg,audio/wav,audio/webm,audio/aac,audio/ogg,audio/wav,audio/webm,video/mp4,video/mpeg,video/webm,video/ogg,video/mp2t,video/webm,video/x-msvideo,application/font-woff,application/font-woff2,application/vnd.android.package-archive,binary/octet-stream,application/octet-stream,application/pdf,application/x-font-ttf,application/x-font-otf,application/x-font-woff,application/vnd.ms-fontobject,image/avif,application/zip,application/x-zip-compressed,application/x-msdownload,application/x-apple-diskimage,application/x-rpm,application/vnd.debian.binary-package"
+DEFAULT_CONTENTTYPE_EXCLUSIONS = "text/css,image/jpeg,image/jpg,image/png,image/svg+xml,image/gif,image/tiff,image/webp,image/bmp,image/x-icon,image/vnd.microsoft.icon,font/ttf,font/woff,font/woff2,font/x-woff2,font/x-woff,font/otf,audio/mpeg,audio/wav,audio/webm,audio/aac,audio/ogg,audio/wav,audio/webm,video/mp4,video/mpeg,video/webm,video/ogg,video/mp2t,video/webm,video/x-msvideo,application/font-woff,application/font-woff2,application/vnd.android.package-archive,binary/octet-stream,application/octet-stream,application/pdf,application/x-font-ttf,application/x-font-otf,application/x-font-woff,application/vnd.ms-fontobject,image/avif,application/zip,application/x-zip-compressed,application/x-msdownload,application/x-apple-diskimage,application/x-rpm,application/vnd.debian.binary-package,application/font-otf"
 
 # A comma separated list of file extension exclusions used when the file ext exclusions from config.yml cannot be found
 # In Directory mode, files with these extensions will NOT be checked
@@ -2103,6 +2103,12 @@ def showOptions():
         if args.max_time_limit > 0:
             write(colored('-mtl: ' + str(args.max_time_limit), 'magenta')+colored(" The maximum time limit (in minutes) to run before stopping.","white"))
         
+        if burpFile and args.burpfile_remove_tags is not None:
+            write(
+                colored("--burpfile-remove-tags: " + str(args.burpfile_remove_tags), "magenta")
+                + colored(" Whether unecessary tags will be removed from the Burp file (permanent change).", "white")
+            )
+            
         write(colored('Link exclusions: ', 'magenta')+colored(LINK_EXCLUSIONS))
         write(colored('Content-Type exclusions: ', 'magenta')+colored(CONTENTTYPE_EXCLUSIONS))    
         if dirPassed:  
@@ -2646,19 +2652,26 @@ def processBurpFile():
             # Ask the user if we should remove un-needed tags to make the file smaller.
             # If the program is piped to another process, just default to No
             if sys.stdout.isatty():
-                write(
-                    colored(
-                        "Sometimes there is a problem in Burp XML files. This can often be resolved by removing unnecessary tags which will also make the file smaller. This can be done to file "
-                        + filePath
-                        + " now, or you can try without changing it.",
-                        "yellow",
-                    )
-                )
                 try:
-                    # if input was piped through stdin, reset it back to the terminal otherwise we get an EOF error
-                    if not sys.stdin.isatty():
-                        sys.stdin = open("/dev/tty")
-                    reply = input("Do you want to remove tags form the file? y/n: ")
+                    # If the --burpfile-remove-tags argumnet was passed, use that to determine whether to remove tags from the Burp file, otherwise ask interactively
+                    if args.burpfile_remove_tags is not None:
+                        if args.burpfile_remove_tags:
+                            reply = "y"
+                        else:
+                            reply = "n"
+                    else:
+                        write(
+                            colored(
+                                "Sometimes there is a problem in Burp XML files. This can often be resolved by removing unnecessary tags which will also make the file smaller. This can be done to file "
+                                + filePath
+                                + " now, or you can try without changing it.",
+                                "yellow",
+                            )
+                        )
+                        # if input was piped through stdin, reset it back to the terminal otherwise we get an EOF error
+                        if not sys.stdin.isatty():
+                            sys.stdin = open("/dev/tty")
+                        reply = input("Do you want to remove tags form the file? y/n: ")
                 except:
                     reply = "n"
             else:
@@ -3464,6 +3477,18 @@ def argcheckPercent(value):
         )
     return ivalue
 
+# For validating  --burpfile-remove-tags argument
+def argcheckBurpfileRemoveTags(value):
+    if value.lower() == "true":
+        boolValue = True
+    elif value.lower() == "false":
+        boolValue = False
+    else:
+        raise argparse.ArgumentTypeError(
+            "Either True or False must be passed."
+        )
+    return boolValue
+
 # For validating -swf / --stopwords-file argument
 def argcheckStopwordsFile(filename):
     global extraStopWords
@@ -3803,6 +3828,15 @@ if __name__ == "__main__":
         action="store",
         help='A file of additional Stop Words (in addition to "stopWords" in the YML Config file) used to exclude words from the target specific wordlist. Stop Words are used in Natural Language Processing and different lists can be found in different libraries. You may want to add words in different languages, depending on your target.',
         type=argcheckStopwordsFile
+    )
+    parser.add_argument(
+        "-brt",
+        "--burpfile-remove-tags",
+        action="store",
+        help="Whether to remove tags if a Burp file is passed as input. This is asked interactively if the flag is not passed. Pass as True or False. If this argument is not passed then the question will be asked interactively.",
+        type=argcheckBurpfileRemoveTags,
+        default=None,
+        metavar="<bool>"
     )
     parser.add_argument("-nb", "--no-banner", action="store_true", help="Hides the tool banner.")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")

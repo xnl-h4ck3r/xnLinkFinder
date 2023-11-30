@@ -1,5 +1,12 @@
 ## Changelog
 
+- v4.2
+
+  - New
+
+    - Add argument `-brt`/`--burpfile-remove-tags` to determine whether unnecessary tags should be removed from the Burp file passed with `-i`. If this is not passed, the question is asked interactively.
+    - Add a new MIME type exclusion of `application/font-otf`
+
 - v4.1
 
   - Changed
