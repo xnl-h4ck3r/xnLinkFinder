@@ -137,7 +137,7 @@ DEFAULT_FILEEXT_EXCLUSIONS = ".zip,.dmg,.rpm,.deb,.gz,.tar,.jpg,.jpeg,.png,.svg,
 
 # A list of files used in the Link Finding Regex when the exclusions from config.yml cannot be found.
 # These are used in the 5th capturing group that aren't obvious links, but could be files
-DEFAULT_LINK_REGEX_FILES = "php|php3|php5|asp|aspx|ashx|cfm|cgi|pl|jsp|jspx|json|js|action|html|xhtml|htm|bak|do|txt|wsdl|wadl|xml|xls|xlsx|bin|conf|config|bz2|bzip2|gzip|tar\.gz|tgz|log|src|zip|js\.map"
+DEFAULT_LINK_REGEX_FILES = r"php|php3|php5|asp|aspx|ashx|cfm|cgi|pl|jsp|jspx|json|js|action|html|xhtml|htm|bak|do|txt|wsdl|wadl|xml|xls|xlsx|bin|conf|config|bz2|bzip2|gzip|tar\.gz|tgz|log|src|zip|js\.map"
 
 # Uer Agents
 UA_DESKTOP = [
@@ -291,13 +291,13 @@ def writerr(text="", pipe=False):
 
 def showBanner():
     write("")
-    write(colored("           o           o    o--o           o         ", "red"))
-    write(colored("           |    o      | /  |    o         |         ", "yellow"))
-    write(colored("  \ / o-o  |      o-o  OO   O-o    o-o   o-O o-o o-o ", "green"))
-    write(colored("   o  |  | |    | |  | | \  |    | |  | |  | |-' |   ", "cyan"))
-    write(colored("  / \ o  o O---o| o  o o  o o    | o  o  o-o o-o o   ", "magenta"))
-    write(colored("                |                |                   ", "blue"))
-    write(colored("                ' by @Xnl-h4ck3r '              v" + __import__('xnLinkFinder').__version__))
+    write(colored(r"           o           o    o--o           o         ", "red"))
+    write(colored(r"           |    o      | /  |    o         |         ", "yellow"))
+    write(colored(r"  \ / o-o  |      o-o  OO   O-o    o-o   o-O o-o o-o ", "green"))
+    write(colored(r"   o  |  | |    | |  | | \  |    | |  | |  | |-' |   ", "cyan"))
+    write(colored(r"  / \ o  o O---o| o  o o  o o    | o  o  o-o o-o o   ", "magenta"))
+    write(colored(r"                |                |                   ", "blue"))
+    write(colored(r"                ' by @Xnl-h4ck3r '              v" + __import__('xnLinkFinder').__version__))
     write("")
 
 
@@ -386,14 +386,14 @@ def includeLink(link):
                 try:
                     include = False
                     if inScopeFilterDomains is None:
-                        search = args.scope_filter.replace(".", "\.")
+                        search = args.scope_filter.replace(".", r"\.")
                         search = search.replace("*", "")
                         regexStr = r"^([A-Z,a-z]*)?(:\/\/|//|^)[^\/|?|#]*" + search
                         if re.search(regexStr, link):
                             include = True
                     else:
                         for search in inScopeFilterDomains:
-                            search = search.replace(".", "\.")
+                            search = search.replace(".", r"\.")
                             search = search.replace("*", "")
                             search = search.replace("\n", "")
                             if search != "":
@@ -624,9 +624,9 @@ def getResponseLinks(response, url):
                 reString = (
                     r"(?:^|\"|'|\\n|\\r|\n|\r|\s)(((?:[a-zA-Z]{1,10}:\/\/|\/\/)([^\"'\/\s]{1,255}\.[a-zA-Z]{2,24}|localhost)[^\"'\n\s]{0,255})|((?:\/|\.\.\/|\.\/)[^\"'><,;| *()(%%$^\/\\\[\]][^\"'><,;|()\s]{1,255})|([a-zA-Z0-9_\-\/]{1,}\/[a-zA-Z0-9_\-\/]{1,255}\.(?:[a-zA-Z]{1,4}"
                     + LINK_REGEX_NONSTANDARD_FILES
-                    + ")(?:[\?|\/][^\"|']{0,}|))|([a-zA-Z0-9_\-]{1,255}\.(?:"
+                    + r")(?:[\?|\/][^\"|']{0,}|))|([a-zA-Z0-9_\-]{1,255}\.(?:"
                     + LINK_REGEX_FILES
-                    + ")(?:\?[^\"|^']{0,255}|)))(?:\"|'|\\n|\\r|\n|\r|\s|$)|(?<=^Disallow:\s)[^\$\n]*|(?<=^Allow:\s)[^\$\n]*|(?<= Domain\=)[^\";']*|(?<=\<)https?:\/\/[^>\n]*|(\"|\')([A-Za-z0-9_-]+\/)+[A-Za-z0-9_-]+(\.[A-Za-z0-9]{2,}|\/?(\?|\#)[A-Za-z0-9_\-&=\[\]]*)(\"|\')"
+                    + r")(?:\?[^\"|^']{0,255}|)))(?:\"|'|\\n|\\r|\n|\r|\s|$)|(?<=^Disallow:\s)[^\$\n]*|(?<=^Allow:\s)[^\$\n]*|(?<= Domain\=)[^\";']*|(?<=\<)https?:\/\/[^>\n]*|(\"|\')([A-Za-z0-9_-]+\/)+[A-Za-z0-9_-]+(\.[A-Za-z0-9]{2,}|\/?(\?|\#)[A-Za-z0-9_\-&=\[\]]*)(\"|\')"
                 )
                 link_keys = re.finditer(reString, body, re.IGNORECASE)
 
@@ -849,7 +849,7 @@ def handler(signal_received, frame):
         elif stopProgramCount == 3:
             writerr(
                 colored(
-                    getSPACER(">>> Patience isn't your strong suit eh? ¯\_(ツ)_/¯"),
+                    getSPACER(r">>> Patience isn't your strong suit eh? ¯\_(ツ)_/¯"),
                     "red",
                 )
             )
@@ -1354,8 +1354,8 @@ def addItemsToWordlist(inputList):
     try:
         for item in inputList:
             # Remove any % and proceeding 2 chars
-            newItem = re.sub("\%..", "", item)
-            if len(newItem) > 2 and not newItem.startswith("_") and newItem.count("-") < 3 and re.match('^[A-Za-z0-9\-_]*[A-Za-z]+[A-Za-z0-9\-_]*$', newItem) and newItem.lower() not in lstStopWords: 
+            newItem = re.sub(r"\%..", "", item)
+            if len(newItem) > 2 and not newItem.startswith("_") and newItem.count("-") < 3 and re.match(r'^[A-Za-z0-9\-_]*[A-Za-z]+[A-Za-z0-9\-_]*$', newItem) and newItem.lower() not in lstStopWords: 
                 # If -nwld argument was passed, only proceed with word if it has no digits
                 if not (args.no_wordlist_digits and any(char.isdigit() for char in newItem)):
                     # Add the word if it is not over the max length
@@ -1365,7 +1365,7 @@ def addItemsToWordlist(inputList):
             newItem = newItem.replace("[","-").replace("]","-").replace("{","-").replace("}","-").replace("(","-").replace(")","-").replace("_","-")
             lstItems = newItem.split("-")
             for word in lstItems:
-                if len(word) > 2 and re.match('^[A-Za-z0-9\-_]*[A-Za-z]+[A-Za-z0-9\-_]*$', word) and word.lower() not in lstStopWords:
+                if len(word) > 2 and re.match(r'^[A-Za-z0-9\-_]*[A-Za-z]+[A-Za-z0-9\-_]*$', word) and word.lower() not in lstStopWords:
                     # If -nwld argument was passed, only proceed with word if it has no digits
                     if not (args.no_wordlist_digits and any(char.isdigit() for char in newItem)):
                         # Add the word if it is not over the max length
@@ -2413,7 +2413,7 @@ def processCaidoFile():
                 write(colored("\nProcessing Caido file from STDIN:", "cyan"))
             else:
                 fileSize = os.path.getsize(args.input)
-                filePath = os.path.abspath(args.input).replace(" ", "\ ")
+                filePath = os.path.abspath(args.input).replace(" ", r"\ ")
                 
                 cmd = "cat " + filePath + " | wc -l"
                 cat = subprocess.run(
@@ -2545,7 +2545,7 @@ def processZapMessage(zapMessage, responseCount):
 
 
 def processZapFile():
-    """
+    r"""
     Process an ASCII text file that is output from OWASP ZAP.
     By selecting the requests/responses you want in ZAP, you can then select Report -> Export Messages to File...
     This will save a file of all responses to check for links.
@@ -2561,9 +2561,9 @@ def processZapFile():
                 write(colored("\nProcessing OWASP ZAP file from STDIN:", "cyan"))
             else:
                 fileSize = os.path.getsize(args.input)
-                filePath = os.path.abspath(args.input).replace(" ", "\ ")
+                filePath = os.path.abspath(args.input).replace(" ", r"\ ")
 
-                cmd = "grep -Eo '^={3,4}\s?[0-9]+\s={10}$' --text " + filePath + " | wc -l"
+                cmd = r"grep -Eo '^={3,4}\s?[0-9]+\s={10}$' --text " + filePath + " | wc -l"
 
                 grep = subprocess.run(
                     cmd, shell=True, text=True, stdout=subprocess.PIPE, check=True
@@ -2603,7 +2603,7 @@ def processZapFile():
                         break
 
                     # Check for the separator lines
-                    match = re.search("={3,4}\s?[0-9]+\s={10}", line)
+                    match = re.search(r"={3,4}\s?[0-9]+\s={10}", line)
 
                     # If it is the start of the ZAP message then process it
                     if match is not None and zapMessage != "":
@@ -2641,7 +2641,7 @@ def processBurpFile():
 
     try:
         fileSize = os.path.getsize(args.input)
-        filePath = os.path.abspath(args.input).replace(" ", "\ ")
+        filePath = os.path.abspath(args.input).replace(" ", r"\ ")
         try:
             cmd = 'grep -o "<item>" ' + filePath + " | wc -l"
             grep = subprocess.run(
@@ -2847,7 +2847,7 @@ def processEachInput(input):
 
                     # If not a Burp file, check if it is an OWASP ZAP file
                     if not burpFile:
-                        match = re.search("={3,4}\s?[0-9]+\s={10}", firstLine)
+                        match = re.search(r"={3,4}\s?[0-9]+\s={10}", firstLine)
                         if match is not None:
                             zapFile = True
 
@@ -3019,7 +3019,7 @@ def processInput():
 
                 # If not a Burp file, check of it is an OWASP ZAP file
                 if not burpFile:
-                    match = re.search("={3,4}\s?[0-9]+\s={10}", firstLine)
+                    match = re.search(r"={3,4}\s?[0-9]+\s={10}", firstLine)
                     if match is not None:
                         zapFile = True
                         
@@ -3624,7 +3624,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-ra",
         "--regex-after",
-        help="RegEx for filtering purposes against found endpoints before output (e.g. /api/v[0-9]\.[0-9]* ). If it matches, the link is output.",
+        help=r"RegEx for filtering purposes against found endpoints before output (e.g. /api/v[0-9]\.[0-9]* ). If it matches, the link is output.",
         action="store",
     )
     parser.add_argument(

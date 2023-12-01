@@ -1,6 +1,6 @@
 <center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/blob/main/xnLinkFinder/images/title.png"></center>
 
-## About - v4.2
+## About - v4.3
 
 This is a tool used to discover endpoints (and potential parameters) for a given target. It can find them by:
 

@@ -1,5 +1,11 @@
 ## Changelog
 
+- v4.3
+
+  - Changed
+
+    - Resolve issue https://github.com/xnl-h4ck3r/xnLinkFinder/issues/19 by changing strings to raw strings, by adding a `r` prefix if they contain an escape sequence.
+
 - v4.2
 
   - New
