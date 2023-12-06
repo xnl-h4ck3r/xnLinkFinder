@@ -1,5 +1,11 @@
 ## Changelog
 
+- v4.4
+
+  - New
+
+    - Add new MIME types to the exclusion list in `config.yml` and the the code.
+
 - v4.3
 
   - Changed
