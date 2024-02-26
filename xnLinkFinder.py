@@ -15,6 +15,7 @@ stdinMultiple = False
 stdinFile = []
 inputFile = None
 linksFound = set()
+oosLinksFound = set()
 failedPrefixLinks = set()
 linksVisited = set()
 paramsFound = set()
@@ -125,7 +126,7 @@ STOP_WORDS = ""
 
 # A comma separated list of Link exclusions used when the exclusions from config.yml cannot be found
 # Links are NOT output if they contain these strings. This just applies to the links found in endpoints, not the origin link in which it was found
-DEFAULT_LINK_EXCLUSIONS = ".css,.jpg,.jpeg,.png,.svg,.img,.gif,.mp4,.flv,.ogv,.webm,.webp,.mov,.mp3,.m4a,.m4p,.scss,.tif,.tiff,.ttf,.otf,.woff,.woff2,.bmp,.ico,.eot,.htc,.rtf,.swf,.image,w3.org,doubleclick.net,youtube.com,.vue,jquery,bootstrap,font,jsdelivr.net,vimeo.com,pinterest.com,facebook,linkedin,twitter,instagram,google,mozilla.org,jibe.com,schema.org,schemas.microsoft.com,wordpress.org,w.org,wix.com,parastorage.com,whatwg.org,polyfill,typekit.net,schemas.openxmlformats.org,openweathermap.org,openoffice.org,reactjs.org,angularjs.org,java.com,purl.org,/image,/img,/css,/wp-json,/wp-content,/wp-includes,/theme,/audio,/captcha,/font,node_modules,.wav,.gltf,.pict,.svgz,.eps,.midi,.mid,.avif"
+DEFAULT_LINK_EXCLUSIONS = ".css,.jpg,.jpeg,.png,.svg,.img,.gif,.mp4,.flv,.ogv,.webm,.webp,.mov,.mp3,.m4a,.m4p,.scss,.tif,.tiff,.ttf,.otf,.woff,.woff2,.bmp,.ico,.eot,.htc,.rtf,.swf,.image,w3.org,doubleclick.net,youtube.com,.vue,jquery,bootstrap,font,jsdelivr.net,vimeo.com,pinterest.com,facebook,linkedin,twitter,instagram,google,mozilla.org,jibe.com,schema.org,schemas.microsoft.com,wordpress.org,w.org,wix.com,parastorage.com,whatwg.org,polyfill,typekit.net,schemas.openxmlformats.org,openweathermap.org,openoffice.org,reactjs.org,angularjs.org,java.com,purl.org,/image,/img,/css,/wp-json,/wp-content,/wp-includes,/theme,/audio,/captcha,/font,node_modules,.wav,.gltf,.pict,.svgz,.eps,.midi,.mid,.avif,xmlns.com,rdfs.org,ogp.me,newrelic.com,optimizely.com"
 
 # A comma separated list of Content-Type exclusions used when the exclusions from config.yml cannot be found
 # These content types will NOT be checked
@@ -308,13 +309,13 @@ def verbose():
 def vverbose():
     return args.vverbose
 
-def includeLink(link):
+def includeLink(link,origin):
     """
     Determine if the passed Link should be excluded by checking the list of exclusions
     Returns whether the link should be included
     """
     try:
-        global lstExclusions
+        global lstExclusions, oosLinksFound
 
         include = True
 
@@ -385,12 +386,25 @@ def includeLink(link):
             if include and args.scope_filter:
                 try:
                     include = False
+                    # Get the domain of the current link and add origin if requested
+                    try:
+                        domain = urlparse(link).netloc
+                    except:
+                        domain = ''
+                    if args.origin:
+                        linkDetail = link + "  [" + origin + "]"
+                    else:
+                        linkDetail = link
                     if inScopeFilterDomains is None:
                         search = args.scope_filter.replace(".", r"\.")
                         search = search.replace("*", "")
                         regexStr = r"^([A-Z,a-z]*)?(:\/\/|//|^)[^\/|?|#]*" + search
                         if re.search(regexStr, link):
                             include = True
+                        else:
+                            # If OOS domains need to be logged, add to the set
+                            if args.output_oos and domain != '':
+                                oosLinksFound.add(linkDetail)
                     else:
                         for search in inScopeFilterDomains:
                             search = search.replace(".", r"\.")
@@ -402,6 +416,10 @@ def includeLink(link):
                                 )
                                 if re.search(regexStr, link):
                                     include = True
+                                else:
+                                    # If OOS domains need to be logged, add to the set
+                                    if args.output_oos and domain != '':
+                                        oosLinksFound.add(linkDetail)
                 except Exception as e:
                     if vverbose():
                         writerr(
@@ -701,7 +719,7 @@ def getResponseLinks(response, url):
                             link = link[1:]
 
                         # Only add the finding if it should be included
-                        if includeLink(link):
+                        if includeLink(link,responseUrl):
 
                             # If the link found is for a .js.map file then put the full .map URL in the list
                             if link.find("//# sourceMappingURL") >= 0:
@@ -1266,6 +1284,61 @@ def processLinkOutput():
         if vverbose():
             writerr(colored("ERROR processLinkOutput 1: " + str(e), "red"))
 
+# Process the output of all OOS links
+def processOOSOutput():
+    global oosLinksFound
+    try:
+        # If the -ow / --output_overwrite argument was passed and the file exists already, get the contents of the file to include
+        if args.output_oos != "cli" and not args.output_overwrite:
+            try:
+                existingLinks = open(os.path.expanduser(args.output_oos), "r")
+                for link in existingLinks.readlines():
+                    oosLinksFound.add(link.strip())
+            except:
+                pass
+            
+        # If -oo (--output-oos) argument was not "cli" then open the output file
+        if args.output_oos != "cli":
+            try:
+                # If the filename has any "/" in it, remove the contents after the last one to just get the path and create the directories if necessary
+                try:
+                    f = os.path.basename(args.output_oos)
+                    p = args.output_oos[:-(len(f))-1]
+                    if p != "" and not os.path.exists(p):
+                        os.makedirs(p)
+                except Exception as e:
+                    if verbose():
+                        writerr(colored("ERROR processOOSOutput 5: " + str(e), "red"))
+                outFile = open(os.path.expanduser(args.output_oos), "w")
+            except Exception as e:
+                if vverbose():
+                    writerr(colored("ERROR processOOSOutput 2: " + str(e), "red"))
+
+        # Go through all links, and output what was found
+        for link in oosLinksFound:
+            if args.output_oos == "cli":
+                write(link, True)
+            else:  # file
+                try:
+                    outFile.write(link + "\n")
+                except Exception as e:
+                    if vverbose():
+                        writerr(colored("ERROR processOOSOutput 3: " + str(e), "red"))
+
+        # Clean up
+        oosLinksFound = None
+
+        # If the output was a file, close the file
+        if args.output_oos != "cli":
+            try:
+                outFile.close()
+            except Exception as e:
+                if vverbose():
+                    writerr(colored("ERROR processOOSOutput 4: " + str(e), "red"))
+
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR processOOSOutput 1: " + str(e), "red"))
 
 # Process the output of any potential parameters found
 def processParamOutput():
@@ -1495,6 +1568,10 @@ def processOutput():
         # Process output of the found parameters
         processParamOutput()
         
+        # Process output of oos domains
+        if args.output_oos != "":
+            processOOSOutput()
+            
         # Output stats if -vv option was selected
         if vverbose():
             processStats()
@@ -3573,6 +3650,13 @@ if __name__ == "__main__":
         "--output-wordlist",
         action="store",
         help='The file to save the target specific Wordlist output to, including path if necessary (default: No wordlist output). If set to "cli" then output is only written to STDOUT (but not piped to another program). If the file already exist it will just be appended to (and de-duplicated) unless option -ow is passed.',
+        default="",
+    )
+    parser.add_argument(
+        "-oo",
+        "--output-oos",
+        action="store",
+        help='The file to save Out Of Scope links to, including path if necessary (default: No OOS output). If set to "cli" then output is only written to STDOUT (but not piped to another program). If the file already exist it will just be appended to (and de-duplicated) unless option -ow is passed.',
         default="",
     )
     parser.add_argument(

@@ -1,5 +1,12 @@
 ## Changelog
 
+- v4.5
+
+  - New
+
+    - Add argument `-oo`/`--output-oos` to specify the name of a file to write out of scope links too. This can be useful to check for any other potential domains that could be in scope that you weren't aware of.
+    - Add `xmlns.com,rdfs.org,ogp.me,newrelic.com,optimizely.com,yoast.com` to `linkExclude` in `config.yml`. Also add to `DEFAULT_LINK_EXCLUSIONS` constant in code.
+
 - v4.4
 
   - New
