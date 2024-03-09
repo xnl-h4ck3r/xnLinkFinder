@@ -1096,7 +1096,10 @@ def processUrl(url):
                             if url.find("://") > 0:
                                 writerr(colored("Connection Error: " + url + " (Please check this is a valid URL)","red"))
                             else:
-                                writerr(colored("Connection Error: " + url + " (Consider passing --scope-prefix argument)","red"))
+                                if args.scope_prefix == '':
+                                    writerr(colored("Connection Error: " + url + " (Consider passing --scope-prefix argument)","red"))
+                                else:
+                                    writerr(colored("Connection Error: " + url,"red"))
 
                     # If argument -sCE (Stop on Connection Error) passed, keep a count of Connection Errors and stop the program if > 95% of responses have this error, but only if at least 10 requests have already been made
                     if args.sCE:
@@ -2254,6 +2257,8 @@ def getScopeDomains():
                 if prefix.find(".") < 0 or prefix.find(" ") > 0 or prefix.find("*") > 0:
                     scopePrefixError = True
         except:
+            # Remove any trailing / from the prefix
+            args.scope_prefix = args.scope_prefix.rstrip('/')
             if (
                 args.scope_prefix.find(".") < 0
                 or args.scope_prefix.find(" ") > 0
