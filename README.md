@@ -1,6 +1,6 @@
 <center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/blob/main/xnLinkFinder/images/title.png"></center>
 
-## About - v4.4
+## About - v5.0
 
 This is a tool used to discover endpoints (and potential parameters) for a given target. It can find them by:
 
@@ -17,12 +17,20 @@ As a starting point, I took the amazing tool [LinkFinder](https://github.com/Ger
 
 ## Installation
 
-xnLinkFinder supports **Python 3**.
+`xnLinkFinder` supports **Python 3**.
 
+Install `xnLinkFinder` in default(global) python environment.
+
+```bash
+pip install git+https://github.com/xnl-h4ck3r/xnLinkFinder.git -v
 ```
-$ git clone https://github.com/xnl-h4ck3r/xnLinkFinder.git
-$ cd xnLinkFinder
-$ sudo python setup.py install
+
+### pipx
+
+Quick setup in isolated python environment using [pipx](https://pypa.github.io/pipx/)
+
+```bash
+pipx install git+https://github.com/xnl-h4ck3r/xnLinkFinder.git
 ```
 
 ## Usage
@@ -61,7 +69,7 @@ $ sudo python setup.py install
 | -rp         | --replay-proxy†            | For active link finding with URL (or file of URLs), replay the requests through this proxy.                                                                                                                                                                                                                                                                                                                                                                                                        |
 | -ascii-only |                            | Whether links and parameters will only be added if they only contain ASCII characters. This can be useful when you know the target is likely to use ASCII characters and you also get a number of false positives from binary files for some reason.                                                                                                                                                                                                                                               |
 | -mtl        | --max-time-limit           | The maximum time limit (in minutes) to run before stopping (default: 0). If 0 is passed, there is no limit.                                                                                                                                                                                                                                                                                                                                                                                        |
-|             | --config                   | Path to the YML config file. If not passed, it looks for file `config.yml` in the same directory as runtime file `xnLinkFinder.py`                                                                                                                                                                                                                                                                                                                                                                 |
+|             | --config                   | Path to the YML config file. If not passed, it looks for file `config.yml` in the default directory, typically `~/.config/xnLinkFinder`.                                                                                                                                                                                                                                                                                                                                                           |
 | -nwlpl      | --no-wordlist-plurals      | When words are found for a target specific wordlist, by default new words are added if there is a singular word from a plural, and vice versa. If this argument is used, this process is not done.                                                                                                                                                                                                                                                                                                 |
 | -nwlpw      | --no-wordlist-pathwords    | By default, any path words found in the links will be processed for the target specific wordlist. If this argument is used, they will not be processed. **NOTE: if the YAML config value of `respParamPathWords` is `True` then this argument will not have any effect unless `-nwlpm`/`--no-wordlist-parameters` is also passed.**                                                                                                                                                                |
 | -nwlpm      | --no-wordlist-parameters   | By default, any parameters found in the links will be processed for the target specific wordlist. If this argument is used, they will not be processed.                                                                                                                                                                                                                                                                                                                                            |
@@ -82,7 +90,7 @@ $ sudo python setup.py install
 
 ## config.yml
 
-The `config.yml` file has the keys which can be updated to suit your needs:
+The `config.yml` file (typically in `~/.config/xnLinkFinder/`) has the keys which can be updated to suit your needs:
 
 - `linkExclude` - A comma separated list of strings (e.g. `.css,.jpg,.jpeg` etc.) that all links are checked against. If a link includes any of the strings then it will be excluded from the output. If the input is a directory, then file names are checked against this list.
 - `contentExclude` - A comma separated list of strings (e.g. `text/css,image/jpeg,image/jpg` etc.) that all responses `Content-Type` headers are checked against. Any responses with the these content types will be excluded and not checked for links.
@@ -105,7 +113,7 @@ The `config.yml` file has the keys which can be updated to suit your needs:
 ### Find Links from a specific target - Basic
 
 ```
-python3 xnLinkFinder.py -i target.com -sf target.com
+xnLinkFinder -i target.com -sf target.com
 ```
 
 ### Find Links from a specific target - Detailed
@@ -114,7 +122,7 @@ Ideally, provide scope prefix (`-sp`) with the primary domain (including schema)
 Specifying the User Agent (`-u desktop mobile`) will first search for all links using desktop User Agents, and then try again using mobile user agents. There could be specific endpoints that are related to the user agent given. Giving a depth value (`-d`) will keep sending request to links found on the previous depth search to find more links.
 
 ```
-python3 xnLinkFinder.py -i target.com -sp target_prefix.txt -sf target_scope.txt -spo -inc -vv -H 'Authorization: Bearer XXXXXXXXXXXXXX' -c 'SessionId=MYSESSIONID' -u desktop mobile -d 10
+xnLinkFinder -i target.com -sp target_prefix.txt -sf target_scope.txt -spo -inc -vv -H 'Authorization: Bearer XXXXXXXXXXXXXX' -c 'SessionId=MYSESSIONID' -u desktop mobile -d 10
 ```
 
 ### Find Links from a list of URLs - Basic
@@ -122,7 +130,7 @@ python3 xnLinkFinder.py -i target.com -sp target_prefix.txt -sf target_scope.txt
 If you have a file of JS file URLs for example, you can look for links in those:
 
 ```
-python3 xnLinkFinder.py -i target_js.txt -sf target.com
+xnLinkFinder -i target_js.txt -sf target.com
 ```
 
 ### Find Links from a files in a directory - Basic
@@ -130,7 +138,7 @@ python3 xnLinkFinder.py -i target_js.txt -sf target.com
 If you have a files, e.g. JS files, HTTP responses, etc. you can look for links in those:
 
 ```
-python3 xnLinkFinder.py -i ~/Tools/waymore/results/target.com
+xnLinkFinder -i ~/.config/waymore/results/target.com
 ```
 
 NOTE: Sub directories are also checked. The `-mfs` option can be specified to skip files over a certain size.
@@ -141,7 +149,7 @@ In Burp, select the items you want to search by highlighting the scope for examp
 To get all links from the file (even with HUGE files, you'll be able to get all the links):
 
 ```
-python3 xnLinkFinder.py -i target_burp.xml
+xnLinkFinder -i target_burp.xml
 ```
 
 NOTE: xnLinkFinder makes the assumption that if the first line of the file passed with `-i` starts with `<?xml` then you are trying to process a Burp file.
@@ -151,7 +159,7 @@ NOTE: xnLinkFinder makes the assumption that if the first line of the file passe
 Ideally, provide scope prefix (`-sp`) with the primary domain (including schema), and a scope filter (`-sf`) to filter the results only to relevant domains.
 
 ```
-python3 xnLinkFinder.py -i target_burp.xml -o target_burp.txt -sp https://www.target.com -sf target.* -ow -spo -inc -vv
+xnLinkFinder -i target_burp.xml -o target_burp.txt -sp https://www.target.com -sf target.* -ow -spo -inc -vv
 ```
 
 ### Find Links from an OWASP ZAP project - Basic
@@ -160,7 +168,7 @@ In ZAP, select the items you want to search by highlighting the History for exam
 To get all links from the file (even with HUGE files, you'll be able to get all the links):
 
 ```
-python3 xnLinkFinder.py -i target_zap.txt
+xnLinkFinder -i target_zap.txt
 ```
 
 NOTE: xnLinkFinder makes the assumption that if the first line of the file passed with `-i` is in the format `==== 99 ==========` (v2.11.1) or `===99 ==========` (v2.12) for example, then you are trying to process an OWASP ZAP ASCII text file.
@@ -172,14 +180,14 @@ In Caido, go to the **History** section and select the **Export** option.
 If you are using Caido Pro or Enterprise edition, then choose the **Export current rows** option and pick **As CSV**. Go to the **Exports** section and download the CSV file. Then pass as input:
 
 ```
-python3 xnLinkFinder.py -i 2023-03-18-010332_csv_requests.csv
+xnLinkFinder -i 2023-03-18-010332_csv_requests.csv
 ```
 
 If you are using Caido Community edition, then you will have to choose the **Export all** option and pick **As CSV**. Go to the **Exports** section and download the CSV file. As you have the full history, you will want to remove anything that is not relevant from the CSV file. Use the example below, where `redbull` is the main part of the domains of the target you are looking at.
 
 ```
 cat 2023-03-18-010332_csv_requests.csv | grep -E '^id|^[0-9]+,[^,]*redbull' > caido_redbull.csv
-python3 xnLinkFinder.py -i caido_redbull.csv
+xnLinkFinder -i caido_redbull.csv
 ```
 
 NOTE: xnLinkFinder makes the assumption that if the first line of the file passed with `-i` is in the format `id,host,method`, then you are trying to process a Caido export CSV file.
@@ -189,7 +197,7 @@ NOTE: xnLinkFinder makes the assumption that if the first line of the file passe
 The [waymore](https://github.com/xnl-h4ck3r/waymore) tool can be used to get URLs from various third party APIs, and also download archived responses from archive.org (Wayback Machine). Passing a waymore results directory to `xnLinKFinder` will search the contents of archived responses, and also request URLs from `waymore.txt` and also the archived URLs from `index.txt` and get more links from those responses.
 
 ```
-python3 xnLinkFinder.py -i ~/Tools/waymore/results/target.com
+xnLinkFinder -i ~/Tools/waymore/results/target.com
 ```
 
 NOTE: It is passed as a normal directory, but xnLinkFinder will determine it is a waymore results directory and process respectively. This relies on the default naming convention of the URLs file being `waymore.txt` and that file being in the same directory as the archived files (which it is by default).
@@ -199,13 +207,13 @@ NOTE: It is passed as a normal directory, but xnLinkFinder will determine it is 
 You can pipe xnLinkFinder to other tools. Any errors are sent to `stderr` and any links found are sent to `stdout`. The output file is still created in addition to the links being piped to the next program. However, potential parameters are not piped to the next program, but they are still written to file. For example:
 
 ```
-python3 xnLinkFinder.py -i redbull.com -sp https://redbull.com -sf rebbull.* -d 3 | unfurl keys | sort -u
+xnLinkFinder -i redbull.com -sp https://redbull.com -sf rebbull.* -d 3 | unfurl keys | sort -u
 ```
 
 You can also pass the input through `stdin` instead of `-i`.
 
 ```
-cat redbull_subs.txt | python3 xnLinkFinder.py -sp https://redbull.com -sf rebbull.* -d 3
+cat redbull_subs.txt | xnLinkFinder -sp https://redbull.com -sf rebbull.* -d 3
 ```
 
 NOTE: You can't pipe in a Burp, ZAP or Caido file, these must be passed using `-i`.
@@ -235,7 +243,7 @@ NOTE: You can't pipe in a Burp, ZAP or Caido file, these must be passed using `-
 - Set the `-o` option to give a specific output file name for Links, rather than the default of `output.txt`. If you plan on running a large depth of searches, start with 2 with option `-v` to check what is being returned. Then you can increase the Depth, and the new output will be appended to the existing file, unless you pass `-ow`.
 - Set the `-op` option to give a specific output file name for Potential Parameters, rather than the default of `parameters.txt`. Any output will be appended to the existing file, unless you pass `-ow`.
 - If using a high Depth (`-d`) be wary of some sites using dynamic links so will it will just keep finding new ones. If no new links are being found, then xnlLinkFinder will stop searching. Providing the Stop flags (`s429`, `s403`, `sTO`, `sCE`) should also be considered.
-- If you are finding a large number of links (especially if the Depth (`-d` value is high), and have limited resources, the program will stop when it reaches the memory Threshold (`-m`) value and end gracefully with data intact before getting killed.
+- If you are finding a large number of links, especially if the Depth (`-d` value) is high, and have limited resources, the program will stop when it reaches the memory Threshold (`-m`) value and end gracefully with data intact before getting killed.
 - If you decide to cancel xnLinkFinder (using `Ctrl-C`) in the middle of running, be patient and any gathered data will be saved before ending gracefully.
 - Using the `-orig` option will show the URL where the link was found. This can mean you have duplicate links in the output if the same link was found on multiple sources, but it will suffixed with the origin URL in square brackets.
 - When making requests, xnLinkFinder will use a random User-Agent from the current group, which defaults to `desktop`. If you have a target that could have different links for different user agent groups, the specify `-u desktop mobile` for example (separate with a space). The `mobile` user agent option is an combination of `mobile-apple`, `mobile-android` and `mobile-windows`.

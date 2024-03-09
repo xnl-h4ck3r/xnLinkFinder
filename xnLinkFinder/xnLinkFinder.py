@@ -72,6 +72,11 @@ warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 import csv
 import urllib
 import warnings
+from pathlib import Path
+try:
+    from . import __version__
+except:
+    pass
 
 # Try to import lxml to use with beautifulsoup4 instead of the default parser
 try:
@@ -289,7 +294,19 @@ def writerr(text="", pipe=False):
         else:
             sys.stderr.write(text + "\n")
 
-
+def showVersion():
+    try:
+        try:
+            resp = requests.get('https://raw.githubusercontent.com/xnl-h4ck3r/xnLinkFinder/main/xnLinkFinder/__init__.py',timeout=3)
+        except:
+            write('Current xnLinkFinder version '+__version__+' (unable to check if latest)\n')
+        if __version__ == resp.text.split('=')[1].replace('"',''):
+            write('Current xnLinkFinder version '+__version__+' ('+colored('latest','green')+')\n')
+        else:
+            write('Current xnLinkFinder version '+__version__+' ('+colored('outdated','red')+')\n')
+    except:
+        pas
+        
 def showBanner():
     write("")
     write(colored(r"           o           o    o--o           o         ", "red"))
@@ -300,7 +317,7 @@ def showBanner():
     write(colored(r"                |                |                   ", "blue"))
     write(colored(r"                ' by @Xnl-h4ck3r '              v" + __import__('xnLinkFinder').__version__))
     write("")
-
+    showVersion()
 
 # Functions used when printing messages dependant on verbose options
 def verbose():
@@ -580,8 +597,8 @@ def getResponseLinks(response, url):
     Get a list of links found
     """
     global inScopePrefixDomains, burpFile, zapFile, caidoFile, dirPassed
-
     try:
+
         # if the --include argument is True then add the input links to the output too (unless the input was a directory)
         if args.include and not dirPassed:
             addLink(url, url)
@@ -1592,16 +1609,23 @@ def getConfig():
         except:
             terminalWidth = 120
 
-        # Get the path of the config file. If --config argument is not passed, then it defaults to config.yml in the same directory as the run file
-        if args.config is None:      
-            configPath = os.path.dirname(__file__)
-            if configPath == "":
-                configPath = "config.yml"
+        # Get the path of the config file. If -c / --config argument is not passed, then it defaults to config.yml in the same directory as the run file      
+        xnLinkFinderPath = (
+            Path(os.path.join(os.getenv('APPDATA', ''), 'xnLinKFinder')) if os.name == 'nt'
+            else Path(os.path.join(os.path.expanduser("~"), ".config", "xnLinKFinder")) if os.name == 'posix'
+            else Path(os.path.join(os.path.expanduser("~"), "Library", "Application Support", "xnLinKFinder")) if os.name == 'darwin'
+            else None
+        )
+        xnLinkFinderPath.absolute
+        if args.config is None:  
+            if xnLinkFinderPath == '':
+                configPath = 'config.yml'
             else:
-                configPath = configPath + "/config.yml"
+                configPath = Path(xnLinkFinderPath / 'config.yml')
         else:
-            configPath = args.config
+            configPath = Path(args.config)
         config = yaml.safe_load(open(configPath))
+
         try:
             LINK_EXCLUSIONS = config.get("linkExclude")
         except:
@@ -1760,12 +1784,12 @@ def getConfig():
                 writerr(colored('WARNING: Cannot find file "config.yml", so using default values', 'yellow'))
             else:
                 writerr(colored('WARNING: Cannot find file "' + args.config + '", so using default values', 'yellow'))
-            LINK_EXCLUSIONS = DEFAULT_LINK_EXCLUSIONS
-            CONTENTTYPE_EXCLUSIONS = DEFAULT_CONTENTTYPE_EXCLUSIONS
-            FILEEXT_EXCLUSIONS = DEFAULT_FILEEXT_EXCLUSIONS
-            LINK_REGEX_FILES = DEFAULT_LINK_REGEX_FILES
-            WORDS_CONTENT_TYPES = DEFAULT_WORDS_CONTENT_TYPES
-            STOP_WORDS = DEFAULT_STOP_WORDS
+        LINK_EXCLUSIONS = DEFAULT_LINK_EXCLUSIONS
+        CONTENTTYPE_EXCLUSIONS = DEFAULT_CONTENTTYPE_EXCLUSIONS
+        FILEEXT_EXCLUSIONS = DEFAULT_FILEEXT_EXCLUSIONS
+        LINK_REGEX_FILES = DEFAULT_LINK_REGEX_FILES
+        WORDS_CONTENT_TYPES = DEFAULT_WORDS_CONTENT_TYPES
+        STOP_WORDS = DEFAULT_STOP_WORDS
 
 
 # Print iterations progress
@@ -2898,7 +2922,7 @@ def processEachInput(input):
     """
     Process the input, whether its from -i or <stdin>
     """
-    global burpFile, zapFile, caidoFile, urlPassed, stdFile, stdinFile, dirPassed, stdinMultiple, linksFound, linksVisited, totalRequests, skippedRequests, failedRequests, paramsFound, waymoreMode, stopProgram, contentTypesProcessed
+    global burpFile, zapFile, caidoFile, urlPassed, stdFile, stdinFile, dirPassed, stdinMultiple, linksFound, linksVisited, totalRequests, skippedRequests, failedRequests, paramsFound, waymoreMode, stopProgram, contentTypesProcessed, oosLinksFound
 
     if stopProgram is None:
         checkMaxTimeLimit()
@@ -3046,6 +3070,7 @@ def processEachInput(input):
 
             # Reset the variables
             linksFound = set()
+            oosLinksFound = set()
             linksVisited = set()
             paramsFound = set()
             contentTypesProcessed = set()
@@ -3613,8 +3638,9 @@ def checkMaxTimeLimit():
             stopProgram = StopProgram.MAX_TIME_LIMIT
             
 # Run xnLinkFinder
-if __name__ == "__main__":
-
+def main():
+    global args, userAgents, stopProgram, burpFile, zapFile, caidoFile, dirPassed, waymoreMode, currentUAGroup, waymoreFiles, linksVisited, maxMemoryPercent, linksFound, paramsFound, contentTypesProcessed, totalRequests, skippedRequests, failedRequests, oosLinksFound, LINK_REGEX_FILES
+    
     # Tell Python to run the handler() function when SIGINT is received
     signal(SIGINT, handler)
 
@@ -4013,6 +4039,7 @@ if __name__ == "__main__":
 
             # Reset the variables
             linksFound = set()
+            oosLinksFound = set()
             linksVisited = set()
             paramsFound = set()
             contentTypesProcessed = set()
@@ -4070,3 +4097,12 @@ if __name__ == "__main__":
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR main 1: " + str(e), "red"))
+            
+    try:
+        if sys.stdout.isatty():
+            writerr(colored('✅ Want to buy me a coffee? ☕ https://ko-fi.com/xnlh4ck3r 🤘', 'green'))
+    except:
+        pass
+
+if __name__ == '__main__':
+    main()

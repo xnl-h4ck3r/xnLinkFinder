@@ -1,5 +1,18 @@
 ## Changelog
 
+- v5.0
+
+  - New
+
+    - Allow `xnLinkFinder` to be installed using `pip` or `pipx` so it can be run from any directory.
+    - Show the current version of the tool in the banner, and whether it is the latest, or outdated.
+    - When installing `xnLinkFinder`, if the `config.yml` already exists then it will keep that one and create `config.yml.NEW` in case you need to replace the old config.
+    - Include "Buy Me a Coffee" link at the end of output.
+
+  - Changed
+
+    - Change instructions in `README.md` to new changes.
+
 - v4.5
 
   - New
