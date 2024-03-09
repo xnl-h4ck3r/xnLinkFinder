@@ -4,7 +4,7 @@
 
   - Changed
 
-    - If there is a connection error, only show `(Consider passing --scope-prefix argument)` in the error if scope prefix wasn't provided.
+    - If there is a connection error, only show `(Consider passing --scope-prefix argument)` in the error if scope prefix wasn't provided and it's not the first URL.
     - If the passed `-sp`/`--scope-prefix` has any trailing `/` then remove them. This will be taken care of, and will prevent `//` appearing in output links.
 
 - v5.0

@@ -45,6 +45,7 @@ stopProgramCount = 0
 terminalWidth = 120
 waymoreMode = False
 waymoreFiles = set()
+currentDepth = 1
 
 import re
 import os
@@ -935,7 +936,7 @@ def shouldMakeRequest(url):
 
 def processUrl(url):
 
-    global burpFile, zapFile, caidoFile, totalRequests, skippedRequests, failedRequests, userAgent, requestHeaders, tooManyRequests, tooManyForbidden, tooManyTimeouts, tooManyConnectionErrors, stopProgram, waymoreMode, stopProgram, failedPrefixLinks
+    global burpFile, zapFile, caidoFile, totalRequests, skippedRequests, failedRequests, userAgent, requestHeaders, tooManyRequests, tooManyForbidden, tooManyTimeouts, tooManyConnectionErrors, stopProgram, waymoreMode, stopProgram, failedPrefixLinks, currentDepth
     
     # Choose a random user agent string to use from the current group
     userAgent = random.choice(userAgents[currentUAGroup])
@@ -1096,7 +1097,7 @@ def processUrl(url):
                             if url.find("://") > 0:
                                 writerr(colored("Connection Error: " + url + " (Please check this is a valid URL)","red"))
                             else:
-                                if args.scope_prefix == '':
+                                if args.scope_prefix == '' and currentDepth > 1:
                                     writerr(colored("Connection Error: " + url + " (Consider passing --scope-prefix argument)","red"))
                                 else:
                                     writerr(colored("Connection Error: " + url,"red"))
@@ -1842,12 +1843,13 @@ def printProgressBar(
 
 
 def processDepth():
-    global stopProgram, failedPrefixLinks
+    global stopProgram, failedPrefixLinks, currentDepth
     try:
         # If the -d (--depth) argument was passed then do another search
         # This is only used for URL, std file of URLs, or multiple URLs passed in STDIN
         if (urlPassed or stdFile or stdinFile) and args.depth > 1:
             for d in range(args.depth - 1):
+                currentDepth = d
                 if stopProgram is not None:
                     break
 
