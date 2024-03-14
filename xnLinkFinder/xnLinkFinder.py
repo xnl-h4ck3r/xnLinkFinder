@@ -306,7 +306,7 @@ def showVersion():
         else:
             write('Current xnLinkFinder version '+__version__+' ('+colored('outdated','red')+')\n')
     except:
-        pas
+        pass
         
 def showBanner():
     write("")

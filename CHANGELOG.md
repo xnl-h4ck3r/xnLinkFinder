@@ -1,5 +1,12 @@
 ## Changelog
 
+- v5.3
+
+  - Changed
+
+    - Fix a typo in the `showVersion` error handler that caused an error.
+    - Added message to `setup.py` that says the location of the config file.
+
 - v5.2
 
   - Changed
