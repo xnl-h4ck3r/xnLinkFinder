@@ -1615,9 +1615,9 @@ def getConfig():
 
         # Get the path of the config file. If -c / --config argument is not passed, then it defaults to config.yml in the same directory as the run file      
         xnLinkFinderPath = (
-            Path(os.path.join(os.getenv('APPDATA', ''), 'xnLinKFinder')) if os.name == 'nt'
-            else Path(os.path.join(os.path.expanduser("~"), ".config", "xnLinKFinder")) if os.name == 'posix'
-            else Path(os.path.join(os.path.expanduser("~"), "Library", "Application Support", "xnLinKFinder")) if os.name == 'darwin'
+            Path(os.path.join(os.getenv('APPDATA', ''), 'xnLinkFinder')) if os.name == 'nt'
+            else Path(os.path.join(os.path.expanduser("~"), ".config", "xnLinkFinder")) if os.name == 'posix'
+            else Path(os.path.join(os.path.expanduser("~"), "Library", "Application Support", "xnLinkFinder")) if os.name == 'darwin'
             else None
         )
         xnLinkFinderPath.absolute
@@ -1784,6 +1784,7 @@ def getConfig():
             
     except Exception as e:
         if vverbose():
+            print(str(e))
             if args.config is None:
                 writerr(colored('WARNING: Cannot find file "config.yml", so using default values', 'yellow'))
             else:

@@ -1,5 +1,12 @@
 ## Changelog
 
+- v5.2
+
+  - Changed
+
+    - Fix a big that prevented the `config.yml` being read correctly.
+    - Small changes to `README`
+
 - v5.1
 
   - Changed
