@@ -2320,13 +2320,13 @@ def processDirectory():
                 ):                    
                     # Check if running against a waymore results directory
                     # Waymore Mode will be if waymore.txt exists in the directory, or if index.txt exists and there
-                    # is at least one .xnl file
+                    # is at least one .xnl file, or if "waymore.new","waymore.old","responses.tmp","continueResp.tmp" or "combinedInline" files exist.
                     if f.endswith("xnl"):
                         xnlFileFound = True
-                    if f == "waymore.txt" or (xnlFileFound and f == "index.txt"):
+                    if f in ("waymore.txt","waymore.new","waymore.old","responses.tmp","continueResp.tmp") or (xnlFileFound and f == "index.txt") or "combinedInline" in f:
                         waymoreMode = True
 
-                    if f not in ("waymore.txt","waymore.new","waymore.old","index.txt","responses.tmp","continueResp.tmp"):
+                    if f not in ("waymore.txt","waymore.new","waymore.old","index.txt","responses.tmp","continueResp.tmp") and "combinedInline" not in f:
                         totalResponses = totalResponses + 1
                         
     except Exception as e:
@@ -2382,12 +2382,12 @@ def processDirectory():
                             waymoreFiles.add(fullPath)
                             
                     # Check if the file size is less than --max-file-size 
-                    # AND if in waymore mode that it isn't one of "waymore.txt","waymore.new","waymore.old","index.txt","responses.tmp","continueResp.tmp"
+                    # AND if in waymore mode that it isn't one of "waymore.txt","waymore.new","waymore.old","index.txt","responses.tmp","continueResp.tmp","combinedInline"
                     if (
                         args.max_file_size == 0
                         or (os.path.getsize(os.path.join(path, filename))) / (1024*1024)
                         < args.max_file_size
-                    ) and (not waymoreMode or (waymoreMode and filename not in ("waymore.txt","waymore.new","waymore.old","index.txt","responses.tmp","continueResp.tmp"))):
+                    ) and (not waymoreMode or (waymoreMode and filename not in ("waymore.txt","waymore.new","waymore.old","index.txt","responses.tmp","continueResp.tmp") and "combinedInline" not in filename)):
 
                         if stopProgram is not None:
                             break

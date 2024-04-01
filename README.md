@@ -1,6 +1,6 @@
 <center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/blob/main/xnLinkFinder/images/title.png"></center>
 
-## About - v5.3
+## About - v6.0
 
 This is a tool used to discover endpoints (and potential parameters) for a given target. It can find them by:
 
@@ -19,10 +19,22 @@ As a starting point, I took the amazing tool [LinkFinder](https://github.com/Ger
 
 `xnLinkFinder` supports **Python 3**.
 
-Install `xnLinkFinder` in default(global) python environment.
+Install `xnLinkFinder` in default (global) python environment.
+
+```bash
+pip install xnLinkFinder
+```
+
+OR
 
 ```bash
 pip install git+https://github.com/xnl-h4ck3r/xnLinkFinder.git -v
+```
+
+You can upgrade with
+
+```bash
+pip install --upgrade xnLinkFinder
 ```
 
 ### pipx

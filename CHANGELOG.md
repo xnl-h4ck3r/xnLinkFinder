@@ -1,5 +1,13 @@
 ## Changelog
 
+- v6.0
+
+  - New
+
+    - For `waymore` mode, don't check the new `combineInline` files.
+    - Add `long_description_content_type` to `setup.py` to upload to PyPi
+    - Add `xnLinkFinder` to `PyPi` so can be installed with `pip install xnLinkFinder`
+
 - v5.3
 
   - Changed
