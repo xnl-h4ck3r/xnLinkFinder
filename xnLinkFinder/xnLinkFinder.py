@@ -136,7 +136,7 @@ DEFAULT_LINK_EXCLUSIONS = ".css,.jpg,.jpeg,.png,.svg,.img,.gif,.mp4,.flv,.ogv,.w
 
 # A comma separated list of Content-Type exclusions used when the exclusions from config.yml cannot be found
 # These content types will NOT be checked
-DEFAULT_CONTENTTYPE_EXCLUSIONS = "text/css,image/jpeg,image/jpg,image/png,image/svg+xml,image/gif,image/tiff,image/webp,image/bmp,image/x-icon,image/vnd.microsoft.icon,font/ttf,font/woff,font/woff2,font/x-woff2,font/x-woff,font/otf,audio/mpeg,audio/wav,audio/webm,audio/aac,audio/ogg,audio/wav,audio/webm,video/mp4,video/mpeg,video/webm,video/ogg,video/mp2t,video/webm,video/x-msvideo,application/font-woff,application/font-woff2,application/vnd.android.package-archive,binary/octet-stream,application/octet-stream,application/pdf,application/x-font-ttf,application/x-font-otf,application/x-font-woff,application/vnd.ms-fontobject,image/avif,application/zip,application/x-zip-compressed,application/x-msdownload,application/x-apple-diskimage,application/x-rpm,application/vnd.debian.binary-package,application/x-font-truetype,font/opentype,image/pjpeg,application/x-troff-man,application/font-otf,application/x-ms-application,application/x-msdownload"
+DEFAULT_CONTENTTYPE_EXCLUSIONS = "text/css,image/jpeg,image/jpg,image/png,image/svg+xml,image/gif,image/tiff,image/webp,image/bmp,image/x-icon,image/vnd.microsoft.icon,font/ttf,font/woff,font/woff2,font/x-woff2,font/x-woff,font/otf,audio/mpeg,audio/wav,audio/webm,audio/aac,audio/ogg,audio/wav,audio/webm,video/mp4,video/mpeg,video/webm,video/ogg,video/mp2t,video/webm,video/x-msvideo,application/font-woff,application/font-woff2,application/vnd.android.package-archive,binary/octet-stream,application/octet-stream,application/pdf,application/x-font-ttf,application/x-font-otf,application/x-font-woff,application/vnd.ms-fontobject,image/avif,application/zip,application/x-zip-compressed,application/x-msdownload,application/x-apple-diskimage,application/x-rpm,application/vnd.debian.binary-package,application/x-font-truetype,font/opentype,image/pjpeg,application/x-troff-man,application/font-otf,application/x-ms-application,application/x-msdownload,image/jp2,video/x-m4v"
 
 # A comma separated list of file extension exclusions used when the file ext exclusions from config.yml cannot be found
 # In Directory mode, files with these extensions will NOT be checked
@@ -938,8 +938,12 @@ def processUrl(url):
 
     global burpFile, zapFile, caidoFile, totalRequests, skippedRequests, failedRequests, userAgent, requestHeaders, tooManyRequests, tooManyForbidden, tooManyTimeouts, tooManyConnectionErrors, stopProgram, waymoreMode, stopProgram, failedPrefixLinks, currentDepth
     
+    # If a custom user agent string was passed then use that in the header, else
     # Choose a random user agent string to use from the current group
-    userAgent = random.choice(userAgents[currentUAGroup])
+    if args.user_agent_custom != "":
+        userAgent = args.user_agent_custom
+    else:
+        userAgent = random.choice(userAgents[currentUAGroup])
     requestHeaders["User-Agent"] = userAgent
 
     try: 
@@ -1870,7 +1874,7 @@ def processDepth():
                 p.join()
 
                 # If -spkf wasn't passed and there are any failed prefixed links, remove them from linksFound
-                if not args.scope_prefix_keep_failed:
+                if not args.scope_prefix_keep_failed and failedPrefixLinks is not None:
                     for fail in failedPrefixLinks:
                         try:
                             linksFound.remove(fail)
@@ -2131,13 +2135,19 @@ def showOptions():
                 colored("-inc: " + str(args.include), "magenta")
                 + colored(" Include input (-i) links in the output.", "white")
             )
-            write(
-                colored("-u: " + str(args.user_agent), "magenta")
-                + colored(
-                    " What User Agents to use for requests. If more than one specified then all requests will be made per User Agent group.",
-                    "white",
+            if args.user_agent_custom != "":
+                write(
+                    colored("-uc: " + str(args.user_agent_custom), "magenta")
+                    + colored(" The custom User Agent used for all requests", "white")
                 )
-            )
+            else:
+                write(
+                    colored("-u: " + str(args.user_agent), "magenta")
+                    + colored(
+                        " What User Agents to use for requests. If more than one specified then all requests will be made per User Agent group.",
+                        "white",
+                    )
+                )
 
             if args.cookies != "":
                 write(
@@ -3024,7 +3034,7 @@ def processEachInput(input):
 
             else:
                 # Show the current User Agent group
-                if len(args.user_agent) > 1:
+                if len(args.user_agent) > 1 and args.user_agent_custom == "":
                     write(
                         colored("\nUser-Agent Group: ", "cyan")
                         + colored(args.user_agent[currentUAGroup], "white")
@@ -3166,21 +3176,25 @@ def processInput():
 # Set user agents to process
 def setUserAgents():
     global userAgents
-    for ua in args.user_agent:
-        if ua == "desktop":
-            userAgents.append(UA_DESKTOP)
-        elif ua == "mobile":
-            userAgents.append(UA_MOBILE)
-        elif ua == "mobile-apple":
-            userAgents.append(UA_MOBILE_APPLE)
-        elif ua == "mobile-android":
-            userAgents.append(UA_MOBILE_ANDROID)
-        elif ua == "mobile-windows":
-            userAgents.append(UA_MOBILE_WINDOWS)
-        elif ua == "set-top-boxes":
-            userAgents.append(UA_SETTOPBOXES)
-        elif ua == "game-console":
-            userAgents.append(UA_GAMECONSOLE)
+    # If a custom user agent was passed then only use that, else check which groups were specified
+    if args.user_agent_custom != "":
+        userAgents.append([args.user_agent_custom])
+    else:
+        for ua in args.user_agent:
+            if ua == "desktop":
+                userAgents.append(UA_DESKTOP)
+            elif ua == "mobile":
+                userAgents.append(UA_MOBILE)
+            elif ua == "mobile-apple":
+                userAgents.append(UA_MOBILE_APPLE)
+            elif ua == "mobile-android":
+                userAgents.append(UA_MOBILE_ANDROID)
+            elif ua == "mobile-windows":
+                userAgents.append(UA_MOBILE_WINDOWS)
+            elif ua == "set-top-boxes":
+                userAgents.append(UA_SETTOPBOXES)
+            elif ua == "game-console":
+                userAgents.append(UA_GAMECONSOLE)
     if userAgents == []:
         userAgents = [UA_DESKTOP]
 
@@ -3820,6 +3834,13 @@ def main():
         ],
         default=["desktop"],
         metavar="",
+    )
+    parser.add_argument(
+        "-uc",
+        "--user-agent-custom",
+        action="store",
+        help="A custom User Agent string to use for all requests. This will override the -u/--user-agent argument. This can be used when a program requires a specific User Agent header to identify you for example.",
+        default="",
     )
     parser.add_argument(
         "-insecure",

@@ -1,5 +1,16 @@
 ## Changelog
 
+- v6.1
+
+  - New
+
+    - Add argument `-uc`/`--user-agent-custom`. This can be used to specify a single custom User Agent string to use for all requests. This will override the `-u`/`--user-agent` argument. This can be used when a program requires a specific User Agent header to identify you for example.
+
+  - Changed
+
+    - The error `ERROR processDepth: 'NoneType' object is not iterable` can occur if the `failedPrefixLinks` object is `None`. This can also cause the program to end before all Depths has been checked. Only process it if it is not `None`.
+    - Add `image/jp2` `video/x-m4v` to `contentExclude` in `config.yml` and also `DEFAULT_CONTENTTYPE_EXCLUSIONS`.
+
 - v6.0
 
   - New
