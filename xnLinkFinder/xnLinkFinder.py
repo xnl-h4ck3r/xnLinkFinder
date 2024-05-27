@@ -136,7 +136,7 @@ DEFAULT_LINK_EXCLUSIONS = ".css,.jpg,.jpeg,.png,.svg,.img,.gif,.mp4,.flv,.ogv,.w
 
 # A comma separated list of Content-Type exclusions used when the exclusions from config.yml cannot be found
 # These content types will NOT be checked
-DEFAULT_CONTENTTYPE_EXCLUSIONS = "text/css,image/jpeg,image/jpg,image/png,image/svg+xml,image/gif,image/tiff,image/webp,image/bmp,image/x-icon,image/vnd.microsoft.icon,font/ttf,font/woff,font/woff2,font/x-woff2,font/x-woff,font/otf,audio/mpeg,audio/wav,audio/webm,audio/aac,audio/ogg,audio/wav,audio/webm,video/mp4,video/mpeg,video/webm,video/ogg,video/mp2t,video/webm,video/x-msvideo,application/font-woff,application/font-woff2,application/vnd.android.package-archive,binary/octet-stream,application/octet-stream,application/pdf,application/x-font-ttf,application/x-font-otf,application/x-font-woff,application/vnd.ms-fontobject,image/avif,application/zip,application/x-zip-compressed,application/x-msdownload,application/x-apple-diskimage,application/x-rpm,application/vnd.debian.binary-package,application/x-font-truetype,font/opentype,image/pjpeg,application/x-troff-man,application/font-otf,application/x-ms-application,application/x-msdownload,image/jp2,video/x-m4v"
+DEFAULT_CONTENTTYPE_EXCLUSIONS = "text/css,image/jpeg,image/jpg,image/png,image/svg+xml,image/gif,image/tiff,image/webp,image/bmp,image/x-icon,image/vnd.microsoft.icon,font/ttf,font/woff,font/woff2,font/x-woff2,font/x-woff,font/otf,audio/mpeg,audio/wav,audio/webm,audio/aac,audio/ogg,audio/wav,audio/webm,video/mp4,video/mpeg,video/webm,video/ogg,video/mp2t,video/webm,video/x-msvideo,application/font-woff,application/font-woff2,application/vnd.android.package-archive,binary/octet-stream,application/octet-stream,application/pdf,application/x-font-ttf,application/x-font-otf,application/x-font-woff,application/vnd.ms-fontobject,image/avif,application/zip,application/x-zip-compressed,application/x-msdownload,application/x-apple-diskimage,application/x-rpm,application/vnd.debian.binary-package,application/x-font-truetype,font/opentype,image/pjpeg,application/x-troff-man,application/font-otf,application/x-ms-application,application/x-msdownload,video/x-ms-wmv,image/x-png,video/quicktime,image/x-ms-bmp,font/opentype,application/x-font-opentype,application/x-woff,audio/aiff,image/jp2,video/x-m4v"
 
 # A comma separated list of file extension exclusions used when the file ext exclusions from config.yml cannot be found
 # In Directory mode, files with these extensions will NOT be checked
@@ -257,7 +257,9 @@ REGEX_PARAMSSUB = re.compile(r"\?|%3f|\&#0?63;|\u003f|\\u003f|\\\\u003f|\=|%3d|\
 REGEX_JSLET = re.compile(r"(?<=let[\s])[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*[\s]*(?=(\=|;|\n|\r))")
 REGEX_JSVAR = re.compile(r"(?<=var\s)[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*?(?=(\s|=|,|;|\n))")
 REGEX_JSCONSTS = re.compile(r"(?<=const\s)[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*?(?=(\s|=|,|;|\n))")
-
+REGEX_JSNESTED = re.compile(r"(?s)(^|\s?)(JSON\.stringify\(|dataLayer\.push\(|(var|let|const)\s+[\$A-Za-z0-9-_\[\]]+\s*=)\s*\{")
+REGEX_JSNESTEDPARAM = re.compile(r"\s*('|\"|\[])?[A-Za-z0-9-_\.]+('|\"|\])?\s*\:")
+        
 # Regex for links
 REGEX_LINKSSLASH = re.compile(r"(\&#x2f;|\&#0?2f|%2f|\u002f|\\u002f|\\/)", re.IGNORECASE)
 REGEX_LINKSCOLON = re.compile(r"(\&#x3a;|\&#0?3a|%3a|\u003a|\\u003a)", re.IGNORECASE)
@@ -3352,7 +3354,49 @@ def sanitizeWord(word):
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR sanitizeWord 1: " + str(e), "red"))
-            
+
+# Get a string from the passed text that starts with { and gets to the last } ensuring they are balanced
+def find_balanced_braces(text, start):
+    try:
+        end = len(text)
+        stack = []
+        i = text.find('{', start)
+        if i == -1:
+            return None, start
+        while i < len(text):
+            if text[i] == '{':
+                stack.append('{')
+            elif text[i] == '}':
+                stack.pop()
+                if not stack:
+                    end = i + 1
+                    break
+            i += 1
+        return text[start:end], end
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR find_balanced_braces 1: " + str(e), "red"))
+
+# Add parameters from the JSON string passed, i.e. the keys before :    
+def process_json_string(jsonString):
+    try:
+        js_params = REGEX_JSNESTEDPARAM.finditer(jsonString)
+        for param in js_params:
+            if param and param.group():
+                parameter = param.group().strip()
+                parameter = parameter.rstrip(':')
+                parameter = parameter.replace('\'', '').replace('"', '')
+                parameter = parameter.replace('[', '').replace(']', '')
+                paramsFound.add(parameter)
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR process_json_string 1: " + str(e), "red"))
+
+def ensure_unicode(text):
+    if isinstance(text, bytes):
+        return text.decode('utf-8')
+    return text
+    
 # Get XML and JSON responses, extract keys and add them to the paramsFound list
 # In addition it will extract name and id from <input> fields in HTML
 def getResponseParams(response, request):
@@ -3530,6 +3574,25 @@ def getResponseParams(response, request):
                     if vverbose():
                         writerr(colored("ERROR getResponseParams 4: " + str(e), "red"))
 
+                # Get parameters from nested objects
+                try:
+                    start = 0
+                    text = body.encode('ascii', 'replace').decode('ascii')
+                    while start < len(text):
+                        match = REGEX_JSNESTED.search(text, start)
+                        if not match:
+                            break
+                        full_string, end = find_balanced_braces(text, match.start())
+                        if full_string:
+                            full_string = ensure_unicode(full_string)
+                            process_json_string(full_string)
+                        if start == end:
+                            break
+                        start = end
+                except Exception as e:
+                    if vverbose():
+                        writerr(colored("ERROR getResponseParams 5: " + str(e), "red"))
+                            
             # If mime type is JSON then get the JSON attributes
             if contentType.find("JSON") > 0:
                 if RESP_PARAM_JSON:

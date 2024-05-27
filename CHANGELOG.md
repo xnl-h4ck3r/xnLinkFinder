@@ -1,5 +1,12 @@
 ## Changelog
 
+- v6.2
+
+  - New
+
+    - Add same functionality as GAP Burp extension to extract parameter names from nested objects too.
+    - Added `video/x-ms-wmv,image/x-png,video/quicktime,image/x-ms-bmp,font/opentype,application/x-font-opentype,application/x-woff,audio/aiff` to `DEFAULT_CONTENTTYPE_EXCLUSIONS` constant and also to `CONTENTTYPE_EXCLUSIONS` in `config.yml`.
+
 - v6.1
 
   - New
