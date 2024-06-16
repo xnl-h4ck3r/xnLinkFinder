@@ -1,5 +1,11 @@
 ## Changelog
 
+- v6.3
+
+  - Changed
+
+    - A fix for Issue 28 - https://github.com/xnl-h4ck3r/xnLinkFinder/issues/28
+
 - v6.2
 
   - New

@@ -2942,7 +2942,7 @@ def processEachInput(input):
     """
     Process the input, whether its from -i or <stdin>
     """
-    global burpFile, zapFile, caidoFile, urlPassed, stdFile, stdinFile, dirPassed, stdinMultiple, linksFound, linksVisited, totalRequests, skippedRequests, failedRequests, paramsFound, waymoreMode, stopProgram, contentTypesProcessed, oosLinksFound
+    global burpFile, zapFile, caidoFile, urlPassed, stdFile, stdinFile, dirPassed, stdinMultiple, linksFound, linksVisited, totalRequests, skippedRequests, failedRequests, paramsFound, waymoreMode, stopProgram, contentTypesProcessed, oosLinksFound, lstPathWords, wordsFound
 
     if stopProgram is None:
         checkMaxTimeLimit()
@@ -3094,6 +3094,8 @@ def processEachInput(input):
             linksVisited = set()
             paramsFound = set()
             contentTypesProcessed = set()
+            wordsFound = set()
+            lstPathWords = set()
             totalRequests = 0
             skippedRequests = 0
             failedRequests = 0
@@ -3724,7 +3726,7 @@ def checkMaxTimeLimit():
             
 # Run xnLinkFinder
 def main():
-    global args, userAgents, stopProgram, burpFile, zapFile, caidoFile, dirPassed, waymoreMode, currentUAGroup, waymoreFiles, linksVisited, maxMemoryPercent, linksFound, paramsFound, contentTypesProcessed, totalRequests, skippedRequests, failedRequests, oosLinksFound, LINK_REGEX_FILES
+    global args, userAgents, stopProgram, burpFile, zapFile, caidoFile, dirPassed, waymoreMode, currentUAGroup, waymoreFiles, linksVisited, maxMemoryPercent, linksFound, paramsFound, contentTypesProcessed, totalRequests, skippedRequests, failedRequests, oosLinksFound, lstPathWords, wordsFound, LINK_REGEX_FILES
     
     # Tell Python to run the handler() function when SIGINT is received
     signal(SIGINT, handler)
@@ -4135,6 +4137,8 @@ def main():
             linksVisited = set()
             paramsFound = set()
             contentTypesProcessed = set()
+            wordsFound = set()
+            lstPathWords = set() 
             totalRequests = 0
             skippedRequests = 0
             failedRequests = 0
