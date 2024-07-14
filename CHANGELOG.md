@@ -1,5 +1,11 @@
 ## Changelog
 
+- v6.4
+
+  - Changed
+
+    - BUG FIX: Change the link regex to also look for `.` within file names. If a file name is found that has a required extension, e.g. `.js` then the file name itself can also have a `.` in it, e.g. `chunk.1337.js`. Previously the regex would not have picked these up in certain situations.
+
 - v6.3
 
   - Changed
