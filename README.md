@@ -49,7 +49,7 @@ pipx install git+https://github.com/xnl-h4ck3r/xnLinkFinder.git
 
 | Arg         | Long Arg                   | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | ----------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| -i          | --input                    | Input a: URL, text file of URLs, a Directory of files to search, a Burp XML output file, an OWASP ZAP output file, or a Caido CSV file.                                                                                                                                                                                                                                                                                                                                                            |
+| -i          | --input                    | Input a: URL, text file of URLs, a Directory of files to search, a Burp XML output file, a ZAP output file, or a Caido CSV file.                                                                                                                                                                                                                                                                                                                                                            |
 | -o          | --output                   | The file to save the Links output to, including path if necessary (default: output.txt). If set to `cli` then output is only written to STDOUT. If the file already exist it will just be appended to (and de-duplicated) unless option `-ow` is passed.                                                                                                                                                                                                                                           |
 | -op         | --output-params            | The file to save the Potential Parameters output to, including path if necessary (default: parameters.txt). If set to `cli` then output is only written to STDOUT (but not piped to another program). If the file already exist it will just be appended to (and de-duplicated) unless option `-ow` is passed.                                                                                                                                                                                     |
 | -owl        | --output-wordlist          | The file to save the target specific Wordlist output to, including path if necessary (default: No wordlist output). If set to `cli` then output is only written to STDOUT (but not piped to another program). If the file already exist it will just be appended to (and de-duplicated) unless option -ow is passed.                                                                                                                                                                               |
@@ -99,7 +99,7 @@ pipx install git+https://github.com/xnl-h4ck3r/xnLinkFinder.git
 |             | --version                  | Show current version number.                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | -h          | --help                     | show the help message and exit                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
-† NOT RELEVANT FOR INPUT OF DIRECTORY, BURP XML FILE, OWASP ZAP FILE OR CAIDO CSV FILE
+† NOT RELEVANT FOR INPUT OF DIRECTORY, BURP XML FILE, ZAP FILE OR CAIDO CSV FILE
 
 ## config.yml
 
@@ -175,7 +175,7 @@ Ideally, provide scope prefix (`-sp`) with the primary domain (including schema)
 xnLinkFinder -i target_burp.xml -o target_burp.txt -sp https://www.target.com -sf target.* -ow -spo -inc -vv
 ```
 
-### Find Links from an OWASP ZAP project - Basic
+### Find Links from a ZAP project - Basic
 
 In ZAP, select the items you want to search by highlighting the History for example, clicking menu `Export` and selecting `Export Messages to File...`. This will let you save an ASCII text file of all requests and responses you want to search.
 To get all links from the file (even with HUGE files, you'll be able to get all the links):
@@ -184,7 +184,7 @@ To get all links from the file (even with HUGE files, you'll be able to get all 
 xnLinkFinder -i target_zap.txt
 ```
 
-NOTE: xnLinkFinder makes the assumption that if the first line of the file passed with `-i` is in the format `==== 99 ==========` (v2.11.1) or `===99 ==========` (v2.12) for example, then you are trying to process an OWASP ZAP ASCII text file.
+NOTE: xnLinkFinder makes the assumption that if the first line of the file passed with `-i` is in the format `==== 99 ==========` (v2.11.1) or `===99 ==========` (v2.12) for example, then you are trying to process an ZAP ASCII text file.
 
 ### Find Links from a Cadio export CSV file - Basic
 
