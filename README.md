@@ -8,7 +8,7 @@ This is a tool used to discover endpoints (and potential parameters) for a given
 - crawling multiple targets (pass a file of domains/URLs)
 - searching files in a given directory (pass a directory name)
 - get them from a **Burp** project (pass location of a Burp XML file)
-- get them from an **OWASP ZAP** project (pass location of a ZAP ASCII message file)
+- get them from an **ZAP** project (pass location of a ZAP ASCII message file)
 - get them from a **Caido** project (pass location of a Caido export CSV file)
 - processing a [waymore](https://github.com/xnl-h4ck3r/waymore) results directory (searching archived response files from `waymore -mode R` and also requesting URLs from `waymore.txt` and the original URLs from `index.txt` - see [waymore README.md](https://github.com/xnl-h4ck3r/waymore/blob/main/README.md))
 
