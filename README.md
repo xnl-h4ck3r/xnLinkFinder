@@ -184,7 +184,7 @@ To get all links from the file (even with HUGE files, you'll be able to get all 
 xnLinkFinder -i target_zap.txt
 ```
 
-NOTE: xnLinkFinder makes the assumption that if the first line of the file passed with `-i` is in the format `==== 99 ==========` (v2.11.1) or `===99 ==========` (v2.12) for example, then you are trying to process an ZAP ASCII text file.
+NOTE: xnLinkFinder makes the assumption that if the first line of the file passed with `-i` is in the format `==== 99 ==========` (v2.11.1) or `===99 ==========` (v2.12) for example, then you are trying to process a ZAP ASCII text file.
 
 ### Find Links from a Cadio export CSV file - Basic
 
