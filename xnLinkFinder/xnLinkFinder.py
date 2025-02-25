@@ -235,6 +235,8 @@ REGEX_XMLATTR = re.compile(r"<([a-zA-Z0-9$_\.-]*?)>")
 
 # Regex for HTML input fields
 REGEX_HTMLINP = re.compile(r"<input(.*?)>", re.IGNORECASE)
+# Regex for HTML textarea fields
+REGEX_HTMLTEXTAREA = re.compile(r"<textarea(.*?)>", re.IGNORECASE)
 REGEX_HTMLINP_NAME = re.compile(r"(?<=\sname)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|\'))", re.IGNORECASE)    
 REGEX_HTMLINP_ID = re.compile(r"(?<=\sid)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|'))", re.IGNORECASE)
 
@@ -3623,13 +3625,13 @@ def getResponseParams(response, request):
                         if vverbose():
                             writerr(colored("ERROR getResponseParams 6: " + str(e), "red"))
 
-            # If the mime type is HTML then get <input> name and id values, and meta tag names
+            # If the mime type is HTML then get <input> and <textarea> name and id values, and meta tag names
             elif contentType.find("HTML") > 0:
 
                 if RESP_PARAM_INPUTFIELD:
                     # Get Input field name and id attributes
                     try:
-                        html_keys = REGEX_HTMLINP.findall(body)
+                        html_keys = REGEX_HTMLINP.findall(body) + REGEX_HTMLTEXTAREA.findall(body)
                         for key in html_keys:
                             input_name = REGEX_HTMLINP_NAME.search(key)
                             if input_name is not None and input_name.group() != "":
