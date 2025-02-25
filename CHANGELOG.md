@@ -1,5 +1,18 @@
 ## Changelog
 
+- v6.5
+
+  - Changed
+
+    - Preform a separate regex search for links that can potentially get lots of false positives, but validate these by checking the TLD for the link is valid. if som it will add them to the links found. This will find many links previously missed.
+    - Before searching for links, replace different encodings of double quotes with `"` to maximise the number of links found.
+    - When making requests from links found, ensure that requests are only made to potentially valid links by checking the TLD is valid.
+
+  - New
+
+    - Add `urllib3` and `tldextract` to `setup.py`
+    - Add `oos.txt` to `.giignore` file.
+
 - v6.4
 
   - Changed

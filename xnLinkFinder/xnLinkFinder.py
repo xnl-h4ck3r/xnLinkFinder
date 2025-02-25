@@ -73,6 +73,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 import csv
 import urllib
 import warnings
+import tldextract
 from pathlib import Path
 try:
     from . import __version__
@@ -666,12 +667,31 @@ def getResponseLinks(response, url):
                     + LINK_REGEX_FILES
                     + r")(?:\?[^\"|^']{0,255}|)))(?:\"|'|\\n|\\r|\n|\r|\s|$)|(?<=^Disallow:\s)[^\$\n]*|(?<=^Allow:\s)[^\$\n]*|(?<= Domain\=)[^\";']*|(?<=\<)https?:\/\/[^>\n]*|(\"|\')([A-Za-z0-9_-]+\/)+[A-Za-z0-9_-]+(\.[A-Za-z0-9]{2,}|\/?(\?|\#)[A-Za-z0-9_\-&=\[\]]*)(\"|\')"
                 )
-                link_keys = re.finditer(reString, body, re.IGNORECASE)
+                # Replace different encodings of " before searching to maximise finds
+                body = body.replace('&#34;','"').replace('%22','"').replace('\x22','"').replace('\u0022','"')
 
+                # Extract links using first regex
+                link_keys = [match.group(0) for match in re.finditer(reString, body, re.IGNORECASE)]
+
+                # Additional domain regex
+                domain_regex = r"([a-zA-Z0-9_\-\.]+\.)*[a-zA-Z0-9_\-]+\.[a-zA-Z]{2,24}[^\"\n\b]*"
+                
+                # Extract additional domains
+                extra_keys = [match.group(0) for match in re.finditer(domain_regex, body, re.IGNORECASE)]
+                
+                # Filter out invalid domains
+                valid_extra_keys = [key for key in extra_keys if tldextract.extract(key).suffix]
+                
+                # Add extra keys
+                link_keys.extend(valid_extra_keys)
+
+                # Remove duplicates
+                link_keys = list(set(link_keys))
+                
                 for key in link_keys:
 
-                    if key is not None and key.group().strip() != "" and len(key.group().strip()) > 2:
-                        link = key.group().strip()
+                    if key is not None and key.strip() != "" and len(key.strip()) > 2:
+                        link = key.strip()
                         link = link.strip("\"'\n\r( ")
                         link = link.replace("\\n", "")
                         link = link.replace("\\r", "")
@@ -930,7 +950,12 @@ def shouldMakeRequest(url):
     makeRequest = False
     # Only process if we haven't visited the link before, it isn't blank and it doesn't start with a . or just one /
     if url not in linksVisited and url != "" and not url.startswith("."):
-        if not url.startswith("/") or url.startswith("//"):
+        try:
+            tldExtract = tldextract.extract(url)
+            tld = tldExtract.suffix
+        except:
+            tld = tldExtract.suffix
+        if url.startswith("//") or url.startswith("http") or tld != '':
             makeRequest = True
 
     return makeRequest
@@ -1180,11 +1205,23 @@ def processStats():
         write('MAX TOTAL MEMORY: To show total memory %, run "pip install psutil"')
     write()
 
+# Remove liks that have no protocol, but have an identical item that has a protocol
+def clean_links(linksFound):
+    prefixes = ("https://", "http://", "//")
+    cleaned_links = set(linksFound)  # Copy to avoid modifying during iteration
+
+    for link in linksFound:
+        if not link.startswith(prefixes):  # If it doesn't start with a valid prefix
+            if any((prefix + link) in linksFound for prefix in prefixes):
+                cleaned_links.discard(link)  # Remove if prefixed version exists
+
+    return cleaned_links
 
 # Process the output of all found links
 def processLinkOutput():
     global totalRequests, skippedRequests, linksFound, failedPrefixLinks
     try:
+        linksFound = clean_links(linksFound)
         linkCount = len(linksFound)
         if args.origin:
             originalLinks = set()
@@ -1342,6 +1379,7 @@ def processOOSOutput():
                     writerr(colored("ERROR processOOSOutput 2: " + str(e), "red"))
 
         # Go through all links, and output what was found
+        oosLinksFound = clean_links(oosLinksFound)
         for link in oosLinksFound:
             if args.output_oos == "cli":
                 write(link, True)
@@ -1850,7 +1888,7 @@ def printProgressBar(
 
 
 def processDepth():
-    global stopProgram, failedPrefixLinks, currentDepth
+    global stopProgram, failedPrefixLinks, currentDepth, linksFound
     try:
         # If the -d (--depth) argument was passed then do another search
         # This is only used for URL, std file of URLs, or multiple URLs passed in STDIN
@@ -1861,6 +1899,7 @@ def processDepth():
                     break
 
                 # Get the current number of Links found last time
+                linksFound = clean_links(linksFound)
                 linksFoundLastTime = len(linksFound)
 
                 if verbose():
@@ -1884,6 +1923,7 @@ def processDepth():
                             pass
 
                 # Get the current number of Links found this time
+                linksFound = clean_links(linksFound)
                 linksFoundThisTime = len(linksFound)
                 if linksFoundThisTime - linksFoundLastTime == 0:
                     write(

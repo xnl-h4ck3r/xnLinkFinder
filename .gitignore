@@ -1,6 +1,7 @@
 output.txt
 parameters.txt
 wordlist.txt
+oos.txt
 xnLinkFinder.egg-info
 dist/
 build/
