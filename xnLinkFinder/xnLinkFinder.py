@@ -130,6 +130,7 @@ RESP_PARAM_XML = True
 RESP_PARAM_INPUTFIELD = True
 WORDS_CONTENT_TYPES = ""
 STOP_WORDS = ""
+COMMON_TLDS = ""
 
 # A comma separated list of Link exclusions used when the exclusions from config.yml cannot be found
 # Links are NOT output if they contain these strings. This just applies to the links found in endpoints, not the origin link in which it was found
@@ -146,6 +147,9 @@ DEFAULT_FILEEXT_EXCLUSIONS = ".zip,.dmg,.rpm,.deb,.gz,.tar,.jpg,.jpeg,.png,.svg,
 # A list of files used in the Link Finding Regex when the exclusions from config.yml cannot be found.
 # These are used in the 5th capturing group that aren't obvious links, but could be files
 DEFAULT_LINK_REGEX_FILES = r"php|php3|php5|asp|aspx|ashx|cfm|cgi|pl|jsp|jspx|json|js|action|html|xhtml|htm|bak|do|txt|wsdl|wadl|xml|xls|xlsx|bin|conf|config|bz2|bzip2|gzip|tar\.gz|tgz|log|src|zip|js\.map"
+
+# Common domain TLDs
+DEFAULT_COMMON_TLDS = "com,de,net,org,uk,cn,ga,nl,cf,ml,tk,ru,br,gq,xyz,fr,eu,info,co,au,ca,it,in,ch,pl,es,online,us,top,jp,biz,se,at,dk,cz,za,me,ir,icu,shop,kr,site,mx,hu,io,cc,club,no,cyou,store"
 
 # Uer Agents
 UA_DESKTOP = [
@@ -355,8 +359,9 @@ def includeLink(link,origin):
         # - doesn't have | or \s in, because it's probably a regex, not a link
         # - starts with /=
         # - starts with application/, image/, model/, video/, audio/ or text/ as this is a content-type that can sometimes be confused for links
+        # - starts with a -
         try:
-            if link.count("\n") > 1 or link.startswith("#") or link.startswith("$") or link.startswith("\\") or link.startswith("/="):
+            if link.count("\n") > 1 or link.startswith("#") or link.startswith("$") or link.startswith("\\") or link.startswith("/=") or link.startswith("-"):
                 include = False
             if include:
                 include = link.isprintable()
@@ -595,12 +600,24 @@ def addLink(link, url, prefixed=False):
         if vverbose():
             writerr(colored("ERROR addLink 3 " + str(e), "red"))
 
-
+def clean_body(body):
+    try:
+        # Remove base64 encoded strings over 10000 characters long. There are some responses that can have huge ones and ends up causing regex problems and hanging
+        pattern = r"eyJ[a-zA-Z0-9\+\/]+(?:=|\b|\n)"
+        def conditional_remove(match):
+            return "BASE64_REPLACED_BY_XNLINKFINDER" if len(match.group(0)) > 10000 else match.group(0)
+        # Remove matches
+        cleaned_body = re.sub(pattern, conditional_remove, body)
+        return cleaned_body
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR truncate_long_lines 1 " + str(e), "red"))
+            
 def getResponseLinks(response, url):
     """
     Get a list of links found
     """
-    global inScopePrefixDomains, burpFile, zapFile, caidoFile, dirPassed
+    global inScopePrefixDomains, burpFile, zapFile, caidoFile, dirPassed, COMMON_TLDS
     try:
 
         # if the --include argument is True then add the input links to the output too (unless the input was a directory)
@@ -633,6 +650,9 @@ def getResponseLinks(response, url):
                 header = response.headers
                 responseUrl = response.url
 
+        # Truncate any lines in the body before using
+        body = clean_body(body)
+        
         # Some URLs may be displayed in the body within strings that have different encodings of / and : so replace these
         body = REGEX_LINKSSLASH.sub("/", body)
         body = REGEX_LINKSCOLON.sub(":", body)
@@ -680,8 +700,33 @@ def getResponseLinks(response, url):
                 # Extract additional domains
                 extra_keys = [match.group(0) for match in re.finditer(domain_regex, body, re.IGNORECASE)]
                 
-                # Filter out invalid domains
-                valid_extra_keys = [key for key in extra_keys if tldextract.extract(key).suffix]
+                # Filter out:
+                # - invalid domains (TLDs that don't exist)
+                # - domain with less than 3 chars before tld
+                # - domaina that start with _
+                # - suffix 'call','skin','menu','style','rest','next'
+                # - domains 'this','self','target','value','values','prop','properties','proparray','useragent','rect','paddiing','style','rule','bound','child','global','element','div','prototype','event','feature','path'
+                # - suffix is 'js' and domain is NOT 'map'
+                # - IF the --all-tlds arg was passed, make sure the suffix is in the COMMON_TLDS list
+                COMMON_TLDS_LIST = COMMON_TLDS.split(',')
+                valid_extra_keys = [
+                    key for key in extra_keys 
+                    if tldextract.extract(key).suffix 
+                    and tldextract.extract(key).suffix.lower() not in ('call', 'skin', 'menu', 'style', 'rest', 'next', 'top') 
+                    and len(tldextract.extract(key).domain) > 2 
+                    and not tldextract.extract(key).domain.startswith('_') 
+                    and tldextract.extract(key).domain.lower() not in (
+                        'this', 'self', 'target', 'value', 'values', 'prop', 'properties', 'proparray', 'useragent', 'rect', 'paddiing', 'style', 'rule', 'bound', 'child', 'global', 'element', 'div', 'prototype', 'event', 'feature', 'path'
+                    ) 
+                    and not (
+                        tldextract.extract(key).suffix.lower() == "map" 
+                        and tldextract.extract(key).domain.lower() != "js"
+                    )
+                    and (
+                        not args.all_tlds or 
+                        ("." + tldextract.extract(key).suffix.lower()) in [("." + suffix) for suffix in COMMON_TLDS_LIST]
+                    ) 
+                ]
                 
                 # Add extra keys
                 link_keys.extend(valid_extra_keys)
@@ -1649,7 +1694,7 @@ def processOutput():
 
 def getConfig():
     # Try to get the values from the config file, otherwise use the defaults
-    global LINK_EXCLUSIONS, CONTENTTYPE_EXCLUSIONS, FILEEXT_EXCLUSIONS, LINK_REGEX_FILES, RESP_PARAM_LINKSFOUND, RESP_PARAM_PATHWORDS, RESP_PARAM_JSON, RESP_PARAM_JSVARS, RESP_PARAM_XML, RESP_PARAM_INPUTFIELD, terminalWidth, WORDS_CONTENT_TYPES, STOP_WORDS, extraStopWords, lstStopWords
+    global LINK_EXCLUSIONS, CONTENTTYPE_EXCLUSIONS, FILEEXT_EXCLUSIONS, LINK_REGEX_FILES, RESP_PARAM_LINKSFOUND, RESP_PARAM_PATHWORDS, RESP_PARAM_JSON, RESP_PARAM_JSVARS, RESP_PARAM_XML, RESP_PARAM_INPUTFIELD, terminalWidth, WORDS_CONTENT_TYPES, STOP_WORDS, COMMON_TLDS, extraStopWords, lstStopWords
     try:
 
         # Set terminal width
@@ -1801,7 +1846,7 @@ def getConfig():
                     )
                 )
             STOP_WORDS = DEFAULT_STOP_WORDS   
-        
+
         # If there are extra stop words passed using the -swf / --stopwords-file then add them to STOP_WORDS
         try:
             if args.stopwords_file != "":
@@ -1826,7 +1871,19 @@ def getConfig():
                         "red",
                     )
                 )
-            
+        
+        try:
+            COMMON_TLDS = config.get("commonTLDs")
+        except:
+            if verbose():
+                writerr(
+                    colored(
+                        'Unable to read "commonTLDs" from config.yml; defaults set',
+                        "red",
+                    )
+                )
+            COMMON_TLDS = DEFAULT_COMMON_TLDS
+          
     except Exception as e:
         if vverbose():
             print(str(e))
@@ -1840,6 +1897,7 @@ def getConfig():
         LINK_REGEX_FILES = DEFAULT_LINK_REGEX_FILES
         WORDS_CONTENT_TYPES = DEFAULT_WORDS_CONTENT_TYPES
         STOP_WORDS = DEFAULT_STOP_WORDS
+        COMMON_TLDS = DEFAULT_COMMON_TLDS
 
 
 # Print iterations progress
@@ -2268,12 +2326,17 @@ def showOptions():
                 colored("--burpfile-remove-tags: " + str(args.burpfile_remove_tags), "magenta")
                 + colored(" Whether unecessary tags will be removed from the Burp file (permanent change).", "white")
             )
-            
+    
+        if args.all_tlds:
+            write(colored('--all-tlds: True', 'magenta')+colored(" All links found will be returned, even if the TLD is not common. This can result in a number of false positives where variable names, etc. may also be a possible genuine domain.","white"))
+              
         write(colored('Link exclusions: ', 'magenta')+colored(LINK_EXCLUSIONS))
         write(colored('Content-Type exclusions: ', 'magenta')+colored(CONTENTTYPE_EXCLUSIONS))    
         if dirPassed:  
             write(colored('File Extension exclusions: ', 'magenta')+colored(FILEEXT_EXCLUSIONS)) 
         write(colored('Link Regex Files: ', 'magenta')+colored(LINK_REGEX_FILES))
+        if not args.all_tlds:
+            write(colored('Common Domain TLDs: ', 'magenta')+colored(COMMON_TLDS))
         write(colored('Get Links Found in Response as Params: ', 'magenta')+colored(str(RESP_PARAM_LINKSFOUND)))
         write(colored('Get Path Words in Retrieved Links as Params: ', 'magenta')+colored(str(RESP_PARAM_PATHWORDS)))
         write(colored('Get Response JSON Key Values as Params: ', 'magenta')+colored(str(RESP_PARAM_JSON)))
@@ -3764,7 +3827,14 @@ def checkMaxTimeLimit():
         runTime = datetime.now() - startDateTime
         if runTime.seconds / 60 > args.max_time_limit:
             stopProgram = StopProgram.MAX_TIME_LIMIT
-            
+
+# Check if the truncate limit argument was passed and is within acepted values
+def checkTruncateLimit(value):
+    ivalue = int(value)
+    if ivalue < 1000 or ivalue > 9999999999999999:
+        raise argparse.ArgumentTypeError(f"Value must be between 1000 and 9999999999999999, but got {ivalue}")
+    return ivalue
+     
 # Run xnLinkFinder
 def main():
     global args, userAgents, stopProgram, burpFile, zapFile, caidoFile, dirPassed, waymoreMode, currentUAGroup, waymoreFiles, linksVisited, maxMemoryPercent, linksFound, paramsFound, contentTypesProcessed, totalRequests, skippedRequests, failedRequests, oosLinksFound, lstPathWords, wordsFound, LINK_REGEX_FILES
@@ -4082,6 +4152,12 @@ def main():
         type=argcheckBurpfileRemoveTags,
         default=None,
         metavar="<bool>"
+    )
+    parser.add_argument(
+        "-all",
+        "--all-tlds",
+        action="store_true",
+        help="All links found will be returned, even if the TLD is not common. This can result in a number of false positives where variable names, etc. may also be a possible genuine domain. By default, only links that have a TLD in the common TLDs (commonTLDs in config.yml) will be returned.",
     )
     parser.add_argument("-nb", "--no-banner", action="store_true", help="Hides the tool banner.")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")

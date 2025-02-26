@@ -1,5 +1,22 @@
 ## Changelog
 
+- v6.7
+
+  - New
+
+    - Add `commonTLDs` to `config.yml` file which has the top 50 most common domain TLDs. Also add the `COMMON_TLDS` constant with the same default values, which will be used if the config can't be retrieved.
+    - Add argument `-all`/`--all-tlds`. If passed then all links found, with ALL TLDs, will be returned, not just links with domains that have a TLD in the config `commonTLDs`. This can result in more false positives, e.g. variable names that are possibly genuine domains.
+    - When getting links with the extra regex (added in v6.5), the following will NOT be returned:
+      - invalid domains (TLDs that don't exist)
+      - domain with less than 3 chars before tld
+      - domain doesn't start with `_`
+      - suffix `call`,`skin`,`menu`,`style`,`rest`,`next`
+      - domains `this`,`self`,`target`,`value`,`values`,`prop`,`properties`,`proparray`,`useragent`,`rect`,`paddiing`,`style`,`rule`,`bound`,`child`,`global`,`element`,`div`,`prototype`,`event`,`feature`,`path`
+      - suffix is `js` and domain is NOT `map`
+      - IF the `--all-tlds` arg was passed, make sure the suffix is in the `COMMON_TLDS` list
+    - Remove any base64 encoded strings over 10,000 characters long (that match regex `eyJ[a-zA-Z0-9\+\/]+(?:=|\b|\n)`). There are some responses that can have huge ones and ends up causing regex problems and hanging.
+    - Don't include any links that start with a `-`.
+
 - v6.6
 
   - Changed
@@ -10,7 +27,7 @@
 
   - Changed
 
-    - Preform a separate regex search for links that can potentially get lots of false positives, but validate these by checking the TLD for the link is valid. if som it will add them to the links found. This will find many links previously missed.
+    - Perform a separate regex search for links that can potentially get lots of false positives, but validate these by checking the TLD for the link is valid. if som it will add them to the links found. This will find many links previously missed.
     - Before searching for links, replace different encodings of double quotes with `"` to maximise the number of links found.
     - When making requests from links found, ensure that requests are only made to potentially valid links by checking the TLD is valid.
 
