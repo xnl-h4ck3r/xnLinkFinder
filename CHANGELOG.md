@@ -1,5 +1,11 @@
 ## Changelog
 
+- v6.6
+
+  - Changed
+
+    - The regex introduced in v6.4 was causing "catastrophic backtracking" in certain situations and freezing. This has been replaced by a more efficient regex.
+
 - v6.5
 
   - Changed

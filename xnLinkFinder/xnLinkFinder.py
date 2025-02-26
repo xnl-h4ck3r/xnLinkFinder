@@ -674,7 +674,8 @@ def getResponseLinks(response, url):
                 link_keys = [match.group(0) for match in re.finditer(reString, body, re.IGNORECASE)]
 
                 # Additional domain regex
-                domain_regex = r"([a-zA-Z0-9_\-\.]+\.)*[a-zA-Z0-9_\-]+\.[a-zA-Z]{2,24}[^\"\n\b]*"
+                #domain_regex = r"([a-zA-Z0-9_\-\.]+\.)*[a-zA-Z0-9_\-]+\.[a-zA-Z]{2,24}[^\"\n\b]*"
+                domain_regex = r"(?:[a-zA-Z0-9_-]+\.){0,5}[a-zA-Z0-9_-]+\.[a-zA-Z]{2,24}(?:\/[^\s\"'<>()\[\]{}]*)?"
                 
                 # Extract additional domains
                 extra_keys = [match.group(0) for match in re.finditer(domain_regex, body, re.IGNORECASE)]
