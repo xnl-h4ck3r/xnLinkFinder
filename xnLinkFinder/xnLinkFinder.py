@@ -79,6 +79,7 @@ try:
     from . import __version__
 except:
     pass
+import multiprocessing
 
 # Try to import lxml to use with beautifulsoup4 instead of the default parser
 try:
@@ -116,6 +117,9 @@ class StopProgram(enum.Enum):
 
 
 stopProgram = None
+
+# The number of seconds to wait for a regex query to complete when searching for links
+DEFAULT_REGEX_TIMEOUT = 10
 
 # Yaml config values
 LINK_EXCLUSIONS = ""
@@ -612,7 +616,30 @@ def clean_body(body):
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR truncate_long_lines 1 " + str(e), "red"))
-            
+
+def regex_worker(pattern, string, flags, result_queue):
+    """Runs re.finditer() in a separate process and stores results in a queue."""
+    try:
+        matches = [match.group(0) for match in re.finditer(pattern, string, flags)]
+        result_queue.put(matches)
+    except Exception as e:
+        result_queue.put(str(e))
+
+def safe_regex_findall(pattern, string, timeout=DEFAULT_REGEX_TIMEOUT):
+    """Runs regex search with a timeout using multiprocessing."""
+    result_queue = multiprocessing.Queue()
+    myProcess = multiprocessing.Process(target=regex_worker, args=(pattern, string, re.IGNORECASE, result_queue))
+
+    myProcess.start()
+    myProcess.join(timeout)  # Wait for the myProcess to finish within the timeout
+
+    if myProcess.is_alive():
+        myProcess.terminate()  # Forcefully stop if it exceeds timeout
+        myProcess.join()  # Ensure cleanup
+        return "Regex execution timed out!"
+
+    return result_queue.get()  # Return the regex results
+
 def getResponseLinks(response, url):
     """
     Get a list of links found
@@ -691,15 +718,14 @@ def getResponseLinks(response, url):
                 body = body.replace('&#34;','"').replace('%22','"').replace('\x22','"').replace('\u0022','"')
 
                 # Extract links using first regex
-                link_keys = [match.group(0) for match in re.finditer(reString, body, re.IGNORECASE)]
-
+                link_keys = safe_regex_findall(reString, body)
+                
                 # Additional domain regex
-                #domain_regex = r"([a-zA-Z0-9_\-\.]+\.)*[a-zA-Z0-9_\-]+\.[a-zA-Z]{2,24}[^\"\n\b]*"
                 domain_regex = r"(?:[a-zA-Z0-9_-]+\.){0,5}[a-zA-Z0-9_-]+\.[a-zA-Z]{2,24}(?:\/[^\s\"'<>()\[\]{}]*)?"
                 
                 # Extract additional domains
-                extra_keys = [match.group(0) for match in re.finditer(domain_regex, body, re.IGNORECASE)]
-                
+                extra_keys = safe_regex_findall(domain_regex, body)
+
                 # Filter out:
                 # - invalid domains (TLDs that don't exist)
                 # - domain with less than 3 chars before tld
@@ -723,12 +749,14 @@ def getResponseLinks(response, url):
                         and tldextract.extract(key).domain.lower() != "js"
                     )
                     and (
-                        not args.all_tlds or 
+                        args.all_tlds or 
                         ("." + tldextract.extract(key).suffix.lower()) in [("." + suffix) for suffix in COMMON_TLDS_LIST]
                     ) 
                 ]
-                
+
                 # Add extra keys
+                if not isinstance(link_keys, list):
+                    link_keys = [link_keys]  # Convert to list if it's a string or any non-list type
                 link_keys.extend(valid_extra_keys)
 
                 # Remove duplicates
@@ -976,7 +1004,7 @@ def handler(signal_received, frame):
 def getMemory():
 
     global currentMemUsage, currentMemPercent, maxMemoryUsage, maxMemoryPercent, stopProgram
-
+    process = psutil.Process()
     currentMemUsage = process.memory_info().rss
     currentMemPercent = math.ceil(psutil.virtual_memory().percent)
     if currentMemUsage > maxMemoryUsage:
@@ -1098,6 +1126,15 @@ def processUrl(url):
                         proxies=proxies,
                     )
                     
+                    # Get content length
+                    if args.content_length:
+                        cl = resp.headers.get('Content-Length')
+                        if cl is None:
+                            cl = str(len(resp.text))
+                        content_length = "  ["+cl+"]"
+                    else:
+                        content_length = ""
+                        
                     # If the replay proxy is being used, and the title in the response contains "Burp Suite" and has an error of "Unknown Host" then set the response code to 504. This is because if Burp is used for a proxy, it returns 200 because the response is the error from Burp.
                     if args.replay_proxy and resp.text.find('<title>Burp Suite') > 0:
                         if resp.text.find('Unknown&#32;host') > 0:
@@ -1111,13 +1148,13 @@ def processUrl(url):
                                     
                     if resp.status_code == 200:
                         if verbose():
-                            msg = "Response " + str(resp.status_code) + ": " + url
+                            msg = "Response " + str(resp.status_code) + ": " + url + content_length
                             if prefixed: 
                                 msg = msg + prefix
                             write(colored(msg,"green"))
                     else:
                         if verbose():
-                            msg = "Response " + str(resp.status_code) + ": " + url
+                            msg = "Response " + str(resp.status_code) + ": " + url + content_length
                             if prefixed:
                                 msg = msg + prefix
                             write(colored(msg,"yellow"))
@@ -2327,9 +2364,12 @@ def showOptions():
                 + colored(" Whether unecessary tags will be removed from the Burp file (permanent change).", "white")
             )
     
+        if args.content_length:
+            write(colored('-cl: ' + str(args.content_length), 'magenta')+colored(" Display the Content-Length of the response when crawling.","white"))
+            
         if args.all_tlds:
             write(colored('--all-tlds: True', 'magenta')+colored(" All links found will be returned, even if the TLD is not common. This can result in a number of false positives where variable names, etc. may also be a possible genuine domain.","white"))
-              
+            
         write(colored('Link exclusions: ', 'magenta')+colored(LINK_EXCLUSIONS))
         write(colored('Content-Type exclusions: ', 'magenta')+colored(CONTENTTYPE_EXCLUSIONS))    
         if dirPassed:  
@@ -4158,6 +4198,12 @@ def main():
         "--all-tlds",
         action="store_true",
         help="All links found will be returned, even if the TLD is not common. This can result in a number of false positives where variable names, etc. may also be a possible genuine domain. By default, only links that have a TLD in the common TLDs (commonTLDs in config.yml) will be returned.",
+    )
+    parser.add_argument(
+        "-cl",
+        "--content-length",
+        action="store_true",
+        help="Show the Content-Length of the response when crawling.",
     )
     parser.add_argument("-nb", "--no-banner", action="store_true", help="Hides the tool banner.")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")

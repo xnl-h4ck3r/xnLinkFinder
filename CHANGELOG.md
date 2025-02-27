@@ -1,5 +1,17 @@
 ## Changelog
 
+- v6.8
+
+  - New
+
+    - Add argument `-cl`/`--content-length`. When passed it will show the Content-Length of the response when crawling, e.g. `Response 200: https://target.com/admin/  [1337]`
+    - Add `process = psutil.Process()` to `getMemory()` because there must be a conflict with the `multiprocessing` library imported.
+
+  - Changed
+
+    - BUG FIX: The `-all`/`--all-tlds` argument was working the opposite way around, returning links for ALL TLDs when not passed.
+    - BUG FIX: Add threading when doing link regex queries to be able to provide a timeout value. If catastrophic backtracking happens, or just takes way too long, then it will just move onto the next one without freezing the program. The timeout will be set to 10 seconds.
+
 - v6.7
 
   - New
