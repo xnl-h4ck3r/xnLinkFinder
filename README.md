@@ -1,12 +1,13 @@
 <center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/blob/main/xnLinkFinder/images/title.png"></center>
 
-## About - v6.8
+## About - v6.9
 
 This is a tool used to discover endpoints (and potential parameters) for a given target. It can find them by:
 
 - crawling a target (pass a domain/URL)
 - crawling multiple targets (pass a file of domains/URLs)
 - searching files in a given directory (pass a directory name)
+- search a single file's contents
 - get them from a **Burp** project (pass location of a Burp XML file)
 - get them from an **ZAP** project (pass location of a ZAP ASCII message file)
 - get them from a **Caido** project (pass location of a Caido export CSV file)
@@ -49,7 +50,7 @@ pipx install git+https://github.com/xnl-h4ck3r/xnLinkFinder.git
 
 | Arg         | Long Arg                   | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | ----------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| -i          | --input                    | Input a: URL, text file of URLs, a Directory of files to search, a Burp XML output file, a ZAP output file, or a Caido CSV file.                                                                                                                                                                                                                                                                                                                                                                   |
+| -i          | --input                    | Input a: URL, text file of URLs, a Directory of files to search, a Burp XML output file, a ZAP output file, or a Caido CSV, or a single file to search contents.                                                                                                                                                                                                                                                                                                                                   |
 | -o          | --output                   | The file to save the Links output to, including path if necessary (default: output.txt). If set to `cli` then output is only written to STDOUT. If the file already exist it will just be appended to (and de-duplicated) unless option `-ow` is passed.                                                                                                                                                                                                                                           |
 | -op         | --output-params            | The file to save the Potential Parameters output to, including path if necessary (default: parameters.txt). If set to `cli` then output is only written to STDOUT (but not piped to another program). If the file already exist it will just be appended to (and de-duplicated) unless option `-ow` is passed.                                                                                                                                                                                     |
 | -owl        | --output-wordlist          | The file to save the target specific Wordlist output to, including path if necessary (default: No wordlist output). If set to `cli` then output is only written to STDOUT (but not piped to another program). If the file already exist it will just be appended to (and de-duplicated) unless option -ow is passed.                                                                                                                                                                               |
@@ -148,6 +149,18 @@ If you have a file of JS file URLs for example, you can look for links in those:
 ```
 xnLinkFinder -i target_js.txt -sf target.com
 ```
+
+NOTE: A passed file is assumed to be a list of URLs if the first line starts with `//` or `http`, otherwise it is considered to be a file to search the contents for (unless it is a Burp, Zap or Caido file).
+
+### Find Links from the contents of a file - Basic
+
+If you have a saved response for example, you can look for links in those:
+
+```
+xnLinkFinder -i response.txt -sf target.com
+```
+
+NOTE: A passed file is assumed to be a list of URLs if the first line starts with `//` or `http`, otherwise it is considered to be a file to search the contents for (unless it is a Burp, Zap or Caido file).
 
 ### Find Links from a files in a directory - Basic
 

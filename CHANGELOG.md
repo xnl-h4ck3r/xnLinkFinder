@@ -1,5 +1,17 @@
 ## Changelog
 
+- v6.9
+
+  - New
+
+    - If a file is passed with `-i`/`--input` then it will be processed as a file of URLs if the first line starts with `//` or `http`, otherwise the content of the file will be searched for links, etc. (unless it's specifically a Burp, Zap or Caido file).
+
+  - Changed
+
+    - Improve the code for dealing with regex timeouts, `safe_regex_findall` and `regex_worker`.
+    - Change `DEFAULT_REGEX_TIMEOUT` value from 10 to 30 seconds instead.
+    - Output an error if the link or domain regex times out.
+
 - v6.8
 
   - New

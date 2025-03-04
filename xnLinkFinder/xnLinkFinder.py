@@ -46,6 +46,7 @@ terminalWidth = 120
 waymoreMode = False
 waymoreFiles = set()
 currentDepth = 1
+fileContent = False
 
 import re
 import os
@@ -79,7 +80,7 @@ try:
     from . import __version__
 except:
     pass
-import multiprocessing
+import concurrent.futures
 
 # Try to import lxml to use with beautifulsoup4 instead of the default parser
 try:
@@ -119,7 +120,7 @@ class StopProgram(enum.Enum):
 stopProgram = None
 
 # The number of seconds to wait for a regex query to complete when searching for links
-DEFAULT_REGEX_TIMEOUT = 10
+DEFAULT_REGEX_TIMEOUT = 30
 
 # Yaml config values
 LINK_EXCLUSIONS = ""
@@ -617,34 +618,30 @@ def clean_body(body):
         if vverbose():
             writerr(colored("ERROR truncate_long_lines 1 " + str(e), "red"))
 
-def regex_worker(pattern, string, flags, result_queue):
-    """Runs re.finditer() in a separate process and stores results in a queue."""
+def regex_worker(pattern, string, flags):
+    """Runs re.finditer() and returns matches."""
     try:
-        matches = [match.group(0) for match in re.finditer(pattern, string, flags)]
-        result_queue.put(matches)
+        return [match.group(0) for match in re.finditer(pattern, string, flags)]
     except Exception as e:
-        result_queue.put(str(e))
+        return str(e)
 
 def safe_regex_findall(pattern, string, timeout=DEFAULT_REGEX_TIMEOUT):
-    """Runs regex search with a timeout using multiprocessing."""
-    result_queue = multiprocessing.Queue()
-    myProcess = multiprocessing.Process(target=regex_worker, args=(pattern, string, re.IGNORECASE, result_queue))
-
-    myProcess.start()
-    myProcess.join(timeout)  # Wait for the myProcess to finish within the timeout
-
-    if myProcess.is_alive():
-        myProcess.terminate()  # Forcefully stop if it exceeds timeout
-        myProcess.join()  # Ensure cleanup
-        return "Regex execution timed out!"
-
-    return result_queue.get()  # Return the regex results
+    """Runs regex search with a timeout using threads."""
+    with concurrent.futures.ThreadPoolExecutor(max_workers=args.processes) as executor:
+        future = executor.submit(regex_worker, pattern, string, re.IGNORECASE)
+        
+        try:
+            result = future.result(timeout=timeout)  # Wait for completion within timeout
+        except concurrent.futures.TimeoutError:
+            return "Regex execution timed out!"
+    
+    return result
 
 def getResponseLinks(response, url):
     """
     Get a list of links found
     """
-    global inScopePrefixDomains, burpFile, zapFile, caidoFile, dirPassed, COMMON_TLDS
+    global inScopePrefixDomains, burpFile, zapFile, caidoFile, dirPassed, COMMON_TLDS, fileContent
     try:
 
         # if the --include argument is True then add the input links to the output too (unless the input was a directory)
@@ -668,7 +665,7 @@ def getResponseLinks(response, url):
             body = re.sub(r"(?m)^content-type:.*\n", "", body.lower())
             responseUrl = url
         else:
-            if dirPassed:
+            if dirPassed or fileContent:
                 body = response
                 header = ""
                 responseUrl = url
@@ -707,25 +704,39 @@ def getResponseLinks(response, url):
             if (dirPassed and includeFile(url)) or (
                 not dirPassed and includeContentType(header,responseUrl)
             ):
-                reString = (
-                    r"(?:^|\"|'|\\n|\\r|\n|\r|\s)(((?:[a-zA-Z]{1,10}:\/\/|\/\/)([^\"'\/\s]{1,255}\.[a-zA-Z]{2,24}|localhost)[^\"'\n\s]{0,255})|((?:\/|\.\.\/|\.\/)[^\"'><,;| *()(%%$^\/\\\[\]][^\"'><,;|()\s]{1,255})|([a-zA-Z0-9_\-\/]{1,}\/[a-zA-Z0-9_\-\/\.]{1,255}\.(?:[a-zA-Z]{1,4}"
-                    + LINK_REGEX_NONSTANDARD_FILES
-                    + r")(?:[\?|\/][^\"|']{0,}|))|([a-zA-Z0-9_\-\.]{1,255}\.(?:"
-                    + LINK_REGEX_FILES
-                    + r")(?:\?[^\"|^']{0,255}|)))(?:\"|'|\\n|\\r|\n|\r|\s|$)|(?<=^Disallow:\s)[^\$\n]*|(?<=^Allow:\s)[^\$\n]*|(?<= Domain\=)[^\";']*|(?<=\<)https?:\/\/[^>\n]*|(\"|\')([A-Za-z0-9_-]+\/)+[A-Za-z0-9_-]+(\.[A-Za-z0-9]{2,}|\/?(\?|\#)[A-Za-z0-9_\-&=\[\]]*)(\"|\')"
-                )
-                # Replace different encodings of " before searching to maximise finds
-                body = body.replace('&#34;','"').replace('%22','"').replace('\x22','"').replace('\u0022','"')
+                try:
+                    reString = (
+                        r"(?:^|\"|'|\\n|\\r|\n|\r|\s)(((?:[a-zA-Z]{1,10}:\/\/|\/\/)([^\"'\/\s]{1,255}\.[a-zA-Z]{2,24}|localhost)[^\"'\n\s]{0,255})|((?:\/|\.\.\/|\.\/)[^\"'><,;| *()(%%$^\/\\\[\]][^\"'><,;|()\s]{1,255})|([a-zA-Z0-9_\-\/]{1,}\/[a-zA-Z0-9_\-\/\.]{1,255}\.(?:[a-zA-Z]{1,4}"
+                        + LINK_REGEX_NONSTANDARD_FILES
+                        + r")(?:[\?|\/][^\"|']{0,}|))|([a-zA-Z0-9_\-\.]{1,255}\.(?:"
+                        + LINK_REGEX_FILES
+                        + r")(?:\?[^\"|^']{0,255}|)))(?:\"|'|\\n|\\r|\n|\r|\s|$)|(?<=^Disallow:\s)[^\$\n]*|(?<=^Allow:\s)[^\$\n]*|(?<= Domain\=)[^\";']*|(?<=\<)https?:\/\/[^>\n]*|(\"|\')([A-Za-z0-9_-]+\/)+[A-Za-z0-9_-]+(\.[A-Za-z0-9]{2,}|\/?(\?|\#)[A-Za-z0-9_\-&=\[\]]*)(\"|\')"
+                    )
 
-                # Extract links using first regex
-                link_keys = safe_regex_findall(reString, body)
-                
-                # Additional domain regex
-                domain_regex = r"(?:[a-zA-Z0-9_-]+\.){0,5}[a-zA-Z0-9_-]+\.[a-zA-Z]{2,24}(?:\/[^\s\"'<>()\[\]{}]*)?"
-                
-                # Extract additional domains
-                extra_keys = safe_regex_findall(domain_regex, body)
+                    # Replace different encodings of " before searching to maximise finds
+                    body = body.replace('&#34;','"').replace('%22','"').replace('\x22','"').replace('\u0022','"')
 
+                    # Extract links using first regex
+                    link_keys = safe_regex_findall(reString, body)
+                    if link_keys == "Regex execution timed out!":
+                        content_length = len(body)
+                        writerr(colored(getSPACER(f"The link regex timed out for {url} (Content-Length:{content_length}, Timeout:{DEFAULT_REGEX_TIMEOUT}s)"), "red"))
+                except Exception as e:
+                    if vverbose():
+                        writerr(colored(getSPACER("ERROR getResponseLinks 5: " + str(e)), "red"))
+                try: 
+                    # Additional domain regex
+                    domain_regex = r"(?:[a-zA-Z0-9_-]+\.){0,5}[a-zA-Z0-9_-]+\.[a-zA-Z]{2,24}(?:\/[^\s\"'<>()\[\]{}]*)?"
+                        
+                    # Extract additional domains
+                    extra_keys = safe_regex_findall(domain_regex, body)
+                    if extra_keys == "Regex execution timed out!":
+                        content_length = len(body)
+                        writerr(colored(getSPACER(f"The domain regex timed out for {url} (Content-Length:{content_length}, Timeout:{DEFAULT_REGEX_TIMEOUT}s)"), "red"))
+                except Exception as e:
+                    if vverbose():
+                        writerr(colored(getSPACER("ERROR getResponseLinks 6: " + str(e)), "red"))
+                                
                 # Filter out:
                 # - invalid domains (TLDs that don't exist)
                 # - domain with less than 3 chars before tld
@@ -2075,7 +2086,7 @@ def showOptions():
                     write(
                         colored("-i: " + args.input + " (Text File) ", "magenta")
                         + colored(
-                            "All URLs will be requested and links found in all responses.",
+                            "If a list of URLs then all will be requested and links found in all responses, else links will be found in the files content.",
                             "white",
                         )
                     )
@@ -2454,7 +2465,38 @@ def getScopeDomains():
                 )
             )
             sys.exit()
-               
+
+def processFileContent(filepath, responseCount=1):
+    global stdinFile
+    try:
+        # If file was piped in...
+        if filepath == "<stdin>":
+            request = "<stdin>"
+            response = "\n".join(stdinFile)
+            if verbose():
+                write(colored("Reading input from <stdin>:", "cyan"))
+        else:
+            # Set the request to the name of the file
+            request = os.path.join(filepath)
+                            
+            # Set the response as the contents of the file
+            with open(
+                request, "r", encoding="utf-8", errors="ignore"
+            ) as file:
+                response = file.read()
+            
+        try:
+            # Get potential links
+            getResponseLinks(response, request)
+            # Get potential parameters from the response
+            getResponseParams(response, request)
+        except Exception as e:
+            if vverbose():
+                writerr(colored("ERROR processFileContent 2: Request " + str(responseCount) + ": " + str(e),"red"))
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR processFileContent 1: " + str(e), "red"))
+            
 # Get links from all files in a specified directory
 def processDirectory():
     global totalResponses, waymoreMode, waymoreFiles
@@ -2583,23 +2625,9 @@ def processDirectory():
                         # Set the request to the name of the file
                         request = os.path.join(path, filename)
 
-                        # Set the response as the contents of the file
-                        with open(
-                            request, "r", encoding="utf-8", errors="ignore"
-                        ) as file:
-                            response = file.read()
-
-                        try:
-                            # Get potential links
-                            getResponseLinks(response, request)
-                            # Get potential parameters from the response
-                            getResponseParams(response, request)
-                            request = ""
-                            response = ""
-                        except Exception as e:
-                            if vverbose():
-                                writerr(colored("ERROR processDirectory 3: Request " + str(responseCount) + ": " + str(e),"red"))
-                                
+                        # Process the file
+                        processFileContent(str(request),responseCount)
+      
     except Exception as e:
         if vverbose():
             writerr(
@@ -3086,7 +3114,7 @@ def processEachInput(input):
     """
     Process the input, whether its from -i or <stdin>
     """
-    global burpFile, zapFile, caidoFile, urlPassed, stdFile, stdinFile, dirPassed, stdinMultiple, linksFound, linksVisited, totalRequests, skippedRequests, failedRequests, paramsFound, waymoreMode, stopProgram, contentTypesProcessed, oosLinksFound, lstPathWords, wordsFound
+    global burpFile, zapFile, caidoFile, urlPassed, stdFile, stdinFile, dirPassed, stdinMultiple, linksFound, linksVisited, totalRequests, skippedRequests, failedRequests, paramsFound, waymoreMode, stopProgram, contentTypesProcessed, oosLinksFound, lstPathWords, wordsFound, fileContent
 
     if stopProgram is None:
         checkMaxTimeLimit()
@@ -3192,7 +3220,7 @@ def processEachInput(input):
                         write(colored("Processing URL:", "cyan"))
                     processUrl(input)
 
-                else:  # It's a file of URLs
+                else:  # It's a file of URLs or a file to check content
                     try:
                         # If not piped from another program, read the file
                         if sys.stdin.isatty():
@@ -3201,20 +3229,36 @@ def processEachInput(input):
                                 write(
                                     colored("Reading input file " + input + ":", "cyan")
                                 )
-                            with inputFile as f:
+                            # Check if the first line starts with `//` or `http`. If so, process as a file of URLs,
+                            # otherwise process as content
+                            first_line = inputFile.readline().strip()
+                            if first_line.startswith("//") or first_line.startswith("http"):
+                                with inputFile as f:
+                                    if stopProgram is None:
+                                        p = mp.Pool(args.processes)
+                                        p.map(processUrl, f)
+                                        p.close()
+                                        p.join()
+                            else:
+                                fileContent = True
+                                processFileContent(input)                      
+                            inputFile.close()
+                        else: # Else it's piped from another process so go through the saved stdin
+                            if verbose():
+                                write(
+                                    colored("Reading input from <stdin>:", "cyan")
+                                )
+                            # Check if the first line starts with `//` or `http`. If so, process as a file of URLs,
+                            # otherwise process as content
+                            if stdinFile[0].startswith("//") or stdinFile[0].startswith("http"):
                                 if stopProgram is None:
                                     p = mp.Pool(args.processes)
-                                    p.map(processUrl, f)
+                                    p.map(processUrl, stdinFile)
                                     p.close()
                                     p.join()
-                            inputFile.close()
-                        else:
-                            # Else it's piped from another process so go through the saved stdin
-                            if stopProgram is None:
-                                p = mp.Pool(args.processes)
-                                p.map(processUrl, stdinFile)
-                                p.close()
-                                p.join()
+                            else:
+                                fileContent = True
+                                processFileContent("<stdin>") 
                     except Exception as e:
                         if vverbose():
                             writerr(
@@ -3254,7 +3298,7 @@ def processInput():
     # Tell Python to run the handler() function when SIGINT is received
     signal(SIGINT, handler)
 
-    global lstExclusions, lstFileExtExclusions, burpFile, zapFile, caidoFile, stdFile, inputFile, urlPassed, dirPassed, stdinMultiple, stopProgram, stdinFile
+    global lstExclusions, lstFileExtExclusions, burpFile, zapFile, caidoFile, stdFile, inputFile, urlPassed, dirPassed, stdinMultiple, stopProgram, stdinFile, fileContent
 
     try:
         # Set the link exclusions, and add any additional exclusions passed with -x (--exclude)
@@ -3294,6 +3338,11 @@ def processInput():
                     # If not a Burp or ZAP file, check if it is a Caido File
                     if not zapFile:
                         caidoFile = firstLine.lower().startswith("id,host,method")
+                        
+                        # If not any special file, then check if first line starts with // or http. 
+                        # If it does then it will be considered a file of URLs, otherwise the contents will be searched
+                        if not (firstLine.startswith('//') or firstLine.startswith('http')):
+                            fileContent = True
 
         # If input wasn't piped then just process the -i / --input value
         if sys.stdin.isatty():
@@ -3546,7 +3595,7 @@ def ensure_unicode(text):
 # Get XML and JSON responses, extract keys and add them to the paramsFound list
 # In addition it will extract name and id from <input> fields in HTML
 def getResponseParams(response, request):
-    global paramsFound, inScopePrefixDomains, burpFile, zapFile, caidoFile, dirPassed, wordsFound, lstStopWords
+    global paramsFound, inScopePrefixDomains, burpFile, zapFile, caidoFile, dirPassed, wordsFound, lstStopWords,fileContent
     try:
 
         if burpFile or zapFile or caidoFile:
@@ -3564,7 +3613,7 @@ def getResponseParams(response, request):
             body = response
             wordListBody = body
         else:
-            if dirPassed:
+            if dirPassed or fileContent:
                 body = response
                 wordListBody = body
                 header = ""
