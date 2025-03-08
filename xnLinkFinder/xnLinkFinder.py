@@ -3121,7 +3121,7 @@ def processEachInput(input):
     
     # Set the -i / --input to the current input
     args.input = input
-
+    fileContent = False
     try:
         # If the -i (--input) can be a standard file (text file with URLs per line),
         # or a directory containing files to search,
@@ -3229,10 +3229,9 @@ def processEachInput(input):
                                 write(
                                     colored("Reading input file " + input + ":", "cyan")
                                 )
-                            # Check if the first line starts with `//` or `http`. If so, process as a file of URLs,
-                            # otherwise process as content
+                            # Check if the first line starts with `//` or `http`. If so, process as a file of URLs,or is waymore mode, otherwise process as content
                             first_line = inputFile.readline().strip()
-                            if first_line.startswith("//") or first_line.startswith("http"):
+                            if first_line.startswith("//") or first_line.startswith("http") or waymoreMode:
                                 with inputFile as f:
                                     if stopProgram is None:
                                         p = mp.Pool(args.processes)

@@ -1,5 +1,11 @@
 ## Changelog
 
+- v6.10
+
+  - Changed
+
+    - BUG FIX: When the input is a waymore directory, it can fail to read the `index.txt` file and also raise a number of errors. The check put into place in v6.9 is changed to also check if waymore mode.
+
 - v6.9
 
   - New
