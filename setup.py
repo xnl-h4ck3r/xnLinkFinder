@@ -25,7 +25,7 @@ if target_directory and os.path.isfile("config.yml"):
         shutil.copy("config.yml", target_directory)
 
 setup(
-    name="xnLinkFinder",
+    name="xnilnkfinder",
     packages=find_packages(),
     version=__import__('xnLinkFinder').__version__,
     description="A python script to find endpoints from a URL, a file of URLs, a directory of files, a Burp XML file or a ZAP ASCII message file. It also gets potential parameters and a target specific wordlist.",

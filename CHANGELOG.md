@@ -1,5 +1,13 @@
 ## Changelog
 
+- v6.11
+
+  - Changed
+
+    - BUG FIX: The error `ERROR getResponseLinks 3: 'NoneType' object has no attribute 'split'` happened when the `commonTLDs` key was missing from `config.yml`. This default is now successfully set if the key is missing (and with all other keys too).
+    - Change the name of the tool to lowercase in the `setup.py` file because PyPI will require all newly uploaded binary distribution filenames to comply with the binary distribution format and the filename has to contain the normalized project name 'xnlinkfinder'.
+    - Add `xnlinkfinder.egg-info` (lowercase version) to `.gitignore`.
+
 - v6.10
 
   - Changed

@@ -1769,7 +1769,7 @@ def getConfig():
         config = yaml.safe_load(open(configPath))
 
         try:
-            LINK_EXCLUSIONS = config.get("linkExclude")
+            LINK_EXCLUSIONS = config.get("linkExclude",DEFAULT_LINK_EXCLUSIONS)
         except:
             if verbose():
                 writerr(
@@ -1780,7 +1780,7 @@ def getConfig():
                 )
             LINK_EXCLUSIONS = DEFAULT_LINK_EXCLUSIONS
         try:
-            CONTENTTYPE_EXCLUSIONS = config.get("contentExclude")
+            CONTENTTYPE_EXCLUSIONS = config.get("contentExclude",DEFAULT_CONTENTTYPE_EXCLUSIONS)
         except:
             if verbose():
                 writerr(
@@ -1791,7 +1791,7 @@ def getConfig():
                 )
             CONTENTTYPE_EXCLUSIONS = DEFAULT_CONTENTTYPE_EXCLUSIONS
         try:
-            FILEEXT_EXCLUSIONS = config.get("fileExtExclude")
+            FILEEXT_EXCLUSIONS = config.get("fileExtExclude",DEFAULT_FILEEXT_EXCLUSIONS)
         except:
             if verbose():
                 writerr(
@@ -1802,7 +1802,7 @@ def getConfig():
                 )
             FILEEXT_EXCLUSIONS = DEFAULT_FILEEXT_EXCLUSIONS
         try:
-            LINK_REGEX_FILES = config.get("regexFiles")
+            LINK_REGEX_FILES = config.get("regexFiles",DEFAULT_LINK_REGEX_FILES)
         except:
             if verbose():
                 writerr(
@@ -1813,7 +1813,7 @@ def getConfig():
                 )
             LINK_REGEX_FILES = DEFAULT_LINK_REGEX_FILES
         try:
-            RESP_PARAM_LINKSFOUND = config.get("respParamLinksFound")
+            RESP_PARAM_LINKSFOUND = config.get("respParamLinksFound",True)
         except:
             if verbose():
                 writerr(
@@ -1823,7 +1823,7 @@ def getConfig():
                     )
                 )
         try:
-            RESP_PARAM_PATHWORDS = config.get("respParamPathWords")
+            RESP_PARAM_PATHWORDS = config.get("respParamPathWords",True)
         except:
             if verbose():
                 writerr(
@@ -1833,7 +1833,7 @@ def getConfig():
                     )
                 )
         try:
-            RESP_PARAM_JSON = config.get("respParamJSON")
+            RESP_PARAM_JSON = config.get("respParamJSON",True)
         except:
             if verbose():
                 writerr(
@@ -1843,7 +1843,7 @@ def getConfig():
                     )
                 )
         try:
-            RESP_PARAM_JSVARS = config.get("respParamJSVars")
+            RESP_PARAM_JSVARS = config.get("respParamJSVars",True)
         except:
             if verbose():
                 writerr(
@@ -1853,7 +1853,7 @@ def getConfig():
                     )
                 )
         try:
-            RESP_PARAM_XML = config.get("respParamXML")
+            RESP_PARAM_XML = config.get("respParamXML",True)
         except:
             if verbose():
                 writerr(
@@ -1863,7 +1863,7 @@ def getConfig():
                     )
                 )
         try:
-            RESP_PARAM_INPUTFIELD = config.get("respParamInputField")
+            RESP_PARAM_INPUTFIELD = config.get("respParamInputField",True)
         except:
             if verbose():
                 writerr(
@@ -1873,7 +1873,7 @@ def getConfig():
                     )
                 )
         try:
-            WORDS_CONTENT_TYPES = config.get("wordsContentTypes")
+            WORDS_CONTENT_TYPES = config.get("wordsContentTypes",DEFAULT_WORDS_CONTENT_TYPES)
         except:
             if verbose():
                 writerr(
@@ -1884,7 +1884,7 @@ def getConfig():
                 )
             WORDS_CONTENT_TYPES = DEFAULT_WORDS_CONTENT_TYPES
         try:
-            STOP_WORDS = config.get("stopWords")
+            STOP_WORDS = config.get("stopWords",DEFAULT_STOP_WORDS)
         except:
             if verbose():
                 writerr(
@@ -1921,7 +1921,7 @@ def getConfig():
                 )
         
         try:
-            COMMON_TLDS = config.get("commonTLDs")
+            COMMON_TLDS = config.get("commonTLDs", DEFAULT_COMMON_TLDS)
         except:
             if verbose():
                 writerr(
