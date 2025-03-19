@@ -1,6 +1,6 @@
 <center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/blob/main/xnLinkFinder/images/title.png"></center>
 
-## About - v6.12
+## About - v6.13
 
 This is a tool used to discover endpoints (and potential parameters) for a given target. It can find them by:
 
@@ -223,7 +223,7 @@ NOTE: xnLinkFinder makes the assumption that if the first line of the file passe
 
 ### Find Links from a Waymore results directory
 
-The [waymore](https://github.com/xnl-h4ck3r/waymore) tool can be used to get URLs from various third party APIs, and also download archived responses from various sources. Passing a waymore results directory to `xnLinKFinder` will search the contents of archived responses, and also request URLs from `waymore.txt` and also the archived URLs from `waymore_index.txt` and get more links from those responses.
+The [waymore](https://github.com/xnl-h4ck3r/waymore) tool can be used to get URLs from various third party APIs, and also download archived responses from various sources. Passing a waymore results directory to `xnLinKFinder` will search the contents of archived responses, and also request URLs from `waymore.txt` and also the archived URLs from `waymore_index.txt` (or `index.txt` for older versions of `waymore`) and get more links from those responses. If `-d`/`--depth` is zero, then the URLs from `waymore_index.txt` will just be returned but not requested.
 
 ```
 xnLinkFinder -i ~/Tools/waymore/results/target.com

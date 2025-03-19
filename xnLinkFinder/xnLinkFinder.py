@@ -1034,7 +1034,8 @@ def shouldMakeRequest(url):
 
     makeRequest = False
     # Only process if we haven't visited the link before, it isn't blank and it doesn't start with a . or just one /
-    if url not in linksVisited and url != "" and not url.startswith("."):
+    # Or if waymore mode and the depth s 0
+    if url not in linksVisited and url != "" and not url.startswith(".") and not(waymoreMode and args.depth == 0):
         try:
             tldExtract = tldextract.extract(url)
             tld = tldExtract.suffix
@@ -1060,15 +1061,19 @@ def processUrl(url):
 
     try: 
         # If waymore Mode then the url maybe from waymore_index.txt (or index.txt in previous versions) get the source URL from the line
-        if waymoreMode and args.input.endswith("index.txt") :
-            values = url.split(",")
-            archiveUrl = values[1]
-            # NOTE: This assumes that that the urls in the index file have 5 /'s before the actual target link
-            # e.g.
-            # https://web.archive.org/web/20000816023532/http://www.redbull.com:80/
-            # https://urlscan.io/dom/019574e1-9e32-7000-8d81-a2d3a6bad713/https://www.redbull.com/int-en
-            index = archiveUrl.index("http",5)
-            url = archiveUrl[index:]
+        if waymoreMode: 
+            if args.input in ("waymore_index.txt","index.txt") :
+                values = url.split(",")
+                archiveUrl = values[1]
+                # NOTE: This assumes that that the urls in the index file have 5 /'s before the actual target link
+                # e.g.
+                # https://web.archive.org/web/20000816023532/http://www.redbull.com:80/
+                # https://urlscan.io/dom/019574e1-9e32-7000-8d81-a2d3a6bad713/https://www.redbull.com/int-en
+                index = archiveUrl.index("http",5)
+                url = archiveUrl[index:]
+            # Add URLs to the list if depth is 0
+            if args.depth == 0:
+                linksFound.add(url)
     except Exception as e:
         pass
         
@@ -2237,7 +2242,7 @@ def showOptions():
                     )
                 )
             
-        if not burpFile and not zapFile and not caidoFile and not dirPassed:
+        if not burpFile and not zapFile and not caidoFile:
             write(
                 colored("-d: " + str(args.depth), "magenta")
                 + colored(
@@ -4338,22 +4343,19 @@ def main():
             # Save the original input directory to set back later
             originalInput = args.input
             
-            # Only process the files if depth is not set to zero
-            if args.depth > 0:
+            # Process each user agent group
+            for i in range(len(userAgents)):
+                if stopProgram is not None:
+                    break
                 
-                # Process each user agent group
-                for i in range(len(userAgents)):
-                    if stopProgram is not None:
-                        break
-                    
-                    currentUAGroup = i
+                currentUAGroup = i
+            
+                # Process the waymore.txt and index.txt files
+                for wf in waymoreFiles:
+                    write(colored("\nProcessing links in ","cyan")+colored("Waymore File ","yellow")+colored(wf + ":", "cyan"))
+                    processEachInput(wf)
+                linksVisited = set()
                 
-                    # Process the waymore.txt and index.txt files
-                    for wf in waymoreFiles:
-                        write(colored("\nProcessing links in ","cyan")+colored("Waymore File ","yellow")+colored(wf + ":", "cyan"))
-                        processEachInput(wf)
-                    linksVisited = set()
-                    
             # Once all data has been found, process the output
             args.input = originalInput
             processOutput()
