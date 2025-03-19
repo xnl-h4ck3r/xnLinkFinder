@@ -1,6 +1,6 @@
 <center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/blob/main/xnLinkFinder/images/title.png"></center>
 
-## About - v6.11
+## About - v6.12
 
 This is a tool used to discover endpoints (and potential parameters) for a given target. It can find them by:
 
@@ -11,7 +11,7 @@ This is a tool used to discover endpoints (and potential parameters) for a given
 - get them from a **Burp** project (pass location of a Burp XML file)
 - get them from an **ZAP** project (pass location of a ZAP ASCII message file)
 - get them from a **Caido** project (pass location of a Caido export CSV file)
-- processing a [waymore](https://github.com/xnl-h4ck3r/waymore) results directory (searching archived response files from `waymore -mode R` and also requesting URLs from `waymore.txt` and the original URLs from `index.txt` - see [waymore README.md](https://github.com/xnl-h4ck3r/waymore/blob/main/README.md))
+- processing a [waymore](https://github.com/xnl-h4ck3r/waymore) results directory (searching archived response files from `waymore -mode R` and also requesting URLs from `waymore.txt` and the original URLs from `waymore_index.txt` - see [waymore README.md](https://github.com/xnl-h4ck3r/waymore/blob/main/README.md))
 
 The python script is based on the link finding capabilities of my Burp extension [GAP](https://github.com/xnl-h4ck3r/burp-extensions).
 As a starting point, I took the amazing tool [LinkFinder](https://github.com/GerbenJavado/LinkFinder) by Gerben Javado, and used the Regex for finding links, but with additional improvements to find even more.
@@ -223,7 +223,7 @@ NOTE: xnLinkFinder makes the assumption that if the first line of the file passe
 
 ### Find Links from a Waymore results directory
 
-The [waymore](https://github.com/xnl-h4ck3r/waymore) tool can be used to get URLs from various third party APIs, and also download archived responses from archive.org (Wayback Machine). Passing a waymore results directory to `xnLinKFinder` will search the contents of archived responses, and also request URLs from `waymore.txt` and also the archived URLs from `index.txt` and get more links from those responses.
+The [waymore](https://github.com/xnl-h4ck3r/waymore) tool can be used to get URLs from various third party APIs, and also download archived responses from various sources. Passing a waymore results directory to `xnLinKFinder` will search the contents of archived responses, and also request URLs from `waymore.txt` and also the archived URLs from `waymore_index.txt` and get more links from those responses.
 
 ```
 xnLinkFinder -i ~/Tools/waymore/results/target.com

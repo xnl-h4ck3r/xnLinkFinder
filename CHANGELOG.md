@@ -1,5 +1,9 @@
 ## Changelog
 
+- v6.12
+
+  - Minor changes to ensure `Waymore mode` works with `v5.2` and above of `waymore`.
+
 - v6.11
 
   - Changed
