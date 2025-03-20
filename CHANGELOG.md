@@ -4,7 +4,7 @@
 
   - Changed
 
-    - In `Waymore mode` it checks for the index file ending with `index.txt`. This is changed to look for `waymore_index.txt` (waymore v5.2 onwards) or `index.txt` (pre v5.2) exactly.
+    - In `Waymore mode` it checks for the index file ending with `index.txt`. This is changed to look for `waymore_index.txt` (waymore v6.0 onwards) or `index.txt` (pre v6.0) exactly.
     - If in `Waymore mode` then also get the links from the waymore index file if `-d`/`--depth` is set to 0.
     - Show the `-d`/`--depth` parameter value when `-vv` is used if a directory was passed as input.
 
