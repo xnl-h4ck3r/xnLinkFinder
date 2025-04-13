@@ -1,5 +1,12 @@
 ## Changelog
 
+- v6.14
+
+  - Changed
+
+    - If the `respParamInputField` value from `config.yml` is True then it will get names from HTML `input` fields AND `textarea` fields. If the content type contains `HTML` OR `JAVSCRIPT` then the response will be searched (because the HTML may be getting built in the javascript code).
+    - BUG FIX: If the input is a file, then the content type wasn't retrieved because it was only extracted from a HTTP response. It will now be checked for the header text to retrieve the MIME type.
+
 - v6.13
 
   - Changed

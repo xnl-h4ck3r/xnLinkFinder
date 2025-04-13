@@ -1,6 +1,6 @@
 <center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/blob/main/xnLinkFinder/images/title.png"></center>
 
-## About - v6.13
+## About - v6.14
 
 This is a tool used to discover endpoints (and potential parameters) for a given target. It can find them by:
 
@@ -117,7 +117,7 @@ The `config.yml` file (typically in `~/.config/xnLinkFinder/`) has the keys whic
 - `respParamJSON` † - If the MIME type of the response contains JSON, whether to add JSON Key values as potential parameters: `True` or `False`
 - `respParamJSVars` † - Whether javascript variables set with `var`, `let` or `const` are added as potential parameters: `True` or `False`
 - `respParamXML` † - If the MIME type of the response contains XML, whether to add XML attributes values as potential parameters: `True` or `False`
-- `respParamInputField` † - If the MIME type of the response contains HTML, whether to add NAME and ID attributes of any INPUT fields as potential parameters: `True` or `False`
+- `respParamInputField` † - If the MIME type of the response contains HTML or JAVASCRIPT (because HTML could be built in HTML), whether to add NAME and ID attributes of any INPUT (or TEXTAREA) fields as potential parameters: `True` or `False`
 - `respParamMetaName` † - If the MIME type of the response contains HTML, whether to add NAME attributes of any META tags as potential parameters: `True` or `False`
 - `wordsContentTypes` - A comma separated list of strings (e.g. `text/html,text/plain`) to specify which response content types will be searched for words to go in the target specific wordlist.
 - `stopWords` - A comma separated list of strings (e.g. `then,this,that`) to specify words that are excluded from the target specific wordlist. This default list is initially made up of English determiners, coordinating conjuctions and prepositions, plus a list of stop words from Scikit-Learn, a python machine learning library.

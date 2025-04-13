@@ -244,7 +244,7 @@ REGEX_JSONKEYS = re.compile(r'"([a-zA-Z0-9$_\.-]*?)":')
 REGEX_XMLATTR = re.compile(r"<([a-zA-Z0-9$_\.-]*?)>")
 
 # Regex for HTML input fields
-REGEX_HTMLINP = re.compile(r"<input(.*?)>", re.IGNORECASE)
+REGEX_HTMLINP = re.compile(r"<(input|textarea)(.*?)>", re.IGNORECASE)
 REGEX_HTMLINP_NAME = re.compile(r"(?<=\sname)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|\'))", re.IGNORECASE)    
 REGEX_HTMLINP_ID = re.compile(r"(?<=\sid)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|'))", re.IGNORECASE)
 
@@ -2402,7 +2402,7 @@ def showOptions():
         write(colored('Get Response JSON Key Values as Params: ', 'magenta')+colored(str(RESP_PARAM_JSON)))
         write(colored('Get Response JS Vars as Params: ', 'magenta')+colored(str(RESP_PARAM_JSVARS)))
         write(colored('Get Response XML Attributes as Params: ', 'magenta')+colored(str(RESP_PARAM_XML)))
-        write(colored('Get Response Input Fields ID and Attribute as Params: ', 'magenta')+colored(str(RESP_PARAM_INPUTFIELD)))
+        write(colored('Get Response Input (and Textarea) Fields ID and Attribute as Params: ', 'magenta')+colored(str(RESP_PARAM_INPUTFIELD)))
         write()
 
     except Exception as e:
@@ -3648,6 +3648,9 @@ def getResponseParams(response, request):
         try:
             contentType = header["content-type"].split(";")[0].upper()
         except:
+            for line in body.splitlines():
+                if line.lower().startswith('content-type:'):
+                    contentType = line.split(':', 1)[1].strip().split(';')[0].strip().upper()
             pass
 
         # Get words from the body of the page if a wordlist output was given
@@ -3836,14 +3839,14 @@ def getResponseParams(response, request):
                         if vverbose():
                             writerr(colored("ERROR getResponseParams 6: " + str(e), "red"))
 
-            # If the mime type is HTML then get <input> name and id values, and meta tag names
-            elif contentType.find("HTML") > 0:
+            # If the mime type is HTML (or JAVASCRIPT becuase it could be building HTML) then get <input> OR <textarea> name and id values, and meta tag names
+            elif contentType.find("HTML") or contentType.find("JAVASCRIPT")> 0:
 
                 if RESP_PARAM_INPUTFIELD:
                     # Get Input field name and id attributes
                     try:
                         html_keys = REGEX_HTMLINP.findall(body)
-                        for key in html_keys:
+                        for tag, key in html_keys:
                             input_name = REGEX_HTMLINP_NAME.search(key)
                             if input_name is not None and input_name.group() != "":
                                 input_name_val = input_name.group()
