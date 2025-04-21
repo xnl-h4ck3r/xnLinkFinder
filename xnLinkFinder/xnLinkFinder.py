@@ -410,10 +410,10 @@ def includeLink(link,origin):
         # If the -xrel / --exclude-relative-links argument was passed, and the link starts with ./ or ../ then don't add
         if args.exclude_relative_links and (link.startswith("./") or link.startswith("../")):
             include = False
-    
+
         # If the -sf --scope-filter argument is True then a link should only be included if in the scope
-        # but ignore any links that just start with a single /, ./ or ../
-        if link.startswith("//") or (not link.startswith("/") and not link.startswith("./") and not link.startswith("../")):
+        # but ignore any links that don't start with a protocol or //
+        if re.match(r'^([A-Za-z]+:)?//', link):
             if include and args.scope_filter:
                 try:
                     include = False
@@ -710,7 +710,7 @@ def getResponseLinks(response, url):
                         + LINK_REGEX_NONSTANDARD_FILES
                         + r")(?:[\?|\/][^\"|']{0,}|))|([a-zA-Z0-9_\-\.]{1,255}\.(?:"
                         + LINK_REGEX_FILES
-                        + r")(?:\?[^\"|^']{0,255}|)))(?:\"|'|\\n|\\r|\n|\r|\s|$)|(?<=^Disallow:\s)[^\$\n]*|(?<=^Allow:\s)[^\$\n]*|(?<= Domain\=)[^\";']*|(?<=\<)https?:\/\/[^>\n]*|(\"|\')([A-Za-z0-9_-]+\/)+[A-Za-z0-9_-]+(\.[A-Za-z0-9]{2,}|\/?(\?|\#)[A-Za-z0-9_\-&=\[\]]*)(\"|\')"
+                        + r")(?:\?[^\"|^']{0,255}|)))(?:\"|'|\\n|\\r|\n|\r|\s|$)|(?<=^Disallow:\s)[^\$\n]*|(?<=^Allow:\s)[^\$\n]*|(?<= Domain\=)[^\";']*|(?<=\<)https?:\/\/[^>\n]*|(\"|\')([A-Za-z0-9_-]+\/)+[A-Za-z0-9_-]+(\.[A-Za-z0-9]{2,}|\/?(\?|\#)[A-Za-z0-9_\-&=\[\]]*)(\"|\')|(?<=\<Key\>)[^\<]+\<\/Key\>"
                     )
 
                     # Replace different encodings of " before searching to maximise finds
@@ -747,7 +747,7 @@ def getResponseLinks(response, url):
                 # - IF the --all-tlds arg was passed, make sure the suffix is in the COMMON_TLDS list
                 COMMON_TLDS_LIST = COMMON_TLDS.split(',')
                 valid_extra_keys = [
-                    key for key in extra_keys 
+                    f"//{key}" for key in extra_keys 
                     if tldextract.extract(key).suffix 
                     and tldextract.extract(key).suffix.lower() not in ('call', 'skin', 'menu', 'style', 'rest', 'next', 'top') 
                     and len(tldextract.extract(key).domain) > 2 
