@@ -1062,15 +1062,16 @@ def processUrl(url):
     try: 
         # If waymore Mode then the url maybe from waymore_index.txt (or index.txt in previous versions) get the source URL from the line
         if waymoreMode: 
-            if args.input in ("waymore_index.txt","index.txt") :
+            if os.path.basename(args.input) in ("waymore_index.txt","index.txt"):
                 values = url.split(",")
-                archiveUrl = values[1]
-                # NOTE: This assumes that that the urls in the index file have 5 /'s before the actual target link
-                # e.g.
+                archiveUrl = values[1].strip()
+                # NOTE: The URLs in the index file are in the formats below:
                 # https://web.archive.org/web/20000816023532/http://www.redbull.com:80/
                 # https://urlscan.io/dom/019574e1-9e32-7000-8d81-a2d3a6bad713/https://www.redbull.com/int-en
-                index = archiveUrl.index("http",5)
-                url = archiveUrl[index:]
+                # The original URL is everything after the second 'http'
+                parts = archiveUrl.split("http", 2)
+                if len(parts) == 3:
+                    url = "http" + parts[2]
             # Add URLs to the list if depth is 0
             if args.depth == 0:
                 linksFound.add(url)
@@ -1078,9 +1079,9 @@ def processUrl(url):
         pass
         
     try:
-        
+
         # Check if the URL was prefixed and remove the tag
-        originalUrl = url
+        originalUrl = url.strip()
         prefixed = False
         failedPrefix = False
         prefix = " (PREFIXED)"
@@ -2527,15 +2528,15 @@ def processDirectory():
                 ):                    
                     # Check if running against a waymore results directory
                     # Waymore Mode will be if waymore.txt exists in the directory, or if index.txt exists and there
-                    # is at least one .xnl file, or if ""waymore_index.txt","waymore.new","waymore.old","responses*.tmp","continueResp*.tmp" or "combinedInline" files exist.
-                    if f in ("waymore.txt", "waymore.new", "waymore.old", "waymore_index.txt") or \
+                    # is at least one .xnl file, or if "waymore_index.txt","waymore.new","waymore.txt.new","waymore.old","waymore.txt.old","responses*.tmp","continueResp*.tmp" or "combinedInline" files exist.
+                    if f in ("waymore.txt", "waymore.new", "waymore.txt.new", "waymore.old", "waymore.txt.old", "waymore_index.txt") or \
                     (xnlFileFound and f == "index.txt") or \
                     (f.startswith("responses") and f.endswith(".tmp")) or \
                     (f.startswith("continueResp") and f.endswith(".tmp")) or \
                     "combinedInline" in f:
                         waymoreMode = True
 
-                    if f not in ("waymore.txt", "waymore.new", "waymore.old", "index.txt", "waymore_index.txt") and \
+                    if f not in ("waymore.txt", "waymore.new", "waymore.txt.new", "waymore.old", "waymore.txt.old","index.txt", "waymore_index.txt") and \
                     not (f.startswith("responses") and f.endswith(".tmp")) and \
                     not (f.startswith("continueResp") and f.endswith(".tmp")) and \
                     "combinedInline" not in f:
@@ -2551,13 +2552,13 @@ def processDirectory():
         for path, subdirs, files in os.walk(dirPath):
             for filename in files:
                 
-                # If file is waymore.txt, waymore_index.txt or index.txt then save them for later
-                    if filename in ("waymore.txt","waymore_index.txt","index.txt"):
-                        fullPath = path
-                        if not fullPath.endswith("/"):
-                            fullPath = fullPath + "/"
-                        fullPath = fullPath + filename
-                        waymoreFiles.add(fullPath)
+                # If waymore mode and the file is waymore.txt, waymore.new, waymore.txt.new, waymore.old, waymore.txt.old, waymore_index.txt or index.txt then save them for later
+                if filename in ("waymore.txt","waymore.new","waymore.txt.new","waymore.old","waymore.txt.old","waymore_index.txt","index.txt"):
+                    fullPath = path
+                    if not fullPath.endswith("/"):
+                        fullPath = fullPath + "/"
+                    fullPath = fullPath + filename
+                    waymoreFiles.add(fullPath)
     else:
         write(colored("Processing files in directory " + args.input + ":\n", "cyan"))
             
@@ -2584,9 +2585,9 @@ def processDirectory():
             for path, subdirs, files in os.walk(dirPath):
                 for filename in files:
                     
-                    # If waymore mode and the file is waymore.txt, waymore_index.txt or index.txt then save them for later
+                    # If waymore mode and the file is waymore.txt, waymore.new, waymore.txt.new, waymore.old, waymore.txt.old, waymore_index.txt or index.txt then save them for later
                     if waymoreMode:
-                        if filename in ("waymore.txt","waymore_index.txt","index.txt"):
+                        if filename in ("waymore.txt","waymore.new","waymore.txt.new","waymore.old","waymore.txt.old","waymore_index.txt","index.txt"):
                             fullPath = path
                             if not fullPath.endswith("/"):
                                 fullPath = fullPath + "/"
@@ -2594,14 +2595,14 @@ def processDirectory():
                             waymoreFiles.add(fullPath)
                             
                     # Check if the file size is less than --max-file-size 
-                    # AND if in waymore mode that it isn't one of "waymore_index.txt","waymore.txt","waymore.new","waymore.old","index.txt","responses*.tmp","continueResp*.tmp","combinedInline"
+                    # AND if in waymore mode that it isn't one of "waymore_index.txt","waymore.txt","waymore.new","waymore.txt.new","waymore.old","waymore.txt.old","index.txt","responses*.tmp","continueResp*.tmp","combinedInline"
                     if (
                         args.max_file_size == 0
                         or (os.path.getsize(os.path.join(path, filename))) / (1024 * 1024) < args.max_file_size
                     ) and (
                         not waymoreMode or (
                             waymoreMode
-                            and filename not in ("waymore.txt", "waymore.new", "waymore.old", "waymore_index.txt", "index.txt")
+                            and filename not in ("waymore.txt", "waymore.new",  "waymore.txt.new", "waymore.old", "waymore.txt.old", "waymore_index.txt", "index.txt")
                             and not (filename.startswith("responses") and filename.endswith(".tmp"))
                             and not (filename.startswith("continueResp") and filename.endswith(".tmp"))
                             and "combinedInline" not in filename
@@ -4333,7 +4334,7 @@ def main():
             if burpFile or zapFile or caidoFile or dirPassed:
                 break
 
-        # if waymore mode, then process the waymore.txt and index.txt file(s) next
+        # if waymore mode, then process the Waymore files next
         if waymoreMode:
             
             # Reset directory flag to now process individual files
@@ -4353,7 +4354,7 @@ def main():
                 
                 currentUAGroup = i
             
-                # Process the waymore.txt and index.txt files
+                # Process the Waymore files
                 for wf in waymoreFiles:
                     write(colored("\nProcessing links in ","cyan")+colored("Waymore File ","yellow")+colored(wf + ":", "cyan"))
                     processEachInput(wf)

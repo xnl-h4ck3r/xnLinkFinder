@@ -1,5 +1,12 @@
 ## Changelog
 
+- v6.16
+
+  - Changed
+
+    - BUG FIX: When checking for files in `Waymore Mode`, check for `waymore.txt.new` and `waymore.txt.old` too because these can get created by Waymore.
+    - BUG FIX: When checking the Waymore index file, check the `os.basname` of the file name just in case a directory was specified aswell. Also, check for the 2nd occurrence of `http` instead of looking after the 5th `/`.
+
 - v6.15
 
   - New
