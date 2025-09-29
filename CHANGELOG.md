@@ -1,5 +1,16 @@
 ## Changelog
 
+- v6.17
+
+  - New
+
+    - Get links that start with `#/`. in most cases, links that start with `#/` are hash-based routing links in single-page applications (SPAs) - AngularJS is one of the frameworks that uses this pattern.
+    - Exclude any links that start with `...`
+
+  - Changed
+
+    - Change `stripLinkFromUnbalancedBrackets` to handle `()`, `[]`, `{}` all at once and prevent errors that occurred in the previous `regex` method.
+
 - v6.16
 
   - Changed

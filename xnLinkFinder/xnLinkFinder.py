@@ -275,9 +275,9 @@ REGEX_LINKSSLASH = re.compile(r"(\&#x2f;|\&#0?2f|%2f|\u002f|\\u002f|\\/)", re.IG
 REGEX_LINKSCOLON = re.compile(r"(\&#x3a;|\&#0?3a|%3a|\u003a|\\u003a)", re.IGNORECASE)
 REGEX_LINKSAND = re.compile(r"%26|\&amp;|\&#0?38;|\u0026|u0026|x26|\x26", re.IGNORECASE)
 REGEX_LINKSEQUAL = re.compile(r"%3d|\&equals;|\&#0?61;|\u003d|u003d|x3d|\x3d", re.IGNORECASE)
-REGEX_LINKSEARCH1 = re.compile(r"^[^(]*\)+$")
-REGEX_LINKSEARCH2 = re.compile(r"^[^{}]*\}+$")
-REGEX_LINKSEARCH3 = re.compile(r"^[^\[]]*\]+$")
+#REGEX_LINKSEARCH1 = re.compile(r"^[^(]*\)+$")
+#REGEX_LINKSEARCH2 = re.compile(r"^[^{}]*\}+$")
+#REGEX_LINKSEARCH3 = re.compile(r"^[^\[]]*\]+$")
 REGEX_LINKSEARCH4 = re.compile(r"<\/")
         
 def write(text="", pipe=False):
@@ -354,7 +354,7 @@ def includeLink(link,origin):
         # And exclude if the link:
         # - starts with literal characters \n   
         # - has any characters that aren't printable
-        # - starts with #
+        # - starts with # (and not #/ because these are Angular JS redirect routes)
         # - start with $
         # - starts with \
         # - has any white space characters in
@@ -365,8 +365,9 @@ def includeLink(link,origin):
         # - starts with /=
         # - starts with application/, image/, model/, video/, audio/ or text/ as this is a content-type that can sometimes be confused for links
         # - starts with a -
+        # - starts with ...
         try:
-            if link.count("\n") > 1 or link.startswith("#") or link.startswith("$") or link.startswith("\\") or link.startswith("/=") or link.startswith("-"):
+            if link.count("\n") > 1 or (link.startswith("#") and not link.startswith("#/")) or link.startswith("$") or link.startswith("\\") or link.startswith("/=") or link.startswith("-") or link.startswith("..."):
                 include = False
             if include:
                 include = link.isprintable()
@@ -637,6 +638,41 @@ def safe_regex_findall(pattern, string, timeout=DEFAULT_REGEX_TIMEOUT):
     
     return result
 
+def stripLinkFromUnbalancedBrackets(link):
+    """
+    Strips the link from the first truly unbalanced closing bracket,
+    and removes extra trailing opening brackets if unmatched at the end.
+    Supports (), [], {}.
+    """
+    try:
+        # Strips unbalanced brackets
+        brackets = {'(': ')', '[': ']', '{': '}'}
+        opening = brackets.keys()
+        closing = brackets.values()
+        stack = []
+        last_valid_index = len(link)
+
+        for i in range(len(link)):
+            c = link[i]
+            if c in opening:
+                stack.append((c, i))
+            elif c in closing:
+                if stack and brackets[stack[-1][0]] == c:
+                    stack.pop()
+                else:
+                    last_valid_index = i
+                    break
+
+        if stack:
+            last_open_index = stack[0][1]
+            last_valid_index = min(last_valid_index, last_open_index)
+
+        return link[:last_valid_index]
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR stripLinkFromUnbalancedBrackets 1 " + str(e), "red"))
+        return ""
+
 def getResponseLinks(response, url):
     """
     Get a list of links found
@@ -706,7 +742,7 @@ def getResponseLinks(response, url):
             ):
                 try:
                     reString = (
-                        r"(?:^|\"|'|\\n|\\r|\n|\r|\s)(((?:[a-zA-Z]{1,10}:\/\/|\/\/)([^\"'\/\s]{1,255}\.[a-zA-Z]{2,24}|localhost)[^\"'\n\s]{0,255})|((?:\/|\.\.\/|\.\/)[^\"'><,;| *()(%%$^\/\\\[\]][^\"'><,;|()\s]{1,255})|([a-zA-Z0-9_\-\/]{1,}\/[a-zA-Z0-9_\-\/\.]{1,255}\.(?:[a-zA-Z]{1,4}"
+                        r"(?:^|\"|'|\\n|\\r|\n|\r|\s)(((?:[a-zA-Z]{1,10}:\/\/|\/\/)([^\"'\/\s]{1,255}\.[a-zA-Z]{2,24}|localhost)[^\"'\n\s]{0,255})|((?:#?\/|\.\.\/|\.\/)[^\"'><,;| *()(%%$^\/\\\[\]][^\"'><,;|()\s]{1,255})|([a-zA-Z0-9_\-\/]{1,}\/[a-zA-Z0-9_\-\/\.]{1,255}\.(?:[a-zA-Z]{1,4}"
                         + LINK_REGEX_NONSTANDARD_FILES
                         + r")(?:[\?|\/][^\"|']{0,}|))|([a-zA-Z0-9_\-\.]{1,255}\.(?:"
                         + LINK_REGEX_FILES
@@ -823,13 +859,8 @@ def getResponseLinks(response, url):
                             # If there are any backticks in the URL, remove everything from the backtick onwards
                             link = link.split("`")[0]
                             
-                            # If there are any closing brackets of any kind without an opening bracket, remove everything from the closing bracket onwards
-                            if REGEX_LINKSEARCH1.search(link):
-                                link = link.split(")", 1)[0]
-                            if REGEX_LINKSEARCH2.search(link):
-                                link = link.split("}", 1)[0]
-                            if REGEX_LINKSEARCH3.search(link):
-                                link = link.split("]", 1)[0]    
+                            # If there are any unbalanced brackets in the link, then strip from the unbalanced bracket
+                            link = stripLinkFromUnbalancedBrackets(link)    
                                 
                             # If there is a </ in the link then strip from that forward
                             if REGEX_LINKSEARCH4.search(link):
