@@ -1,5 +1,16 @@
 ## Changelog
 
+- v7.0
+
+  - New
+
+    - Add argument `-rl`/`--rate-limit`. This is the maximum number of requests to send per second (default: 0, no rate limiting). This helps prevent overwhelming the target server and can be set when a target specify a rate limit in their bug bounty scope - https://github.com/xnl-h4ck3r/xnLinkFinder/issues/26
+
+  - Changed
+
+    - If the `respParamInputField` value from `config.yml` is True then it will get names from HTML `select` and `button` fields in addition to `input` and `textarea` fields - https://github.com/xnl-h4ck3r/xnLinkFinder/pull/35
+    - Fixed typo of `wildacard` - https://github.com/xnl-h4ck3r/xnLinkFinder/issues/38
+
 - v6.17
 
   - New

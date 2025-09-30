@@ -76,6 +76,8 @@ import urllib
 import warnings
 import tldextract
 from pathlib import Path
+import time
+import threading
 try:
     from . import __version__
 except:
@@ -96,6 +98,10 @@ except:
     html5libInstalled = False
 
 startDateTime = datetime.now()
+
+# Rate limiting variables
+lastRequestTime = 0
+rateLimitLock = threading.Lock()
 
 # Try to import psutil to show memory usage
 try:
@@ -244,7 +250,7 @@ REGEX_JSONKEYS = re.compile(r'"([a-zA-Z0-9$_\.-]*?)":')
 REGEX_XMLATTR = re.compile(r"<([a-zA-Z0-9$_\.-]*?)>")
 
 # Regex for HTML input fields
-REGEX_HTMLINP = re.compile(r"<(input|textarea)(.*?)>", re.IGNORECASE)
+REGEX_HTMLINP = re.compile(r"<(input|textarea|select|button)(.*?)>", re.IGNORECASE)
 REGEX_HTMLINP_NAME = re.compile(r"(?<=\sname)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|\'))", re.IGNORECASE)    
 REGEX_HTMLINP_ID = re.compile(r"(?<=\sid)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|'))", re.IGNORECASE)
 
@@ -1043,6 +1049,28 @@ def handler(signal_received, frame):
         )
 
 
+def enforceRateLimit():
+    """
+    Enforce rate limiting by ensuring requests don't exceed the specified rate per second
+    """
+    global lastRequestTime, rateLimitLock
+    
+    try:
+        if args.rate_limit > 0:
+            with rateLimitLock:
+                currentTime = time.time()
+                timeSinceLastRequest = currentTime - lastRequestTime
+                minInterval = 1.0 / args.rate_limit
+                
+                if timeSinceLastRequest < minInterval:
+                    sleepTime = minInterval - timeSinceLastRequest
+                    time.sleep(sleepTime)
+                
+                lastRequestTime = time.time()
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR enforceRateLimit 1: " + str(e), "red"))
+
 def getMemory():
 
     global currentMemUsage, currentMemPercent, maxMemoryUsage, maxMemoryPercent, stopProgram
@@ -1167,6 +1195,9 @@ def processUrl(url):
                         requests.packages.urllib3.disable_warnings(
                             category=InsecureRequestWarning
                         )
+
+                    # Enforce rate limiting before making the request
+                    enforceRateLimit()
 
                     # Make the request
                     resp = requests.get(
@@ -2317,6 +2348,11 @@ def showOptions():
                 colored("-p: " + str(args.processes), "magenta")
                 + colored(" The number of parallel requests made.", "white")
             )
+            if args.rate_limit > 0:
+                write(
+                    colored("-rl: " + str(args.rate_limit), "magenta")
+                    + colored(" Maximum requests per second (rate limiting enabled).", "white")
+                )
             write(
                 colored("-t: " + str(args.timeout), "magenta")
                 + colored(" The number of seconds to wait for a response.", "white")
@@ -2434,7 +2470,7 @@ def showOptions():
         write(colored('Get Response JSON Key Values as Params: ', 'magenta')+colored(str(RESP_PARAM_JSON)))
         write(colored('Get Response JS Vars as Params: ', 'magenta')+colored(str(RESP_PARAM_JSVARS)))
         write(colored('Get Response XML Attributes as Params: ', 'magenta')+colored(str(RESP_PARAM_XML)))
-        write(colored('Get Response Input (and Textarea) Fields ID and Attribute as Params: ', 'magenta')+colored(str(RESP_PARAM_INPUTFIELD)))
+        write(colored('Get Response Input (and Textarea/Select/Button) Fields ID and Attribute as Params: ', 'magenta')+colored(str(RESP_PARAM_INPUTFIELD)))
         write()
 
     except Exception as e:
@@ -2501,7 +2537,7 @@ def getScopeDomains():
         if scopeFilterError:
             writerr(
                 colored(
-                    "The -sf (--scope-filter) value should be a valid file of domains, or a single domain. No schema should be included and wildacard is optional, e.g. example1.com, sub.example2.com, example3.*",
+                    "The -sf (--scope-filter) value should be a valid file of domains, or a single domain. No schema should be included and wildcard is optional, e.g. example1.com, sub.example2.com, example3.*",
                     "red",
                 )
             )
@@ -3223,7 +3259,7 @@ def processEachInput(input):
         if args.scope_filter is None and not waymoreMode and (urlPassed or stdFile or stdinFile):
             writerr(
                 colored(
-                    "You need to provide a Scope Filter with the -sf / --scope-filter argument. This was optional in previous versions but is now mandatory if input is a domain/URL (or file of domains/URLs) to prevent crawling sites that are not in scope, and also prevent misleading results. The value should be a valid file of domains, or a single domain. No schema should be included and wildacard is optional, e.g. example1.com, sub.example2.com, example3.*",
+                    "You need to provide a Scope Filter with the -sf / --scope-filter argument. This was optional in previous versions but is now mandatory if input is a domain/URL (or file of domains/URLs) to prevent crawling sites that are not in scope, and also prevent misleading results. The value should be a valid file of domains, or a single domain. No schema should be included and wildcard is optional, e.g. example1.com, sub.example2.com, example3.*",
                     "red",
                 )
             )
@@ -3871,7 +3907,7 @@ def getResponseParams(response, request):
                         if vverbose():
                             writerr(colored("ERROR getResponseParams 6: " + str(e), "red"))
 
-            # If the mime type is HTML (or JAVASCRIPT becuase it could be building HTML) then get <input> OR <textarea> name and id values, and meta tag names
+            # If the mime type is HTML (or JAVASCRIPT becuase it could be building HTML) then get <input>, <textarea>, <select> OR <button> name and id values, and meta tag names
             elif contentType.find("HTML") or contentType.find("JAVASCRIPT")> 0:
 
                 if RESP_PARAM_INPUTFIELD:
@@ -4095,6 +4131,15 @@ def main():
         type=int,
         default=25,
         metavar="<integer>",
+    )
+    parser.add_argument(
+        "-rl",
+        "--rate-limit",
+        help="Maximum number of requests to send per second (default: 0, no rate limiting). This helps prevent overwhelming the target server.",
+        action="store",
+        type=float,
+        default=0,
+        metavar="<float>",
     )
     parser.add_argument(
         "-x",
