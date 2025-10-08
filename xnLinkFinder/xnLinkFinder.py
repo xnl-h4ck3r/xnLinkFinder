@@ -321,7 +321,7 @@ def showVersion():
             resp = requests.get('https://raw.githubusercontent.com/xnl-h4ck3r/xnLinkFinder/main/xnLinkFinder/__init__.py',timeout=3)
         except:
             write('Current xnLinkFinder version '+__version__+' (unable to check if latest)\n')
-        if __version__ == resp.text.split('=')[1].replace('"',''):
+        if __version__ == resp.text.split('=')[1].replace('"','').strip():
             write('Current xnLinkFinder version '+__version__+' ('+colored('latest','green')+')\n')
         else:
             write('Current xnLinkFinder version '+__version__+' ('+colored('outdated','red')+')\n')

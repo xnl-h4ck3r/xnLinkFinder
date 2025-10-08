@@ -1,5 +1,11 @@
 ## Changelog
 
+- v7.2
+
+  - Change
+
+    - BUG FIX: For some reason the version is showing outdated, even though appears identical. Using `strip()` when getting the version from github seems to resolve the issue.
+
 - v7.1
 
   - New
