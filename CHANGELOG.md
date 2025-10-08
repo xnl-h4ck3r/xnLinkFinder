@@ -1,5 +1,18 @@
 ## Changelog
 
+- v7.1
+
+  - New
+
+    - Add argument `-r`/`--retries` to specify the number of times to retry a request after a failure (e.g. timeout, connection error, etc). This is limited to 5 retries.
+    - Add a HTTPAdaptor to make a request and automatically retry the request the number of time specified by `--retires` if status 429, 500, 502, 503 or 504 is encountered, or if a timeout or connection error occurs.
+
+  - Changes
+
+    - Combine the logic for handling `requests.exceptions.Timeout` errors within the exception handler for `requests.exceptions.ConnectionError` because it is a subclass of that handler.
+    - Correct typo of tool name when help is shown.
+    - If `--version` is passed, then show the version as displayed in the banner, showing if out of date or not.
+
 - v7.0
 
   - New

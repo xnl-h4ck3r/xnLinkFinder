@@ -64,6 +64,8 @@ import subprocess
 import random
 import math
 import enum
+from urllib3.util.retry import Retry
+from requests.adapters import HTTPAdapter
 from urllib3.exceptions import InsecureRequestWarning
 import sys
 from urllib.parse import urlparse
@@ -1200,7 +1202,14 @@ def processUrl(url):
                     enforceRateLimit()
 
                     # Make the request
-                    resp = requests.get(
+                    session = requests.Session()
+                    if args.retries > 0:
+                        retries = Retry(total=args.retries, backoff_factor=0.1, status_forcelist=[ 429, 500, 502, 503, 504 ])
+                        adapter = HTTPAdapter(max_retries=retries)
+                        session.mount('http://', adapter)
+                        session.mount('https://', adapter)
+                    
+                    resp = session.get(
                         requestUrl,
                         headers=requestHeaders,
                         timeout=args.timeout,
@@ -1280,24 +1289,35 @@ def processUrl(url):
                 except requests.exceptions.ConnectionError as errc:
                     failedRequests = failedRequests + 1
                     if verbose():
-                        # Check for certificate verification failure and suggest using -insecure
-                        if str(errc).find("CERTIFICATE_VERIFY_FAILED") > 0:
-                            writerr(
-                                colored(
-                                    "Connection Error: "
-                                    + url
-                                    + " returned CERTIFICATE_VERIFY_FAILED error. Trying again with argument -insecure may resolve the problem.",
-                                    "red",
-                                )
-                            )
+                        if isinstance(errc, requests.exceptions.Timeout):
+                            writerr(colored("Request Timeout: " + url, "red"))
+                            # If argument -sTO (Stop on Timeouts) passed, keep a count of timeouts and stop the program if > 95% of responses have timed out, but only if at least 10 requests have already been made
+                            if args.sTO:
+                                tooManyTimeouts = tooManyTimeouts + 1
+                                try:
+                                    if (tooManyTimeouts / totalRequests * 100) > 95 and totalRequests > 10:
+                                        stopProgram = StopProgram.TOO_MANY_TIMEOUTS
+                                except:
+                                    pass
                         else:
-                            if url.find("://") > 0:
-                                writerr(colored("Connection Error: " + url + " (Please check this is a valid URL)","red"))
+                            # Check for certificate verification failure and suggest using -insecure
+                            if str(errc).find("CERTIFICATE_VERIFY_FAILED") > 0:
+                                writerr(
+                                    colored(
+                                        "Connection Error: "
+                                        + url
+                                        + " returned CERTIFICATE_VERIFY_FAILED error. Trying again with argument -insecure may resolve the problem.",
+                                        "red",
+                                    )
+                                )
                             else:
-                                if args.scope_prefix == '' and currentDepth > 1:
-                                    writerr(colored("Connection Error: " + url + " (Consider passing --scope-prefix argument)","red"))
+                                if url.find("://") > 0:
+                                    writerr(colored("Connection Error: " + url + " (Please check this is a valid URL)", "red"))
                                 else:
-                                    writerr(colored("Connection Error: " + url,"red"))
+                                    if args.scope_prefix == '' and currentDepth > 1:
+                                        writerr(colored("Connection Error: " + url + " (Consider passing --scope-prefix argument)", "red"))
+                                    else:
+                                        writerr(colored("Connection Error: " + url,"red"))
 
                     # If argument -sCE (Stop on Connection Error) passed, keep a count of Connection Errors and stop the program if > 95% of responses have this error, but only if at least 10 requests have already been made
                     if args.sCE:
@@ -1305,18 +1325,6 @@ def processUrl(url):
                         try:
                             if (tooManyConnectionErrors / totalRequests * 100) > 95 and totalRequests > 10:
                                 stopProgram = StopProgram.TOO_MANY_CONNECTION_ERRORS
-                        except:
-                            pass
-                except requests.exceptions.Timeout:
-                    failedRequests = failedRequests + 1
-                    if verbose():
-                        writerr(colored("Request Timeout: " + url, "red"))
-                    # If argument -sTO (Stop on Timeouts) passed, keep a count of timeouts and stop the program if > 95% of responses have timed out, but only if at least 10 requests have already been made
-                    if args.sTO:
-                        tooManyTimeouts = tooManyTimeouts + 1
-                        try:
-                            if (tooManyTimeouts / totalRequests * 100) > 95 and totalRequests > 10:
-                                stopProgram = StopProgram.TOO_MANY_TIMEOUTS
                         except:
                             pass
                 except requests.exceptions.TooManyRedirects:
@@ -2356,6 +2364,10 @@ def showOptions():
             write(
                 colored("-t: " + str(args.timeout), "magenta")
                 + colored(" The number of seconds to wait for a response.", "white")
+            )
+            write(
+                colored("-r: " + str(args.retries), "magenta")
+                + colored(" The number of times to retry a request after a failure (e.g. timeout, connection error, etc).", "white")
             )
             write(
                 colored("-inc: " + str(args.include), "magenta")
@@ -3962,6 +3974,15 @@ def argcheckBurpfileRemoveTags(value):
         )
     return boolValue
 
+# For validating --retries argument
+def argcheckRetries(value):
+    ivalue = int(value)
+    if ivalue < 0 or ivalue > 5:
+        raise argparse.ArgumentTypeError(
+            "The number of retries can be 0 to 5."
+        )
+    return ivalue
+
 # For validating -swf / --stopwords-file argument
 def argcheckStopwordsFile(filename):
     global extraStopWords
@@ -4027,7 +4048,7 @@ def main():
     
     # Parse command line arguments
     parser = argparse.ArgumentParser(
-        description="xnlLinkFinder (v" + __import__('xnLinkFinder').__version__ + ") - by @Xnl-h4ck3r"
+        description="xnLinkFinder (v" + __import__('xnLinkFinder').__version__ + ") - by @Xnl-h4ck3r"
     )
     parser.add_argument(
         "-i",
@@ -4175,6 +4196,15 @@ def main():
         default=default_timeout,
         type=int,
         metavar="<seconds>",
+    )
+    parser.add_argument(
+        "-r",
+        "--retries",
+        help="The number of times to retry a request after a failure (e.g. timeout, connection error, etc). This is limited to 5 retries (default: 0).",
+        action="store",
+        default=0,
+        type=argcheckRetries,
+        metavar="<integer>",
     )
     parser.add_argument(
         "-inc",
@@ -4364,7 +4394,7 @@ def main():
 
     # If --version was passed, display version and exit
     if args.version:
-        write(colored('xnLinkFinder - v' + __import__('xnLinkFinder').__version__,'cyan'))
+        showVersion()
         sys.exit()
         
     # If no input was given, raise an error
