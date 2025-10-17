@@ -1,6 +1,6 @@
 <center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/blob/main/xnLinkFinder/images/title.png"></center>
 
-## About - v7.2
+## About - v7.3
 
 This is a tool used to discover endpoints (and potential parameters) for a given target. It can find them by:
 
@@ -152,7 +152,7 @@ If you have a file of JS file URLs for example, you can look for links in those:
 xnLinkFinder -i target_js.txt -sf target.com
 ```
 
-NOTE: A passed file is assumed to be a list of URLs if the first line starts with `//` or `http`, otherwise it is considered to be a file to search the contents for (unless it is a Burp, Zap or Caido file).
+NOTE: A passed file is assumed to be a list of URLs if the first line starts with `//` or `http` or is a format of a domain (e.g. `example.com`, `sub.example.co.uk`), otherwise it is considered to be a file to search the contents for (unless it is a Burp, Zap or Caido file).
 
 ### Find Links from the contents of a file - Basic
 
@@ -162,7 +162,7 @@ If you have a saved response for example, you can look for links in those:
 xnLinkFinder -i response.txt -sf target.com
 ```
 
-NOTE: A passed file is assumed to be a list of URLs if the first line starts with `//` or `http`, otherwise it is considered to be a file to search the contents for (unless it is a Burp, Zap or Caido file).
+NOTE: A passed file is assumed to be a list of URLs if the first line starts with `//` or `http` or is a format of a domain (e.g. `example.com`, `sub.example.co.uk`), otherwise it is considered to be a file to search the contents for (unless it is a Burp, Zap or Caido file).
 
 ### Find Links from a files in a directory - Basic
 

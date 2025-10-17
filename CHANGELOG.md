@@ -1,5 +1,21 @@
 ## Changelog
 
+- v7.3
+
+  - New
+
+    - Added `is_domain_format()` function to detect if a line contains a domain or subdomain format (e.g., `example.com`, `sub.example.com`, `example.co.uk`). Input files (and STDIN) starting with domains are now correctly identified as URL files rather than content files, allowing proper processing of domain-only input files.
+
+  - Changes
+
+    - BUG FIX: Fixed "expected string or bytes-like object" error in `clean_body()` function by adding type checking to ensure the body parameter is converted to a string before regex operations. Added fallback return value in exception handler to prevent None returns.
+    - BUG FIX: Fixed "expected string or bytes-like object" error in `getResponseLinks()` function by adding type checking for file-based inputs (burp/zap/caido files) and directory/file content inputs to ensure the response is converted to a string before calling string methods like `.find()` and `.split()`.
+    - BUG FIX: Fixed "'Response' object has no attribute 'splitlines'" error in `getResponseParams()` function by adding type checking for file-based inputs and safe string conversion before calling `.splitlines()`.
+    - BUG FIX: Fixed "cannot schedule new futures after interpreter shutdown" errors that occurred when pressing Ctrl-C. Added RuntimeError exception handling in `safe_regex_findall()` to gracefully return empty list during shutdown. Also properly initialized `link_keys` and `extra_keys` variables before try blocks and reset them to empty lists on timeout or exception to prevent reference errors during shutdown.
+    - BUG FIX: Fixed "local variable 'extra_keys' referenced before assignment" error by ensuring `link_keys` and `extra_keys` are initialized before their respective try blocks, preventing "referenced before assignment" errors when exceptions occur.
+    - BUG FIX: Fixed issue where `processUrl` function was not processing the first line of input file. After reading first line to check format, file pointer is now reset to beginning with `seek(0)` so all lines including the first are processed by multiprocessing pool.
+    - BUG FIX: Fixed resource leak where input file handle was not properly closed after reading first line to determine file type (Burp/ZAP/Caido/standard). File is now closed immediately after type detection since it will be reopened by the respective processing functions.
+
 - v7.2
 
   - Change

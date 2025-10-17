@@ -616,6 +616,9 @@ def addLink(link, url, prefixed=False):
 
 def clean_body(body):
     try:
+        # Ensure body is a string
+        if not isinstance(body, str):
+            body = str(body)
         # Remove base64 encoded strings over 10000 characters long. There are some responses that can have huge ones and ends up causing regex problems and hanging
         pattern = r"eyJ[a-zA-Z0-9\+\/]+(?:=|\b|\n)"
         def conditional_remove(match):
@@ -625,8 +628,37 @@ def clean_body(body):
         return cleaned_body
     except Exception as e:
         if vverbose():
-            writerr(colored("ERROR truncate_long_lines 1 " + str(e), "red"))
+            writerr(colored("ERROR clean_body 1 " + str(e), "red"))
+        return str(body) if body else ""
 
+def is_domain_format(line):
+    """
+    Check if a line looks like a domain or subdomain format.
+    Starts with http or //
+    OR
+    Matches patterns like: example.com, sub.example.com, example.co.uk, sub1.sub2.example.co.uk
+    """
+    try:
+        if not line or not isinstance(line, str):
+            return False
+        
+        line = line.strip()
+        
+        # Check if line starts with http/https or // then wil be considered a domain
+        if line.startswith("http") or line.startswith("//"):
+            return True
+        
+        # Domain regex: matches domain.tld or subdomain.domain.tld patterns
+        # Must have at least one dot, and valid characters for domain names
+        # Domain parts can contain letters, numbers, hyphens (but not start/end with hyphen)
+        domain_pattern = r'^(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+        
+        return bool(re.match(domain_pattern, line))
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR is_domain_format 1: " + str(e), "red"))
+        return False
+    
 def regex_worker(pattern, string, flags):
     """Runs re.finditer() and returns matches."""
     try:
@@ -636,15 +668,21 @@ def regex_worker(pattern, string, flags):
 
 def safe_regex_findall(pattern, string, timeout=DEFAULT_REGEX_TIMEOUT):
     """Runs regex search with a timeout using threads."""
-    with concurrent.futures.ThreadPoolExecutor(max_workers=args.processes) as executor:
-        future = executor.submit(regex_worker, pattern, string, re.IGNORECASE)
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=args.processes) as executor:
+            future = executor.submit(regex_worker, pattern, string, re.IGNORECASE)
+            
+            try:
+                result = future.result(timeout=timeout)  # Wait for completion within timeout
+            except concurrent.futures.TimeoutError:
+                return "Regex execution timed out!"
         
-        try:
-            result = future.result(timeout=timeout)  # Wait for completion within timeout
-        except concurrent.futures.TimeoutError:
-            return "Regex execution timed out!"
-    
-    return result
+        return result
+    except RuntimeError as e:
+        # Handle "cannot schedule new futures after interpreter shutdown" during Ctrl-C
+        if "shutdown" in str(e).lower():
+            return []  # Return empty list during shutdown
+        raise  # Re-raise if it's a different RuntimeError
 
 def stripLinkFromUnbalancedBrackets(link):
     """
@@ -693,6 +731,9 @@ def getResponseLinks(response, url):
             addLink(url, url)
 
         if burpFile or zapFile or caidoFile:
+            # Ensure response is a string for file-based inputs
+            if not isinstance(response, str):
+                response = str(response)
             if burpFile:
                 # \r\n\r\n separates the header and body. Get the position of this
                 # but if it is 0 then there is no body, so set it to the length of response
@@ -710,6 +751,9 @@ def getResponseLinks(response, url):
             responseUrl = url
         else:
             if dirPassed or fileContent:
+                # Ensure response is a string for file/dir-based inputs
+                if not isinstance(response, str):
+                    response = str(response)
                 body = response
                 header = ""
                 responseUrl = url
@@ -748,6 +792,8 @@ def getResponseLinks(response, url):
             if (dirPassed and includeFile(url)) or (
                 not dirPassed and includeContentType(header,responseUrl)
             ):
+                # Initialize link_keys before try block
+                link_keys = []
                 try:
                     reString = (
                         r"(?:^|\"|'|\\n|\\r|\n|\r|\s)(((?:[a-zA-Z]{1,10}:\/\/|\/\/)([^\"'\/\s]{1,255}\.[a-zA-Z]{2,24}|localhost)[^\"'\n\s]{0,255})|((?:#?\/|\.\.\/|\.\/)[^\"'><,;| *()(%%$^\/\\\[\]][^\"'><,;|()\s]{1,255})|([a-zA-Z0-9_\-\/]{1,}\/[a-zA-Z0-9_\-\/\.]{1,255}\.(?:[a-zA-Z]{1,4}"
@@ -765,9 +811,13 @@ def getResponseLinks(response, url):
                     if link_keys == "Regex execution timed out!":
                         content_length = len(body)
                         writerr(colored(getSPACER(f"The link regex timed out for {url} (Content-Length:{content_length}, Timeout:{DEFAULT_REGEX_TIMEOUT}s)"), "red"))
+                        link_keys = []  # Reset to empty list on timeout
                 except Exception as e:
+                    link_keys = []  # Reset to empty list on exception
                     if vverbose():
                         writerr(colored(getSPACER("ERROR getResponseLinks 5: " + str(e)), "red"))
+                # Initialize extra_keys before try block
+                extra_keys = []
                 try: 
                     # Additional domain regex
                     domain_regex = r"(?:[a-zA-Z0-9_-]+\.){0,5}[a-zA-Z0-9_-]+\.[a-zA-Z]{2,24}(?:\/[^\s\"'<>()\[\]{}]*)?"
@@ -777,7 +827,9 @@ def getResponseLinks(response, url):
                     if extra_keys == "Regex execution timed out!":
                         content_length = len(body)
                         writerr(colored(getSPACER(f"The domain regex timed out for {url} (Content-Length:{content_length}, Timeout:{DEFAULT_REGEX_TIMEOUT}s)"), "red"))
+                        extra_keys = []  # Reset to empty list on timeout
                 except Exception as e:
+                    extra_keys = []  # Reset to empty list on exception
                     if vverbose():
                         writerr(colored(getSPACER("ERROR getResponseLinks 6: " + str(e)), "red"))
                                 
@@ -3252,6 +3304,9 @@ def processEachInput(input):
                             # If it's not a Burp, ZAP or Caido file then assume it is a standard file or URLs
                             if not caidoFile:
                                 stdFile = True
+                    
+                    # Close the file after determining type - it will be reopened by processing functions
+                    inputFile.close()
                                 
                 except Exception as e:
                     writerr(
@@ -3330,9 +3385,11 @@ def processEachInput(input):
                                 write(
                                     colored("Reading input file " + input + ":", "cyan")
                                 )
-                            # Check if the first line starts with `//` or `http`. If so, process as a file of URLs,or is waymore mode, otherwise process as content
+                            # Check if the first line starts with `//` or `http`, is a domain format, or is waymore mode. If so, process as a file of URLs, otherwise process as content
                             first_line = inputFile.readline().strip()
-                            if first_line.startswith("//") or first_line.startswith("http") or waymoreMode:
+                            if is_domain_format(first_line) or waymoreMode:
+                                # Reset file pointer to beginning so p.map processes all lines including the first
+                                inputFile.seek(0)
                                 with inputFile as f:
                                     if stopProgram is None:
                                         p = mp.Pool(args.processes)
@@ -3348,9 +3405,9 @@ def processEachInput(input):
                                 write(
                                     colored("Reading input from <stdin>:", "cyan")
                                 )
-                            # Check if the first line starts with `//` or `http`. If so, process as a file of URLs,
+                            # Check if the first line starts with `//` or `http`, or is a domain format. If so, process as a file of URLs,
                             # otherwise process as content
-                            if stdinFile[0].startswith("//") or stdinFile[0].startswith("http"):
+                            if is_domain_format(stdinFile[0]):
                                 if stopProgram is None:
                                     p = mp.Pool(args.processes)
                                     p.map(processUrl, stdinFile)
@@ -3699,6 +3756,9 @@ def getResponseParams(response, request):
     try:
 
         if burpFile or zapFile or caidoFile:
+            # Ensure response is a string for file-based inputs
+            if not isinstance(response, str):
+                response = str(response)
             if burpFile:
                 # \r\n\r\n separates the header and body. Get the position of this
                 # but if it is 0 then there is no body, so set it to the length of response
@@ -3714,6 +3774,9 @@ def getResponseParams(response, request):
             wordListBody = body
         else:
             if dirPassed or fileContent:
+                # Ensure response is a string for file/dir-based inputs
+                if not isinstance(response, str):
+                    response = str(response)
                 body = response
                 wordListBody = body
                 header = ""
@@ -3728,7 +3791,9 @@ def getResponseParams(response, request):
         try:
             contentType = header["content-type"].split(";")[0].upper()
         except:
-            for line in body.splitlines():
+            # Ensure body is a string before calling splitlines
+            body_str = body if isinstance(body, str) else str(body)
+            for line in body_str.splitlines():
                 if line.lower().startswith('content-type:'):
                     contentType = line.split(':', 1)[1].strip().split(';')[0].strip().upper()
             pass
