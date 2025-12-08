@@ -3,6 +3,61 @@
 
 # Good luck and good hunting! If you really love the tool (or any others), or they helped you find an awesome bounty, consider BUYING ME A COFFEE! (https://ko-fi.com/xnlh4ck3r) ☕ (I could use the caffeine!)
 
+import re
+import os
+import requests
+import argparse
+import warnings
+from termcolor import colored
+from signal import signal, SIGINT
+import multiprocessing.dummy as mp
+import base64
+import xml.etree.ElementTree as etree
+import yaml
+import subprocess
+import random
+import math
+import enum
+from urllib3.util.retry import Retry
+from requests.adapters import HTTPAdapter
+from urllib3.exceptions import InsecureRequestWarning
+import sys
+from urllib.parse import urlparse
+from tempfile import NamedTemporaryFile
+from datetime import datetime
+from bs4 import BeautifulSoup, Comment
+
+import csv
+import urllib
+import tldextract
+from pathlib import Path
+import time
+import threading
+
+try:
+    from . import __version__
+except Exception:
+    pass
+
+# Try to import lxml to use with beautifulsoup4 instead of the default parser
+try:
+    lxmlInstalled = True
+    import lxml
+
+    del lxml  # Only imported to check availability
+except Exception:
+    lxmlInstalled = False
+# Try to import html5lib to use with beautifulsoup4 instead of the default parser
+try:
+    html5libInstalled = True
+    import html5lib
+
+    del html5lib  # Only imported to check availability
+except Exception:
+    html5libInstalled = False
+
+warnings.filterwarnings("ignore", category=UserWarning, module="bs4")
+
 inScopePrefixDomains = None
 inScopeFilterDomains = None
 burpFile = False
@@ -21,7 +76,7 @@ linksVisited = set()
 paramsFound = set()
 wordsFound = set()
 lstStopWords = {}
-lstPathWords = set() 
+lstPathWords = set()
 extraStopWords = ""
 contentTypesProcessed = set()
 lstExclusions = {}
@@ -48,57 +103,6 @@ waymoreFiles = set()
 currentDepth = 1
 fileContent = False
 
-import re
-import os
-import requests
-import argparse
-import warnings
-from termcolor import colored
-from signal import signal, SIGINT
-from sys import exit, stdin
-import multiprocessing.dummy as mp
-import base64
-import xml.etree.ElementTree as etree
-import yaml
-import subprocess
-import random
-import math
-import enum
-from urllib3.util.retry import Retry
-from requests.adapters import HTTPAdapter
-from urllib3.exceptions import InsecureRequestWarning
-import sys
-from urllib.parse import urlparse
-from tempfile import NamedTemporaryFile
-from datetime import datetime
-from bs4 import BeautifulSoup, Comment
-warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
-import csv
-import urllib
-import warnings
-import tldextract
-from pathlib import Path
-import time
-import threading
-try:
-    from . import __version__
-except:
-    pass
-import concurrent.futures
-
-# Try to import lxml to use with beautifulsoup4 instead of the default parser
-try:
-    lxmlInstalled = True
-    import lxml
-except:
-    lxmlInstalled = False
-# Try to import html5lib to use with beautifulsoup4 instead of the default parser
-try:
-    html5libInstalled = True
-    import html5lib
-except:
-    html5libInstalled = False
-
 startDateTime = datetime.now()
 
 # Rate limiting variables
@@ -108,11 +112,12 @@ rateLimitLock = threading.Lock()
 # Try to import psutil to show memory usage
 try:
     import psutil
-except:
+except Exception:
     currentMemUsage = -1
     maxMemoryUsage = -1
     currentMemPercent = -1
     maxMemoryPercent = -1
+
 
 # Creating stopProgram enum
 class StopProgram(enum.Enum):
@@ -182,7 +187,7 @@ UA_DESKTOP = [
     "Mozilla/5.0 (X11; Fedora; Linux x86_64; rv:105.0) Gecko/20100101 Firefox/105.0",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36 Edg/106.0.1370.34",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36 Edg/106.0.1370.34",
-    "Mozilla/5.0 (Windows NT 10.0; Trident/7.0; rv:11.0) like Gecko"
+    "Mozilla/5.0 (Windows NT 10.0; Trident/7.0; rv:11.0) like Gecko",
 ]
 UA_MOBILE_APPLE = [
     "Mozilla/5.0 (iPhone; CPU iPhone OS 12_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0 Mobile/15E148 Safari/604.1",
@@ -193,7 +198,7 @@ UA_MOBILE_APPLE = [
     "Mozilla/5.0 (iPhone; CPU iPhone OS 11_0 like Mac OS X) AppleWebKit/604.1.38 (KHTML, like Gecko) Version/11.0 Mobile/15A5370a Safari/604.1",
     "Mozilla/5.0 (iPhone9,3; U; CPU iPhone OS 10_0_1 like Mac OS X) AppleWebKit/602.1.50 (KHTML, like Gecko) Version/10.0 Mobile/14A403 Safari/602.1",
     "Mozilla/5.0 (iPhone9,4; U; CPU iPhone OS 10_0_1 like Mac OS X) AppleWebKit/602.1.50 (KHTML, like Gecko) Version/10.0 Mobile/14A403 Safari/602.1",
-    "Mozilla/5.0 (Apple-iPhone7C2/1202.466; U; CPU like Mac OS X; en) AppleWebKit/420+ (KHTML, like Gecko) Version/3.0 Mobile/1A543 Safari/419.3"
+    "Mozilla/5.0 (Apple-iPhone7C2/1202.466; U; CPU like Mac OS X; en) AppleWebKit/420+ (KHTML, like Gecko) Version/3.0 Mobile/1A543 Safari/419.3",
 ]
 UA_MOBILE_ANDROID = [
     "Mozilla/5.0 (Linux; Android 8.0.0; SM-G960F Build/R16NW) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.84 Mobile Safari/537.36",
@@ -253,15 +258,19 @@ REGEX_XMLATTR = re.compile(r"<([a-zA-Z0-9$_\.-]*?)>")
 
 # Regex for HTML input fields
 REGEX_HTMLINP = re.compile(r"<(input|textarea|select|button)(.*?)>", re.IGNORECASE)
-REGEX_HTMLINP_NAME = re.compile(r"(?<=\sname)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|\'))", re.IGNORECASE)    
-REGEX_HTMLINP_ID = re.compile(r"(?<=\sid)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|'))", re.IGNORECASE)
+REGEX_HTMLINP_NAME = re.compile(
+    r"(?<=\sname)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|\'))", re.IGNORECASE
+)
+REGEX_HTMLINP_ID = re.compile(
+    r"(?<=\sid)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|'))", re.IGNORECASE
+)
 
 # Regex for Sourcemap
 REGEX_SOURCEMAP = re.compile(r"(?<=SourceMap\:\s).*?(?=\n)", re.IGNORECASE)
 
 # Regex for Potential Words
 REGEX_WORDS = re.compile(r"(?<![\/])\b\w{3,}\b(?![\/])")
-REGEX_WORDSUB = re.compile(r'\"|%22|<|%3c|>|%3e|\(|%28|\)|%29|\s|%20', re.IGNORECASE)
+REGEX_WORDSUB = re.compile(r"\"|%22|<|%3c|>|%3e|\(|%28|\)|%29|\s|%20", re.IGNORECASE)
 
 # Regex for valid parameter
 REGEX_PARAM = re.compile(r"[0-9a-zA-Z_]")
@@ -270,24 +279,41 @@ REGEX_PARAM = re.compile(r"[0-9a-zA-Z_]")
 REGEX_PARAMKEYS = re.compile(r"(?<=\?|&)[^\=\&\n].*?(?=\=|&|\n)")
 
 # Regex for parameters
-REGEX_PARAMSPOSSIBLE = re.compile(r"(?<=[^\&|%26|\&amp;|\&#0?38;|\u0026|\\u0026|\\\\u0026|\\x26|\x26])(\?|%3f|\&#0?63;|\u003f|\\u003f|\\\\u003f|\&|%26|\&amp;|\&#0?38;|\u0026|\\u0026|\\\\u0026|\\x26|%3d|\&#0?61;|\u003d|\\u003d|\\\\u003d|\\x3d|\&quot;|\&#0?34;|\u0022|\\u0022|\\\\u0022|\&#0?39;)[a-z0-9_\-]{3,}(\=|%3d|\&#0?61;|\u003d|\\u003d|\\\\u003d|\x3d|\\x3d)(?=[^\=|%3d|\&#0?61;|\u003d|\\u003d|\\\\u003d|\x3d|\\x3d])", re.IGNORECASE)
-REGEX_PARAMSSUB = re.compile(r"\?|%3f|\&#0?63;|\u003f|\\u003f|\\\\u003f|\=|%3d|\&#0?61;|\u003d|\\u003d|\\\\u003d|\\x3d|\x3d|%26|\&amp;|\&#0?38;|\u0026|\\u0026|\\\\u0026|\\x26|\x26|\&quot;|\&#0?34;|\u0022|\\u0022|\\\\u0022|\\x22|\x22|\&#0?39;", re.IGNORECASE)
-REGEX_JSLET = re.compile(r"(?<=let[\s])[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*[\s]*(?=(\=|;|\n|\r))")
+REGEX_PARAMSPOSSIBLE = re.compile(
+    r"(?<=[^\&|%26|\&amp;|\&#0?38;|\u0026|\\u0026|\\\\u0026|\\x26|\x26])(\?|%3f|\&#0?63;|\u003f|\\u003f|\\\\u003f|\&|%26|\&amp;|\&#0?38;|\u0026|\\u0026|\\\\u0026|\\x26|%3d|\&#0?61;|\u003d|\\u003d|\\\\u003d|\\x3d|\&quot;|\&#0?34;|\u0022|\\u0022|\\\\u0022|\&#0?39;)[a-z0-9_\-]{3,}(\=|%3d|\&#0?61;|\u003d|\\u003d|\\\\u003d|\x3d|\\x3d)(?=[^\=|%3d|\&#0?61;|\u003d|\\u003d|\\\\u003d|\x3d|\\x3d])",
+    re.IGNORECASE,
+)
+REGEX_PARAMSSUB = re.compile(
+    r"\?|%3f|\&#0?63;|\u003f|\\u003f|\\\\u003f|\=|%3d|\&#0?61;|\u003d|\\u003d|\\\\u003d|\\x3d|\x3d|%26|\&amp;|\&#0?38;|\u0026|\\u0026|\\\\u0026|\\x26|\x26|\&quot;|\&#0?34;|\u0022|\\u0022|\\\\u0022|\\x22|\x22|\&#0?39;",
+    re.IGNORECASE,
+)
+REGEX_JSLET = re.compile(
+    r"(?<=let[\s])[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*[\s]*(?=(\=|;|\n|\r))"
+)
 REGEX_JSVAR = re.compile(r"(?<=var\s)[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*?(?=(\s|=|,|;|\n))")
-REGEX_JSCONSTS = re.compile(r"(?<=const\s)[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*?(?=(\s|=|,|;|\n))")
-REGEX_JSNESTED = re.compile(r"(?s)(^|\s?)(JSON\.stringify\(|dataLayer\.push\(|(var|let|const)\s+[\$A-Za-z0-9-_\[\]]+\s*=)\s*\{")
+REGEX_JSCONSTS = re.compile(
+    r"(?<=const\s)[\s]*[a-zA-Z$_][a-zA-Z0-9$_]*?(?=(\s|=|,|;|\n))"
+)
+REGEX_JSNESTED = re.compile(
+    r"(?s)(^|\s?)(JSON\.stringify\(|dataLayer\.push\(|(var|let|const)\s+[\$A-Za-z0-9-_\[\]]+\s*=)\s*\{"
+)
 REGEX_JSNESTEDPARAM = re.compile(r"\s*('|\"|\[])?[A-Za-z0-9-_\.]+('|\"|\])?\s*\:")
-        
+
 # Regex for links
-REGEX_LINKSSLASH = re.compile(r"(\&#x2f;|\&#0?2f|%2f|\u002f|\\u002f|\\/)", re.IGNORECASE)
+REGEX_LINKSSLASH = re.compile(
+    r"(\&#x2f;|\&#0?2f|%2f|\u002f|\\u002f|\\/)", re.IGNORECASE
+)
 REGEX_LINKSCOLON = re.compile(r"(\&#x3a;|\&#0?3a|%3a|\u003a|\\u003a)", re.IGNORECASE)
 REGEX_LINKSAND = re.compile(r"%26|\&amp;|\&#0?38;|\u0026|u0026|x26|\x26", re.IGNORECASE)
-REGEX_LINKSEQUAL = re.compile(r"%3d|\&equals;|\&#0?61;|\u003d|u003d|x3d|\x3d", re.IGNORECASE)
-#REGEX_LINKSEARCH1 = re.compile(r"^[^(]*\)+$")
-#REGEX_LINKSEARCH2 = re.compile(r"^[^{}]*\}+$")
-#REGEX_LINKSEARCH3 = re.compile(r"^[^\[]]*\]+$")
+REGEX_LINKSEQUAL = re.compile(
+    r"%3d|\&equals;|\&#0?61;|\u003d|u003d|x3d|\x3d", re.IGNORECASE
+)
+# REGEX_LINKSEARCH1 = re.compile(r"^[^(]*\)+$")
+# REGEX_LINKSEARCH2 = re.compile(r"^[^{}]*\}+$")
+# REGEX_LINKSEARCH3 = re.compile(r"^[^\[]]*\]+$")
 REGEX_LINKSEARCH4 = re.compile(r"<\/")
-        
+
+
 def write(text="", pipe=False):
     # Only send text to stdout if the tool isn't piped to pass output to something else,
     # or if the tool has been piped and the pipe parameter is True
@@ -315,19 +341,40 @@ def writerr(text="", pipe=False):
         else:
             sys.stderr.write(text + "\n")
 
+
 def showVersion():
     try:
         try:
-            resp = requests.get('https://raw.githubusercontent.com/xnl-h4ck3r/xnLinkFinder/main/xnLinkFinder/__init__.py',timeout=3)
-        except:
-            write('Current xnLinkFinder version '+__version__+' (unable to check if latest)\n')
-        if __version__ == resp.text.split('=')[1].replace('"','').strip():
-            write('Current xnLinkFinder version '+__version__+' ('+colored('latest','green')+')\n')
+            resp = requests.get(
+                "https://raw.githubusercontent.com/xnl-h4ck3r/xnLinkFinder/main/xnLinkFinder/__init__.py",
+                timeout=3,
+            )
+        except Exception:
+            write(
+                "Current xnLinkFinder version "
+                + __version__
+                + " (unable to check if latest)\n"
+            )
+        if __version__ == resp.text.split("=")[1].replace('"', "").strip():
+            write(
+                "Current xnLinkFinder version "
+                + __version__
+                + " ("
+                + colored("latest", "green")
+                + ")\n"
+            )
         else:
-            write('Current xnLinkFinder version '+__version__+' ('+colored('outdated','red')+')\n')
-    except:
+            write(
+                "Current xnLinkFinder version "
+                + __version__
+                + " ("
+                + colored("outdated", "red")
+                + ")\n"
+            )
+    except Exception:
         pass
-        
+
+
 def showBanner():
     write("")
     write(colored(r"           o           o    o--o           o         ", "red"))
@@ -336,18 +383,26 @@ def showBanner():
     write(colored(r"   o  |  | |    | |  | | \  |    | |  | |  | |-' |   ", "cyan"))
     write(colored(r"  / \ o  o O---o| o  o o  o o    | o  o  o-o o-o o   ", "magenta"))
     write(colored(r"                |                |                   ", "blue"))
-    write(colored(r"                ' by @Xnl-h4ck3r '              v" + __import__('xnLinkFinder').__version__))
+    write(
+        colored(
+            r"                ' by @Xnl-h4ck3r '              v"
+            + __import__("xnLinkFinder").__version__
+        )
+    )
     write("")
     showVersion()
+
 
 # Functions used when printing messages dependant on verbose options
 def verbose():
     return args.verbose or args.vverbose
 
+
 def vverbose():
     return args.vverbose
 
-def includeLink(link,origin):
+
+def includeLink(link, origin):
     """
     Determine if the passed Link should be excluded by checking the list of exclusions
     Returns whether the link should be included
@@ -360,7 +415,7 @@ def includeLink(link,origin):
         # Exclude if the finding is an endpoint link but has more than one newline character. This is a false
         # positive that can sometimes be raised by the regex
         # And exclude if the link:
-        # - starts with literal characters \n   
+        # - starts with literal characters \n
         # - has any characters that aren't printable
         # - starts with # (and not #/ because these are Angular JS redirect routes)
         # - start with $
@@ -375,7 +430,15 @@ def includeLink(link,origin):
         # - starts with a -
         # - starts with ...
         try:
-            if link.count("\n") > 1 or (link.startswith("#") and not link.startswith("#/")) or link.startswith("$") or link.startswith("\\") or link.startswith("/=") or link.startswith("-") or link.startswith("..."):
+            if (
+                link.count("\n") > 1
+                or (link.startswith("#") and not link.startswith("#/"))
+                or link.startswith("$")
+                or link.startswith("\\")
+                or link.startswith("/=")
+                or link.startswith("-")
+                or link.startswith("...")
+            ):
                 include = False
             if include:
                 include = link.isprintable()
@@ -388,20 +451,35 @@ def includeLink(link,origin):
             if include:
                 include = not (bool(re.search(r"\\(s|S)", link)))
             if include:
-                include = not (bool(re.match(r"^(application\/|image\/|model\/|video\/|audio\/|text\/)", link, re.IGNORECASE)))
+                include = not (
+                    bool(
+                        re.match(
+                            r"^(application\/|image\/|model\/|video\/|audio\/|text\/)",
+                            link,
+                            re.IGNORECASE,
+                        )
+                    )
+                )
             if include and args.ascii_only:
                 include = link.isascii()
         except Exception as e:
             if vverbose():
                 writerr("ERROR includeLink 2: " + str(e))
-         
+
         if include:
             # Go through lstExclusions and see if finding contains any. If not then continue
             # If it fails then try URL encoding and then checking
             linkWithoutQueryString = link.split("?")[0].lower()
             for exc in lstExclusions:
                 try:
-                    if str(linkWithoutQueryString.encode(encoding="ascii",errors="ignore")).find(exc.lower()) >= 0:
+                    if (
+                        str(
+                            linkWithoutQueryString.encode(
+                                encoding="ascii", errors="ignore"
+                            )
+                        ).find(exc.lower())
+                        >= 0
+                    ):
                         include = False
                 except Exception as e:
                     if vverbose():
@@ -417,20 +495,22 @@ def includeLink(link,origin):
                         )
 
         # If the -xrel / --exclude-relative-links argument was passed, and the link starts with ./ or ../ then don't add
-        if args.exclude_relative_links and (link.startswith("./") or link.startswith("../")):
+        if args.exclude_relative_links and (
+            link.startswith("./") or link.startswith("../")
+        ):
             include = False
 
         # If the -sf --scope-filter argument is True then a link should only be included if in the scope
         # but ignore any links that don't start with a protocol or //
-        if re.match(r'^([A-Za-z]+:)?//', link):
+        if re.match(r"^([A-Za-z]+:)?//", link):
             if include and args.scope_filter:
                 try:
                     include = False
                     # Get the domain of the current link and add origin if requested
                     try:
                         domain = urlparse(link).netloc
-                    except:
-                        domain = ''
+                    except Exception:
+                        domain = ""
                     if args.origin:
                         linkDetail = link + "  [" + origin + "]"
                     else:
@@ -443,7 +523,7 @@ def includeLink(link,origin):
                             include = True
                         else:
                             # If OOS domains need to be logged, add to the set
-                            if args.output_oos and domain != '':
+                            if args.output_oos and domain != "":
                                 oosLinksFound.add(linkDetail)
                     else:
                         for search in inScopeFilterDomains:
@@ -458,7 +538,7 @@ def includeLink(link,origin):
                                     include = True
                                 else:
                                     # If OOS domains need to be logged, add to the set
-                                    if args.output_oos and domain != '':
+                                    if args.output_oos and domain != "":
                                         oosLinksFound.add(linkDetail)
                 except Exception as e:
                     if vverbose():
@@ -492,7 +572,7 @@ def includeFile(fileOrUrl):
 
         # If a URL is passed, we want to remove any query string or fragment
         fileOrUrl = fileOrUrl.split("?")[0].split("#")[0].lower()
-        
+
         # Go through lstFileExtExclusions and see if finding contains any. If not then continue
         for exc in lstFileExtExclusions:
             try:
@@ -500,7 +580,16 @@ def includeFile(fileOrUrl):
                     include = False
             except Exception as e:
                 if vverbose():
-                    writerr(colored("ERROR includeFile 2: Failed to check exclusions for a finding on file/url: " + fileOrUrl + " (" + str(e) + ")", "red"))
+                    writerr(
+                        colored(
+                            "ERROR includeFile 2: Failed to check exclusions for a finding on file/url: "
+                            + fileOrUrl
+                            + " ("
+                            + str(e)
+                            + ")",
+                            "red",
+                        )
+                    )
 
     except Exception as e:
         if vverbose():
@@ -509,7 +598,7 @@ def includeFile(fileOrUrl):
     return include
 
 
-def includeContentType(header,url):
+def includeContentType(header, url):
     """
     Determine if the content type is in the exclusions
     Returns whether the content type is included
@@ -530,9 +619,9 @@ def includeContentType(header,url):
             else:
                 contentType = header["content-type"]
             contentType = contentType.split(";")[0]
-        except Exception as e:
+        except Exception:
             contentType = ""
-        
+
         # If the content type wasn't found, check against file extensions
         if contentType == "":
             url = url.split("?")[0].split("#")[0].split("/")[-1]
@@ -544,18 +633,18 @@ def includeContentType(header,url):
             for excludeContentType in lstExcludeContentType:
                 if contentType.lower() == excludeContentType.lower():
                     include = False
-            
+
             # If the content type can be included and -vv option was passed, add to the set to display at the end
             if vverbose() and include:
                 try:
                     contentTypesProcessed.add(contentType)
-                except:
+                except Exception:
                     pass
-                
+
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR includeContentType 1: " + str(e), "red"))
-            
+
     return include
 
 
@@ -567,14 +656,14 @@ def addLink(link, url, prefixed=False):
     link = link.replace("\\u0026", "&")
     link = link.replace(r"\x26", "&")
     link = link.replace(r"\u0026", "&")
-    link = link.replace("&#38;","&")
+    link = link.replace("&#38;", "&")
     link = link.replace("&equals;", "=")
     link = link.replace("\\x3d", "=")
     link = link.replace("\\u003d", "=")
     link = link.replace(r"\x3d", "=")
     link = link.replace(r"\u003d", "=")
     link = link.replace("&#61;", "=")
-                
+
     # Add the link to the list
     try:
         linkDetail = link
@@ -582,7 +671,7 @@ def addLink(link, url, prefixed=False):
             linkDetail = linkDetail + "  [" + url + "]"
         if prefixed:
             linkDetail = linkDetail + " (PREFIXED)"
-        linksFound.add(linkDetail)    
+        linksFound.add(linkDetail)
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR addLink 1: " + str(e), "red"))
@@ -598,14 +687,16 @@ def addLink(link, url, prefixed=False):
         if RESP_PARAM_LINKSFOUND and link.count("?") > 0:
             # Get parameters from the link
             try:
-                link = link.replace("%5c","").replace("\\","")
+                link = link.replace("%5c", "").replace("\\", "")
                 link = REGEX_LINKSAND.sub("&", link)
                 link = REGEX_LINKSEQUAL.sub("=", link)
                 param_keys = REGEX_PARAMKEYS.finditer(link)
                 for param in param_keys:
                     if param is not None and param.group() != "":
                         # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
-                        if not args.ascii_only or (args.ascii_only and param.group().strip().isascii()):
+                        if not args.ascii_only or (
+                            args.ascii_only and param.group().strip().isascii()
+                        ):
                             paramsFound.add(param.group().strip())
             except Exception as e:
                 if vverbose():
@@ -614,6 +705,7 @@ def addLink(link, url, prefixed=False):
         if vverbose():
             writerr(colored("ERROR addLink 3 " + str(e), "red"))
 
+
 def clean_body(body):
     try:
         # Ensure body is a string
@@ -621,8 +713,14 @@ def clean_body(body):
             body = str(body)
         # Remove base64 encoded strings over 10000 characters long. There are some responses that can have huge ones and ends up causing regex problems and hanging
         pattern = r"eyJ[a-zA-Z0-9\+\/]+(?:=|\b|\n)"
+
         def conditional_remove(match):
-            return "BASE64_REPLACED_BY_XNLINKFINDER" if len(match.group(0)) > 10000 else match.group(0)
+            return (
+                "BASE64_REPLACED_BY_XNLINKFINDER"
+                if len(match.group(0)) > 10000
+                else match.group(0)
+            )
+
         # Remove matches
         cleaned_body = re.sub(pattern, conditional_remove, body)
         return cleaned_body
@@ -630,6 +728,7 @@ def clean_body(body):
         if vverbose():
             writerr(colored("ERROR clean_body 1 " + str(e), "red"))
         return str(body) if body else ""
+
 
 def is_domain_format(line):
     """
@@ -641,24 +740,27 @@ def is_domain_format(line):
     try:
         if not line or not isinstance(line, str):
             return False
-        
+
         line = line.strip()
-        
+
         # Check if line starts with http/https or // then wil be considered a domain
         if line.startswith("http") or line.startswith("//"):
             return True
-        
+
         # Domain regex: matches domain.tld or subdomain.domain.tld patterns
         # Must have at least one dot, and valid characters for domain names
         # Domain parts can contain letters, numbers, hyphens (but not start/end with hyphen)
-        domain_pattern = r'^(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
-        
+        domain_pattern = (
+            r"^(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$"
+        )
+
         return bool(re.match(domain_pattern, line))
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR is_domain_format 1: " + str(e), "red"))
         return False
-    
+
+
 def regex_worker(pattern, string, flags):
     """Runs re.finditer() and returns matches."""
     try:
@@ -666,23 +768,105 @@ def regex_worker(pattern, string, flags):
     except Exception as e:
         return str(e)
 
-def safe_regex_findall(pattern, string, timeout=DEFAULT_REGEX_TIMEOUT):
-    """Runs regex search with a timeout using threads."""
+
+def _regex_worker_mp(pat, txt, out_q):
+    """Worker function for multiprocessing regex execution with timeout."""
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=args.processes) as executor:
-            future = executor.submit(regex_worker, pattern, string, re.IGNORECASE)
-            
+        matches = [m.group(0) for m in re.finditer(pat, txt, re.IGNORECASE)]
+        out_q.put(matches)
+    except Exception:
+        out_q.put([])  # Return empty list on error
+
+
+def safe_regex_findall(pattern, string, timeout=DEFAULT_REGEX_TIMEOUT):
+    """Runs regex search with a timeout using multiprocessing to allow termination on catastrophic backtracking."""
+    try:
+        from multiprocessing import Process, Queue
+        import platform
+        import time
+
+        # On Windows, explicitly set start method if not already set
+        # This helps with pickling issues
+        if platform.system() == "Windows":
             try:
-                result = future.result(timeout=timeout)  # Wait for completion within timeout
-            except concurrent.futures.TimeoutError:
-                return "Regex execution timed out!"
-        
-        return result
+                import multiprocessing
+
+                # Get current start method, don't change if already set
+                current_method = multiprocessing.get_start_method(allow_none=True)
+                if current_method is None:
+                    multiprocessing.set_start_method("spawn", force=True)
+            except RuntimeError:
+                # Start method already set, ignore
+                pass
+
+        q = Queue()
+        # Use module-level function for Windows pickling compatibility
+        p = Process(target=_regex_worker_mp, args=(pattern, string, q))
+        p.daemon = True
+
+        start_time = time.time()
+        p.start()
+
+        # Give process a moment to start (0.1 seconds)
+        time.sleep(0.1)
+
+        # Check if process actually started
+        if not p.is_alive() and q.empty():
+            # Process failed to start or died immediately - fall back to direct execution
+            try:
+                return [m.group(0) for m in re.finditer(pattern, string, re.IGNORECASE)]
+            except Exception:
+                return []
+
+        p.join(timeout)
+
+        elapsed = time.time() - start_time
+
+        # Only report timeout if process is BOTH still alive AND significant time has elapsed
+        # This prevents false timeout reports if process fails immediately
+        if p.is_alive() and elapsed >= (timeout * 0.8):
+            # Process is still running after timeout - terminate it
+            try:
+                p.terminate()
+                p.join(timeout=1)  # Wait up to 1 second for termination
+            except Exception:
+                pass
+            return "Regex execution timed out!"
+
+        # If process is alive but not enough time elapsed, it failed to start properly
+        # Fall back to direct execution
+        if p.is_alive():
+            try:
+                p.terminate()
+            except Exception:
+                pass
+            try:
+                return [m.group(0) for m in re.finditer(pattern, string, re.IGNORECASE)]
+            except Exception:
+                return []
+
+        # Process finished, get result
+        try:
+            if not q.empty():
+                result = q.get_nowait()
+                return result if isinstance(result, list) else []
+            return []
+        except Exception:
+            return []
+
     except RuntimeError as e:
-        # Handle "cannot schedule new futures after interpreter shutdown" during Ctrl-C
+        # Handle shutdown during Ctrl-C
         if "shutdown" in str(e).lower():
-            return []  # Return empty list during shutdown
-        raise  # Re-raise if it's a different RuntimeError
+            return []
+        raise
+    except Exception:
+        # On any other error (e.g., pickling issues), fall back to running without timeout
+        # This ensures the tool doesn't break entirely
+        try:
+            return [m.group(0) for m in re.finditer(pattern, string, re.IGNORECASE)]
+        except Exception:
+            return []
+
 
 def stripLinkFromUnbalancedBrackets(link):
     """
@@ -692,7 +876,7 @@ def stripLinkFromUnbalancedBrackets(link):
     """
     try:
         # Strips unbalanced brackets
-        brackets = {'(': ')', '[': ']', '{': '}'}
+        brackets = {"(": ")", "[": "]", "{": "}"}
         opening = brackets.keys()
         closing = brackets.values()
         stack = []
@@ -718,6 +902,7 @@ def stripLinkFromUnbalancedBrackets(link):
         if vverbose():
             writerr(colored("ERROR stripLinkFromUnbalancedBrackets 1 " + str(e), "red"))
         return ""
+
 
 def getResponseLinks(response, url):
     """
@@ -764,16 +949,16 @@ def getResponseLinks(response, url):
 
         # Truncate any lines in the body before using
         body = clean_body(body)
-        
+
         # Some URLs may be displayed in the body within strings that have different encodings of / and : so replace these
         body = REGEX_LINKSSLASH.sub("/", body)
         body = REGEX_LINKSCOLON.sub(":", body)
 
         # Replace occurrences of HTML entity &quot; with an actual double quote
-        body = body.replace('&quot;','"')
+        body = body.replace("&quot;", '"')
         # Replace occurrences of HTML entity &nbsp; with an actual space
-        body = body.replace('&nbsp;',' ')
-            
+        body = body.replace("&nbsp;", " ")
+
         # Take the LINK_REGEX_FILES values and build a string of any values over 4 characters or has a number in it
         # This is used in the 4th capturing group Link Finding regexwebsocket
         lstFileExt = LINK_REGEX_FILES.split("|")
@@ -790,7 +975,7 @@ def getResponseLinks(response, url):
         try:
             # If it is content-type we want to process then carry on, or if a directory was passed (so there is no content type) ensure the filename is not an exclusion
             if (dirPassed and includeFile(url)) or (
-                not dirPassed and includeContentType(header,responseUrl)
+                not dirPassed and includeContentType(header, responseUrl)
             ):
                 # Initialize link_keys before try block
                 link_keys = []
@@ -804,35 +989,62 @@ def getResponseLinks(response, url):
                     )
 
                     # Replace different encodings of " before searching to maximise finds
-                    body = body.replace('&#34;','"').replace('%22','"').replace('\x22','"').replace('\u0022','"')
+                    body = (
+                        body.replace("&#34;", '"')
+                        .replace("%22", '"')
+                        .replace("\x22", '"')
+                        .replace("\u0022", '"')
+                    )
 
                     # Extract links using first regex
                     link_keys = safe_regex_findall(reString, body)
                     if link_keys == "Regex execution timed out!":
                         content_length = len(body)
-                        writerr(colored(getSPACER(f"The link regex timed out for {url} (Content-Length:{content_length}, Timeout:{DEFAULT_REGEX_TIMEOUT}s)"), "red"))
+                        writerr(
+                            colored(
+                                getSPACER(
+                                    f"The link regex timed out for {url} (Content-Length:{content_length}, Timeout:{DEFAULT_REGEX_TIMEOUT}s)"
+                                ),
+                                "red",
+                            )
+                        )
                         link_keys = []  # Reset to empty list on timeout
                 except Exception as e:
                     link_keys = []  # Reset to empty list on exception
                     if vverbose():
-                        writerr(colored(getSPACER("ERROR getResponseLinks 5: " + str(e)), "red"))
+                        writerr(
+                            colored(
+                                getSPACER("ERROR getResponseLinks 5: " + str(e)), "red"
+                            )
+                        )
                 # Initialize extra_keys before try block
                 extra_keys = []
-                try: 
+                try:
                     # Additional domain regex
                     domain_regex = r"(?:[a-zA-Z0-9_-]+\.){0,5}[a-zA-Z0-9_-]+\.[a-zA-Z]{2,24}(?:\/[^\s\"'<>()\[\]{}]*)?"
-                        
+
                     # Extract additional domains
                     extra_keys = safe_regex_findall(domain_regex, body)
                     if extra_keys == "Regex execution timed out!":
                         content_length = len(body)
-                        writerr(colored(getSPACER(f"The domain regex timed out for {url} (Content-Length:{content_length}, Timeout:{DEFAULT_REGEX_TIMEOUT}s)"), "red"))
+                        writerr(
+                            colored(
+                                getSPACER(
+                                    f"The domain regex timed out for {url} (Content-Length:{content_length}, Timeout:{DEFAULT_REGEX_TIMEOUT}s)"
+                                ),
+                                "red",
+                            )
+                        )
                         extra_keys = []  # Reset to empty list on timeout
                 except Exception as e:
                     extra_keys = []  # Reset to empty list on exception
                     if vverbose():
-                        writerr(colored(getSPACER("ERROR getResponseLinks 6: " + str(e)), "red"))
-                                
+                        writerr(
+                            colored(
+                                getSPACER("ERROR getResponseLinks 6: " + str(e)), "red"
+                            )
+                        )
+
                 # Filter out:
                 # - invalid domains (TLDs that don't exist)
                 # - domain with less than 3 chars before tld
@@ -841,34 +1053,61 @@ def getResponseLinks(response, url):
                 # - domains 'this','self','target','value','values','prop','properties','proparray','useragent','rect','paddiing','style','rule','bound','child','global','element','div','prototype','event','feature','path'
                 # - suffix is 'js' and domain is NOT 'map'
                 # - IF the --all-tlds arg was passed, make sure the suffix is in the COMMON_TLDS list
-                COMMON_TLDS_LIST = COMMON_TLDS.split(',')
+                COMMON_TLDS_LIST = COMMON_TLDS.split(",")
                 valid_extra_keys = [
-                    f"//{key}" for key in extra_keys 
-                    if tldextract.extract(key).suffix 
-                    and tldextract.extract(key).suffix.lower() not in ('call', 'skin', 'menu', 'style', 'rest', 'next', 'top') 
-                    and len(tldextract.extract(key).domain) > 2 
-                    and not tldextract.extract(key).domain.startswith('_') 
-                    and tldextract.extract(key).domain.lower() not in (
-                        'this', 'self', 'target', 'value', 'values', 'prop', 'properties', 'proparray', 'useragent', 'rect', 'paddiing', 'style', 'rule', 'bound', 'child', 'global', 'element', 'div', 'prototype', 'event', 'feature', 'path'
-                    ) 
+                    f"//{key}"
+                    for key in extra_keys
+                    if tldextract.extract(key).suffix
+                    and tldextract.extract(key).suffix.lower()
+                    not in ("call", "skin", "menu", "style", "rest", "next", "top")
+                    and len(tldextract.extract(key).domain) > 2
+                    and not tldextract.extract(key).domain.startswith("_")
+                    and tldextract.extract(key).domain.lower()
+                    not in (
+                        "this",
+                        "self",
+                        "target",
+                        "value",
+                        "values",
+                        "prop",
+                        "properties",
+                        "proparray",
+                        "useragent",
+                        "rect",
+                        "paddiing",
+                        "style",
+                        "rule",
+                        "bound",
+                        "child",
+                        "global",
+                        "element",
+                        "div",
+                        "prototype",
+                        "event",
+                        "feature",
+                        "path",
+                    )
                     and not (
-                        tldextract.extract(key).suffix.lower() == "map" 
+                        tldextract.extract(key).suffix.lower() == "map"
                         and tldextract.extract(key).domain.lower() != "js"
                     )
                     and (
-                        args.all_tlds or 
-                        ("." + tldextract.extract(key).suffix.lower()) in [("." + suffix) for suffix in COMMON_TLDS_LIST]
-                    ) 
+                        args.all_tlds
+                        or ("." + tldextract.extract(key).suffix.lower())
+                        in [("." + suffix) for suffix in COMMON_TLDS_LIST]
+                    )
                 ]
 
                 # Add extra keys
                 if not isinstance(link_keys, list):
-                    link_keys = [link_keys]  # Convert to list if it's a string or any non-list type
+                    link_keys = [
+                        link_keys
+                    ]  # Convert to list if it's a string or any non-list type
                 link_keys.extend(valid_extra_keys)
 
                 # Remove duplicates
                 link_keys = list(set(link_keys))
-                
+
                 for key in link_keys:
 
                     if key is not None and key.strip() != "" and len(key.strip()) > 2:
@@ -876,7 +1115,7 @@ def getResponseLinks(response, url):
                         link = link.strip("\"'\n\r( ")
                         link = link.replace("\\n", "")
                         link = link.replace("\\r", "")
-                        link = link.replace("\\.",".")
+                        link = link.replace("\\.", ".")
 
                         try:
                             first = link[:1]
@@ -914,28 +1153,34 @@ def getResponseLinks(response, url):
                             link = link.rstrip(">;")
                             link = link.rstrip(";")
                             link = link.rstrip(",")
-                            
-                            
+
                             # If there are any backticks in the URL, remove everything from the backtick onwards
                             link = link.split("`")[0]
-                            
+
                             # If there are any unbalanced brackets in the link, then strip from the unbalanced bracket
-                            link = stripLinkFromUnbalancedBrackets(link)    
-                                
+                            link = stripLinkFromUnbalancedBrackets(link)
+
                             # If there is a </ in the link then strip from that forward
                             if REGEX_LINKSEARCH4.search(link):
-                                link = link.split("</", 1)[0] 
-                               
+                                link = link.split("</", 1)[0]
+
                         except Exception as e:
                             if vverbose():
-                                writerr(colored(getSPACER("ERROR getResponseLinks 2: " + str(e)), "red"))
+                                writerr(
+                                    colored(
+                                        getSPACER(
+                                            "ERROR getResponseLinks 2: " + str(e)
+                                        ),
+                                        "red",
+                                    )
+                                )
 
                         # If the link starts with a . and the 2nd character is not a . or / then remove the first .
                         if link[0] == "." and link[1] != "." and link[1] != "/":
                             link = link[1:]
 
                         # Only add the finding if it should be included
-                        if includeLink(link,responseUrl):
+                        if includeLink(link, responseUrl):
 
                             # If the link found is for a .js.map file then put the full .map URL in the list
                             if link.find("//# sourceMappingURL") >= 0:
@@ -961,7 +1206,8 @@ def getResponseLinks(response, url):
                             # If the -sp (--scope-prefix) option was passed and the link doesn't start with any type of schema
                             if (
                                 args.scope_prefix is not None
-                                and re.match(r"^[a-z0-9\-]{2,}\:\/\/", link.lower()) is None
+                                and re.match(r"^[a-z0-9\-]{2,}\:\/\/", link.lower())
+                                is None
                             ):
 
                                 # If -spo is passed, then add the original link
@@ -998,7 +1244,9 @@ def getResponseLinks(response, url):
                                             count += 1
                                             prefix = "{}".format(domain.strip())
                                             if prefix != "":
-                                                addLink(prefix + link, responseUrl, True)
+                                                addLink(
+                                                    prefix + link, responseUrl, True
+                                                )
 
                                 else:  # else just prefix wit the -sp value
                                     prefix = args.scope_prefix
@@ -1029,7 +1277,9 @@ def getResponseLinks(response, url):
 
         except Exception as e:
             if vverbose():
-                writerr(colored(getSPACER("ERROR getResponseLinks 3: " + str(e)), "red"))
+                writerr(
+                    colored(getSPACER("ERROR getResponseLinks 3: " + str(e)), "red")
+                )
 
         # Also add a link of a js.map file if the X-SourceMap or SourceMap header exists
         if not dirPassed:
@@ -1040,7 +1290,7 @@ def getResponseLinks(response, url):
                         mapFile = REGEX_SOURCEMAP.findall(header)[0]
                     else:
                         mapFile = header["sourcemap"]
-                except:
+                except Exception:
                     mapFile = ""
                 # If a map file was found in the response, then add a link for it
                 if mapFile != "":
@@ -1048,7 +1298,9 @@ def getResponseLinks(response, url):
 
             except Exception as e:
                 if vverbose():
-                    writerr(colored(getSPACER("ERROR getResponseLinks 4: " + str(e)), "red"))
+                    writerr(
+                        colored(getSPACER("ERROR getResponseLinks 4: " + str(e)), "red")
+                    )
 
     except Exception as e:
         if vverbose():
@@ -1092,7 +1344,9 @@ def handler(signal_received, frame):
         stopProgram = StopProgram.SIGINT
         writerr(
             colored(
-                getSPACER('>>> "Oh my God, they killed Kenny... and xnLinkFinder!" - Kyle'),
+                getSPACER(
+                    '>>> "Oh my God, they killed Kenny... and xnLinkFinder!" - Kyle'
+                ),
                 "red",
             )
         )
@@ -1108,22 +1362,23 @@ def enforceRateLimit():
     Enforce rate limiting by ensuring requests don't exceed the specified rate per second
     """
     global lastRequestTime, rateLimitLock
-    
+
     try:
         if args.rate_limit > 0:
             with rateLimitLock:
                 currentTime = time.time()
                 timeSinceLastRequest = currentTime - lastRequestTime
                 minInterval = 1.0 / args.rate_limit
-                
+
                 if timeSinceLastRequest < minInterval:
                     sleepTime = minInterval - timeSinceLastRequest
                     time.sleep(sleepTime)
-                
+
                 lastRequestTime = time.time()
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR enforceRateLimit 1: " + str(e), "red"))
+
 
 def getMemory():
 
@@ -1142,19 +1397,25 @@ def getMemory():
     if stopProgram is None:
         checkMaxTimeLimit()
 
+
 def shouldMakeRequest(url):
     # Should we request this url?
 
     makeRequest = False
     # Only process if we haven't visited the link before, it isn't blank and it doesn't start with a . or just one /
     # Or if waymore mode and the depth s 0
-    if url not in linksVisited and url != "" and not url.startswith(".") and not(waymoreMode and args.depth == 0):
+    if (
+        url not in linksVisited
+        and url != ""
+        and not url.startswith(".")
+        and not (waymoreMode and args.depth == 0)
+    ):
         try:
             tldExtract = tldextract.extract(url)
             tld = tldExtract.suffix
-        except:
+        except Exception:
             tld = tldExtract.suffix
-        if url.startswith("//") or url.startswith("http") or tld != '':
+        if url.startswith("//") or url.startswith("http") or tld != "":
             makeRequest = True
 
     return makeRequest
@@ -1163,7 +1424,7 @@ def shouldMakeRequest(url):
 def processUrl(url):
 
     global burpFile, zapFile, caidoFile, totalRequests, skippedRequests, failedRequests, userAgent, requestHeaders, tooManyRequests, tooManyForbidden, tooManyTimeouts, tooManyConnectionErrors, stopProgram, waymoreMode, stopProgram, failedPrefixLinks, currentDepth
-    
+
     # If a custom user agent string was passed then use that in the header, else
     # Choose a random user agent string to use from the current group
     if args.user_agent_custom != "":
@@ -1172,10 +1433,10 @@ def processUrl(url):
         userAgent = random.choice(userAgents[currentUAGroup])
     requestHeaders["User-Agent"] = userAgent
 
-    try: 
+    try:
         # If waymore Mode then the url maybe from waymore_index.txt (or index.txt in previous versions) get the source URL from the line
-        if waymoreMode: 
-            if os.path.basename(args.input) in ("waymore_index.txt","index.txt"):
+        if waymoreMode:
+            if os.path.basename(args.input) in ("waymore_index.txt", "index.txt"):
                 values = url.split(",")
                 archiveUrl = values[1].strip()
                 # NOTE: The URLs in the index file are in the formats below:
@@ -1188,9 +1449,9 @@ def processUrl(url):
             # Add URLs to the list if depth is 0
             if args.depth == 0:
                 linksFound.add(url)
-    except Exception as e:
+    except Exception:
         pass
-        
+
     try:
 
         # Check if the URL was prefixed and remove the tag
@@ -1200,17 +1461,17 @@ def processUrl(url):
         prefix = " (PREFIXED)"
         if url.find(prefix) > 0:
             prefixed = True
-            url = url.replace(prefix,"")
-            
+            url = url.replace(prefix, "")
+
         url = url.strip().rstrip("\n")
-        
+
         # If the url has the origin at the end (.e.g [...]) then strip it off before processing
         if url.find("[") > 0:
             url = str(url[0 : url.find("[") - 2])
 
         # If the url has *. in it, remove that before we try to request it
-        url = url.replace("*.","").replace(":*","").replace("*","") 
-        
+        url = url.replace("*.", "").replace(":*", "").replace("*", "")
+
         # If we should make the current request
         if shouldMakeRequest(url):
 
@@ -1223,7 +1484,7 @@ def processUrl(url):
             if totalRequests % 25 == 0:
                 try:
                     getMemory()
-                except:
+                except Exception:
                     pass
 
             # Get response from url
@@ -1256,11 +1517,15 @@ def processUrl(url):
                     # Make the request
                     session = requests.Session()
                     if args.retries > 0:
-                        retries = Retry(total=args.retries, backoff_factor=0.1, status_forcelist=[ 429, 500, 502, 503, 504 ])
+                        retries = Retry(
+                            total=args.retries,
+                            backoff_factor=0.1,
+                            status_forcelist=[429, 500, 502, 503, 504],
+                        )
                         adapter = HTTPAdapter(max_retries=retries)
-                        session.mount('http://', adapter)
-                        session.mount('https://', adapter)
-                    
+                        session.mount("http://", adapter)
+                        session.mount("https://", adapter)
+
                     resp = session.get(
                         requestUrl,
                         headers=requestHeaders,
@@ -1269,59 +1534,89 @@ def processUrl(url):
                         verify=verify,
                         proxies=proxies,
                     )
-                    
+
                     # Get content length
                     if args.content_length:
-                        cl = resp.headers.get('Content-Length')
+                        cl = resp.headers.get("Content-Length")
                         if cl is None:
                             cl = str(len(resp.text))
-                        content_length = "  ["+cl+"]"
+                        content_length = "  [" + cl + "]"
                     else:
                         content_length = ""
-                        
+
                     # If the replay proxy is being used, and the title in the response contains "Burp Suite" and has an error of "Unknown Host" then set the response code to 504. This is because if Burp is used for a proxy, it returns 200 because the response is the error from Burp.
-                    if args.replay_proxy and resp.text.find('<title>Burp Suite') > 0:
-                        if resp.text.find('Unknown&#32;host') > 0:
+                    if args.replay_proxy and resp.text.find("<title>Burp Suite") > 0:
+                        if resp.text.find("Unknown&#32;host") > 0:
                             resp.status_code = 504
                         else:
-                            if os.environ.get('USER') == 'xnl':
+                            if os.environ.get("USER") == "xnl":
                                 try:
-                                    writerr(colored(getSPACER('Burp Response - Code: '+str(resp.status_code)+'\nResp: ' + resp.text), 'yellow'))
-                                except:
+                                    writerr(
+                                        colored(
+                                            getSPACER(
+                                                "Burp Response - Code: "
+                                                + str(resp.status_code)
+                                                + "\nResp: "
+                                                + resp.text
+                                            ),
+                                            "yellow",
+                                        )
+                                    )
+                                except Exception:
                                     pass
-                                    
+
                     if resp.status_code == 200:
                         if verbose():
-                            msg = "Response " + str(resp.status_code) + ": " + url + content_length
-                            if prefixed: 
-                                msg = msg + prefix
-                            write(colored(msg,"green"))
-                    else:
-                        if verbose():
-                            msg = "Response " + str(resp.status_code) + ": " + url + content_length
+                            msg = (
+                                "Response "
+                                + str(resp.status_code)
+                                + ": "
+                                + url
+                                + content_length
+                            )
                             if prefixed:
                                 msg = msg + prefix
-                            write(colored(msg,"yellow"))
-                            
+                            write(colored(msg, "green"))
+                    else:
+                        if verbose():
+                            msg = (
+                                "Response "
+                                + str(resp.status_code)
+                                + ": "
+                                + url
+                                + content_length
+                            )
+                            if prefixed:
+                                msg = msg + prefix
+                            write(colored(msg, "yellow"))
+
                         # If argument -s429 was passed, keep a count of "429 Too Many Requests" and stop the program if > 95% of responses have status 429, but only if at least 10 requests have already been made
                         if args.s429 and resp.status_code == 429:
                             tooManyRequests = tooManyRequests + 1
                             try:
-                                if (tooManyRequests / totalRequests * 100) > 95 and totalRequests > 10:
+                                if (
+                                    tooManyRequests / totalRequests * 100
+                                ) > 95 and totalRequests > 10:
                                     stopProgram = StopProgram.TOO_MANY_REQUESTS
-                            except:
+                            except Exception:
                                 pass
                         # If argument -s403 was passed, keep a count of "403 Forbidden" and stop the program if > 95% of responses have status 403, but only if at least 10 requests have already been made
                         if args.s403 and resp.status_code == 403:
                             tooManyForbidden = tooManyForbidden + 1
                             try:
-                                if (tooManyForbidden / totalRequests * 100) > 95  and totalRequests > 10:
+                                if (
+                                    tooManyForbidden / totalRequests * 100
+                                ) > 95 and totalRequests > 10:
                                     stopProgram = StopProgram.TOO_MANY_FORBIDDEN
-                            except:
+                            except Exception:
                                 pass
 
                     # If the -spkf wasn't passed, the response was 404, and the URL was prefixed, flag it as a failed link, else get links and parameters from the response
-                    if not args.scope_prefix_keep_failed and prefixed and resp.status_code == 404:
+                    if (
+                        not args.scope_prefix_keep_failed
+                        and prefixed
+                        and resp.status_code == 404
+                    ):
                         failedPrefix = True
                     else:
                         # Get potential links from the response
@@ -1331,7 +1626,7 @@ def processUrl(url):
                         # Get potential parameters from the response
                         getResponseParams(resp, url)
 
-                except requests.exceptions.ProxyError as pe:
+                except requests.exceptions.ProxyError:
                     writerr(
                         colored(
                             "Cannot connect to the proxy " + args.replay_proxy, "red"
@@ -1347,9 +1642,11 @@ def processUrl(url):
                             if args.sTO:
                                 tooManyTimeouts = tooManyTimeouts + 1
                                 try:
-                                    if (tooManyTimeouts / totalRequests * 100) > 95 and totalRequests > 10:
+                                    if (
+                                        tooManyTimeouts / totalRequests * 100
+                                    ) > 95 and totalRequests > 10:
                                         stopProgram = StopProgram.TOO_MANY_TIMEOUTS
-                                except:
+                                except Exception:
                                     pass
                         else:
                             # Check for certificate verification failure and suggest using -insecure
@@ -1364,41 +1661,78 @@ def processUrl(url):
                                 )
                             else:
                                 if url.find("://") > 0:
-                                    writerr(colored("Connection Error: " + url + " (Please check this is a valid URL)", "red"))
+                                    writerr(
+                                        colored(
+                                            "Connection Error: "
+                                            + url
+                                            + " (Please check this is a valid URL)",
+                                            "red",
+                                        )
+                                    )
                                 else:
-                                    if args.scope_prefix == '' and currentDepth > 1:
-                                        writerr(colored("Connection Error: " + url + " (Consider passing --scope-prefix argument)", "red"))
+                                    if args.scope_prefix == "" and currentDepth > 1:
+                                        writerr(
+                                            colored(
+                                                "Connection Error: "
+                                                + url
+                                                + " (Consider passing --scope-prefix argument)",
+                                                "red",
+                                            )
+                                        )
                                     else:
-                                        writerr(colored("Connection Error: " + url,"red"))
+                                        writerr(
+                                            colored("Connection Error: " + url, "red")
+                                        )
 
                     # If argument -sCE (Stop on Connection Error) passed, keep a count of Connection Errors and stop the program if > 95% of responses have this error, but only if at least 10 requests have already been made
                     if args.sCE:
                         tooManyConnectionErrors = tooManyConnectionErrors + 1
                         try:
-                            if (tooManyConnectionErrors / totalRequests * 100) > 95 and totalRequests > 10:
+                            if (
+                                tooManyConnectionErrors / totalRequests * 100
+                            ) > 95 and totalRequests > 10:
                                 stopProgram = StopProgram.TOO_MANY_CONNECTION_ERRORS
-                        except:
+                        except Exception:
                             pass
                 except requests.exceptions.TooManyRedirects:
                     failedRequests = failedRequests + 1
                     if verbose():
                         writerr(colored("Too Many Redirect: " + url, "red"))
-                except requests.exceptions.RequestException as e:
+                except requests.exceptions.RequestException:
                     failedRequests = failedRequests + 1
-                    if prefixed: failedPrefix = True
+                    if prefixed:
+                        failedPrefix = True
                     if args.scope_filter is None:
                         if verbose():
-                            writerr(colored("Could not get a response for: " + url + " (Consider passing --scope-filter argument)","red"))
+                            writerr(
+                                colored(
+                                    "Could not get a response for: "
+                                    + url
+                                    + " (Consider passing --scope-filter argument)",
+                                    "red",
+                                )
+                            )
                     else:
                         if verbose():
                             if url.find("://") > 0:
-                                writerr(colored("Could not get a response for: " + url, "red"))
+                                writerr(
+                                    colored(
+                                        "Could not get a response for: " + url, "red"
+                                    )
+                                )
                             else:
-                                writerr(colored("Could not get a response for: " + url + " (Consider passing --scope-prefix argument)", "red"))
+                                writerr(
+                                    colored(
+                                        "Could not get a response for: "
+                                        + url
+                                        + " (Consider passing --scope-prefix argument)",
+                                        "red",
+                                    )
+                                )
                 except Exception as e:
                     if vverbose():
                         writerr(colored("ERROR processUrl 2: " + str(e), "red"))
-                        
+
                 # If -spkf wasn't passed and the link was a prefixed one and it failed, add it to the failed list
                 if not args.scope_prefix_keep_failed and prefixed and failedPrefix:
                     failedPrefixLinks.add(originalUrl)
@@ -1431,6 +1765,7 @@ def processStats():
         write('MAX TOTAL MEMORY: To show total memory %, run "pip install psutil"')
     write()
 
+
 # Remove liks that have no protocol, but have an identical item that has a protocol
 def clean_links(linksFound):
     prefixes = ("https://", "http://", "//")
@@ -1442,6 +1777,7 @@ def clean_links(linksFound):
                 cleaned_links.discard(link)  # Remove if prefixed version exists
 
     return cleaned_links
+
 
 # Process the output of all found links
 def processLinkOutput():
@@ -1493,16 +1829,16 @@ def processLinkOutput():
                 for link in existingLinks.readlines():
                     linksFound.add(link.strip())
                 appendedUrls = True
-            except:
+            except Exception:
                 pass
-            
+
         # If -o (--output) argument was not "cli" then open the output file
         if args.output != "cli":
             try:
                 # If the filename has any "/" in it, remove the contents after the last one to just get the path and create the directories if necessary
                 try:
                     f = os.path.basename(args.output)
-                    p = args.output[:-(len(f))-1]
+                    p = args.output[: -(len(f)) - 1]
                     if p != "" and not os.path.exists(p):
                         os.makedirs(p)
                 except Exception as e:
@@ -1519,7 +1855,7 @@ def processLinkOutput():
         for link in linksFound:
             # Remove the prefix tag if it has one
             if not args.prefixed:
-                link = link.replace(" (PREFIXED)","")
+                link = link.replace(" (PREFIXED)", "")
             if args.output == "cli":
                 if args.regex_after is None or re.search(args.regex_after, link):
                     write(link, True)
@@ -1562,17 +1898,27 @@ def processLinkOutput():
 
             if verbose():
                 if outputCount == 0:
-                    write(colored('No links were found so nothing written to file.\n', 'cyan'))
-                else:   
+                    write(
+                        colored(
+                            "No links were found so nothing written to file.\n", "cyan"
+                        )
+                    )
+                else:
                     if appendedUrls:
                         write(
-                            colored('Links successfully appended to file ', 'cyan')+colored(args.output,'white')+colored(' and duplicates removed.\n','cyan'))
+                            colored("Links successfully appended to file ", "cyan")
+                            + colored(args.output, "white")
+                            + colored(" and duplicates removed.\n", "cyan")
+                        )
                     else:
                         write(
-                            colored('Links successfully written to file ', 'cyan')+colored(args.output+'\n','white'))
+                            colored("Links successfully written to file ", "cyan")
+                            + colored(args.output + "\n", "white")
+                        )
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR processLinkOutput 1: " + str(e), "red"))
+
 
 # Process the output of all OOS links
 def processOOSOutput():
@@ -1584,16 +1930,16 @@ def processOOSOutput():
                 existingLinks = open(os.path.expanduser(args.output_oos), "r")
                 for link in existingLinks.readlines():
                     oosLinksFound.add(link.strip())
-            except:
+            except Exception:
                 pass
-            
+
         # If -oo (--output-oos) argument was not "cli" then open the output file
         if args.output_oos != "cli":
             try:
                 # If the filename has any "/" in it, remove the contents after the last one to just get the path and create the directories if necessary
                 try:
                     f = os.path.basename(args.output_oos)
-                    p = args.output_oos[:-(len(f))-1]
+                    p = args.output_oos[: -(len(f)) - 1]
                     if p != "" and not os.path.exists(p):
                         os.makedirs(p)
                 except Exception as e:
@@ -1631,6 +1977,7 @@ def processOOSOutput():
         if vverbose():
             writerr(colored("ERROR processOOSOutput 1: " + str(e), "red"))
 
+
 # Process the output of any potential parameters found
 def processParamOutput():
     global totalRequests, skippedRequests, paramsFound
@@ -1649,17 +1996,17 @@ def processParamOutput():
                 for param in existingParams.readlines():
                     paramsFound.add(param.strip())
                 appendedParams = True
-            except:
+            except Exception:
                 pass
-            
+
         # If -op (--output_params) argument was not "cli" then open the output file
         if args.output_params != "cli":
             try:
                 # If the filename has any "/" in it, remove the contents after the last one to just get the path and create the directories if necessary
                 try:
                     f = os.path.basename(args.output_params)
-                    p = args.output_params[:-(len(f))-1]
-                    if p != ""''"" and not os.path.exists(p):
+                    p = args.output_params[: -(len(f)) - 1]
+                    if p != "" "" "" and not os.path.exists(p):
                         os.makedirs(p)
                 except Exception as e:
                     if verbose():
@@ -1669,7 +2016,7 @@ def processParamOutput():
                 if vverbose():
                     writerr(colored("ERROR processParamOutput 2: " + str(e), "red"))
 
-        # Go through all parameters, and output what was found, only if the param does not contain at least 1 character that is a letter, number or _ 
+        # Go through all parameters, and output what was found, only if the param does not contain at least 1 character that is a letter, number or _
         outputCount = 0
         for param in paramsFound:
             if args.output_params == "cli":
@@ -1698,70 +2045,119 @@ def processParamOutput():
 
             if verbose():
                 if outputCount == 0:
-                    write(colored('No parameters were found so nothing written to file.\n', 'cyan'))
-                else:   
+                    write(
+                        colored(
+                            "No parameters were found so nothing written to file.\n",
+                            "cyan",
+                        )
+                    )
+                else:
                     if appendedParams:
                         write(
-                            colored('Parameters successfully appended to file ', 'cyan')+colored(args.output_params,'white')+colored(' and duplicates removed.\n','cyan'))
+                            colored("Parameters successfully appended to file ", "cyan")
+                            + colored(args.output_params, "white")
+                            + colored(" and duplicates removed.\n", "cyan")
+                        )
                     else:
                         write(
-                            colored('Parameters successfully written to file ', 'cyan')+colored(args.output_params+'\n','white'))
-                        
+                            colored("Parameters successfully written to file ", "cyan")
+                            + colored(args.output_params + "\n", "white")
+                        )
+
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR processParamOutput 1: " + str(e), "red"))
 
+
 # Add certain words found in the passed list to the target specific wordlist. This is called for parameters and path words
 def addItemsToWordlist(inputList):
     global wordsFound, lstStopWords
-    
+
     try:
         for item in inputList:
             # Remove any % and proceeding 2 chars
             newItem = re.sub(r"\%..", "", item)
-            if len(newItem) > 2 and not newItem.startswith("_") and newItem.count("-") < 3 and re.match(r'^[A-Za-z0-9\-_]*[A-Za-z]+[A-Za-z0-9\-_]*$', newItem) and newItem.lower() not in lstStopWords: 
+            if (
+                len(newItem) > 2
+                and not newItem.startswith("_")
+                and newItem.count("-") < 3
+                and re.match(r"^[A-Za-z0-9\-_]*[A-Za-z]+[A-Za-z0-9\-_]*$", newItem)
+                and newItem.lower() not in lstStopWords
+            ):
                 # If -nwld argument was passed, only proceed with word if it has no digits
-                if not (args.no_wordlist_digits and any(char.isdigit() for char in newItem)):
+                if not (
+                    args.no_wordlist_digits and any(char.isdigit() for char in newItem)
+                ):
                     # Add the word if it is not over the max length
-                    if args.wordlist_maxlen == 0 or len(newItem) <= args.wordlist_maxlen:
+                    if (
+                        args.wordlist_maxlen == 0
+                        or len(newItem) <= args.wordlist_maxlen
+                    ):
                         wordsFound.add(newItem)
             # Split the item up into separate parts if there are delimiters and process each word separately too
-            newItem = newItem.replace("[","-").replace("]","-").replace("{","-").replace("}","-").replace("(","-").replace(")","-").replace("_","-")
+            newItem = (
+                newItem.replace("[", "-")
+                .replace("]", "-")
+                .replace("{", "-")
+                .replace("}", "-")
+                .replace("(", "-")
+                .replace(")", "-")
+                .replace("_", "-")
+            )
             lstItems = newItem.split("-")
             for word in lstItems:
-                if len(word) > 2 and re.match(r'^[A-Za-z0-9\-_]*[A-Za-z]+[A-Za-z0-9\-_]*$', word) and word.lower() not in lstStopWords:
+                if (
+                    len(word) > 2
+                    and re.match(r"^[A-Za-z0-9\-_]*[A-Za-z]+[A-Za-z0-9\-_]*$", word)
+                    and word.lower() not in lstStopWords
+                ):
                     # If -nwld argument was passed, only proceed with word if it has no digits
-                    if not (args.no_wordlist_digits and any(char.isdigit() for char in newItem)):
+                    if not (
+                        args.no_wordlist_digits
+                        and any(char.isdigit() for char in newItem)
+                    ):
                         # Add the word if it is not over the max length
-                        if args.wordlist_maxlen == 0 or len(word) <= args.wordlist_maxlen:
+                        if (
+                            args.wordlist_maxlen == 0
+                            or len(word) <= args.wordlist_maxlen
+                        ):
                             wordsFound.add(word)
                             wordsFound.add(word.lower())
-                             # If --no-wordlist-plural option wasn't passed, check if there is a singular/plural word to add
+                            # If --no-wordlist-plural option wasn't passed, check if there is a singular/plural word to add
                             if not args.no_wordlist_plurals:
                                 newWord = processPlural(word)
-                                if newWord != "" and len(newWord) > 3 and newWord.lower() not in lstStopWords:
+                                if (
+                                    newWord != ""
+                                    and len(newWord) > 3
+                                    and newWord.lower() not in lstStopWords
+                                ):
                                     wordsFound.add(newWord)
                                     wordsFound.add(newWord.lower())
                                     # If the original word was uppercase and didn't end in "S" but the new one does, also add the original word with a lower case "s"
-                                    if word.isupper() and word[-1:] != 'S' and newWord == word + 'S':
-                                        wordsFound.add(word + 's')
+                                    if (
+                                        word.isupper()
+                                        and word[-1:] != "S"
+                                        and newWord == word + "S"
+                                    ):
+                                        wordsFound.add(word + "s")
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR addItemsToWordlist 1: " + str(e), "red"))
-            
+
+
 # Process the output of any words found
 def processWordsOutput():
     global totalRequests, skippedRequests, wordsFound, paramsFound, lstPathWords
     try:
-        
+
         # Get additional words from parameters found and add to the word list
         if not args.no_wordlist_parameters:
             addItemsToWordlist(paramsFound)
-        
+
         # Get additional words from path words and add to the word list
         if not args.no_wordlist_pathwords:
             addItemsToWordlist(lstPathWords)
-        
+
         wordsCount = len(wordsFound)
         write(
             colored("Words found for " + args.input + ": ", "cyan")
@@ -1776,16 +2172,16 @@ def processWordsOutput():
                 for word in existingWords.readlines():
                     wordsFound.add(word.strip())
                 appendedWords = True
-            except:
+            except Exception:
                 pass
-            
+
         # If -owl (--output_wordlist) argument was not "cli" then open the output file
         if args.output_wordlist != "cli":
             try:
                 # If the filename has any "/" in it, remove the contents after the last one to just get the path and create the directories if necessary
                 try:
                     f = os.path.basename(args.output_wordlist)
-                    p = args.output_wordlist[:-(len(f))-1]
+                    p = args.output_wordlist[: -(len(f)) - 1]
                     if p != "" and not os.path.exists(p):
                         os.makedirs(p)
                 except Exception as e:
@@ -1815,7 +2211,7 @@ def processWordsOutput():
         # Clean up
         wordsFound = None
         lstPathWords = None
-        
+
         # If the output was a file, close the file
         if args.output_wordlist != "cli":
             try:
@@ -1826,19 +2222,29 @@ def processWordsOutput():
 
             if verbose():
                 if outputCount == 0:
-                    write(colored('No words were found so nothing written to file.\n', 'cyan'))
-                else:   
+                    write(
+                        colored(
+                            "No words were found so nothing written to file.\n", "cyan"
+                        )
+                    )
+                else:
                     if appendedWords:
                         write(
-                            colored('Words successfully appended to file ', 'cyan')+colored(args.output_wordlist,'white')+colored(' and duplicates removed.\n','cyan'))
+                            colored("Words successfully appended to file ", "cyan")
+                            + colored(args.output_wordlist, "white")
+                            + colored(" and duplicates removed.\n", "cyan")
+                        )
                     else:
                         write(
-                            colored('Words successfully written to file ', 'cyan')+colored(args.output_wordlist+'\n','white'))
-                        
+                            colored("Words successfully written to file ", "cyan")
+                            + colored(args.output_wordlist + "\n", "white")
+                        )
+
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR processWordsOutput 1: " + str(e), "red"))
-            
+
+
 def processOutput():
     """
     Output the list of collected links and potential parameters files, or the cli
@@ -1847,22 +2253,25 @@ def processOutput():
     try:
         # Show the content types processed if verbose mode is on
         if vverbose() and len(contentTypesProcessed) > 0:
-            write(colored("\nContent-types processed: ","cyan")+colored(str(contentTypesProcessed)+"\n","white"))
-            
+            write(
+                colored("\nContent-types processed: ", "cyan")
+                + colored(str(contentTypesProcessed) + "\n", "white")
+            )
+
         # Process output of the found links
         processLinkOutput()
 
         # Process output of the found words if wordlist output was specified
         if args.output_wordlist != "":
             processWordsOutput()
-            
+
         # Process output of the found parameters
         processParamOutput()
-        
+
         # Process output of oos domains
         if args.output_oos != "":
             processOOSOutput()
-            
+
         # Output stats if -vv option was selected
         if vverbose():
             processStats()
@@ -1880,29 +2289,43 @@ def getConfig():
         # Set terminal width
         try:
             terminalWidth = os.get_terminal_size().columns
-        except:
+        except Exception:
             terminalWidth = 120
 
-        # Get the path of the config file. If -c / --config argument is not passed, then it defaults to config.yml in the same directory as the run file      
+        # Get the path of the config file. If -c / --config argument is not passed, then it defaults to config.yml in the same directory as the run file
         xnLinkFinderPath = (
-            Path(os.path.join(os.getenv('APPDATA', ''), 'xnLinkFinder')) if os.name == 'nt'
-            else Path(os.path.join(os.path.expanduser("~"), ".config", "xnLinkFinder")) if os.name == 'posix'
-            else Path(os.path.join(os.path.expanduser("~"), "Library", "Application Support", "xnLinkFinder")) if os.name == 'darwin'
-            else None
+            Path(os.path.join(os.getenv("APPDATA", ""), "xnLinkFinder"))
+            if os.name == "nt"
+            else (
+                Path(os.path.join(os.path.expanduser("~"), ".config", "xnLinkFinder"))
+                if os.name == "posix"
+                else (
+                    Path(
+                        os.path.join(
+                            os.path.expanduser("~"),
+                            "Library",
+                            "Application Support",
+                            "xnLinkFinder",
+                        )
+                    )
+                    if os.name == "darwin"
+                    else None
+                )
+            )
         )
         xnLinkFinderPath.absolute
-        if args.config is None:  
-            if xnLinkFinderPath == '':
-                configPath = 'config.yml'
+        if args.config is None:
+            if xnLinkFinderPath == "":
+                configPath = "config.yml"
             else:
-                configPath = Path(xnLinkFinderPath / 'config.yml')
+                configPath = Path(xnLinkFinderPath / "config.yml")
         else:
             configPath = Path(args.config)
         config = yaml.safe_load(open(configPath))
 
         try:
-            LINK_EXCLUSIONS = config.get("linkExclude",DEFAULT_LINK_EXCLUSIONS)
-        except:
+            LINK_EXCLUSIONS = config.get("linkExclude", DEFAULT_LINK_EXCLUSIONS)
+        except Exception:
             if verbose():
                 writerr(
                     colored(
@@ -1912,8 +2335,10 @@ def getConfig():
                 )
             LINK_EXCLUSIONS = DEFAULT_LINK_EXCLUSIONS
         try:
-            CONTENTTYPE_EXCLUSIONS = config.get("contentExclude",DEFAULT_CONTENTTYPE_EXCLUSIONS)
-        except:
+            CONTENTTYPE_EXCLUSIONS = config.get(
+                "contentExclude", DEFAULT_CONTENTTYPE_EXCLUSIONS
+            )
+        except Exception:
             if verbose():
                 writerr(
                     colored(
@@ -1923,8 +2348,10 @@ def getConfig():
                 )
             CONTENTTYPE_EXCLUSIONS = DEFAULT_CONTENTTYPE_EXCLUSIONS
         try:
-            FILEEXT_EXCLUSIONS = config.get("fileExtExclude",DEFAULT_FILEEXT_EXCLUSIONS)
-        except:
+            FILEEXT_EXCLUSIONS = config.get(
+                "fileExtExclude", DEFAULT_FILEEXT_EXCLUSIONS
+            )
+        except Exception:
             if verbose():
                 writerr(
                     colored(
@@ -1934,8 +2361,8 @@ def getConfig():
                 )
             FILEEXT_EXCLUSIONS = DEFAULT_FILEEXT_EXCLUSIONS
         try:
-            LINK_REGEX_FILES = config.get("regexFiles",DEFAULT_LINK_REGEX_FILES)
-        except:
+            LINK_REGEX_FILES = config.get("regexFiles", DEFAULT_LINK_REGEX_FILES)
+        except Exception:
             if verbose():
                 writerr(
                     colored(
@@ -1945,8 +2372,8 @@ def getConfig():
                 )
             LINK_REGEX_FILES = DEFAULT_LINK_REGEX_FILES
         try:
-            RESP_PARAM_LINKSFOUND = config.get("respParamLinksFound",True)
-        except:
+            RESP_PARAM_LINKSFOUND = config.get("respParamLinksFound", True)
+        except Exception:
             if verbose():
                 writerr(
                     colored(
@@ -1955,8 +2382,8 @@ def getConfig():
                     )
                 )
         try:
-            RESP_PARAM_PATHWORDS = config.get("respParamPathWords",True)
-        except:
+            RESP_PARAM_PATHWORDS = config.get("respParamPathWords", True)
+        except Exception:
             if verbose():
                 writerr(
                     colored(
@@ -1965,8 +2392,8 @@ def getConfig():
                     )
                 )
         try:
-            RESP_PARAM_JSON = config.get("respParamJSON",True)
-        except:
+            RESP_PARAM_JSON = config.get("respParamJSON", True)
+        except Exception:
             if verbose():
                 writerr(
                     colored(
@@ -1975,8 +2402,8 @@ def getConfig():
                     )
                 )
         try:
-            RESP_PARAM_JSVARS = config.get("respParamJSVars",True)
-        except:
+            RESP_PARAM_JSVARS = config.get("respParamJSVars", True)
+        except Exception:
             if verbose():
                 writerr(
                     colored(
@@ -1985,8 +2412,8 @@ def getConfig():
                     )
                 )
         try:
-            RESP_PARAM_XML = config.get("respParamXML",True)
-        except:
+            RESP_PARAM_XML = config.get("respParamXML", True)
+        except Exception:
             if verbose():
                 writerr(
                     colored(
@@ -1995,8 +2422,8 @@ def getConfig():
                     )
                 )
         try:
-            RESP_PARAM_INPUTFIELD = config.get("respParamInputField",True)
-        except:
+            RESP_PARAM_INPUTFIELD = config.get("respParamInputField", True)
+        except Exception:
             if verbose():
                 writerr(
                     colored(
@@ -2005,8 +2432,10 @@ def getConfig():
                     )
                 )
         try:
-            WORDS_CONTENT_TYPES = config.get("wordsContentTypes",DEFAULT_WORDS_CONTENT_TYPES)
-        except:
+            WORDS_CONTENT_TYPES = config.get(
+                "wordsContentTypes", DEFAULT_WORDS_CONTENT_TYPES
+            )
+        except Exception:
             if verbose():
                 writerr(
                     colored(
@@ -2016,8 +2445,8 @@ def getConfig():
                 )
             WORDS_CONTENT_TYPES = DEFAULT_WORDS_CONTENT_TYPES
         try:
-            STOP_WORDS = config.get("stopWords",DEFAULT_STOP_WORDS)
-        except:
+            STOP_WORDS = config.get("stopWords", DEFAULT_STOP_WORDS)
+        except Exception:
             if verbose():
                 writerr(
                     colored(
@@ -2025,25 +2454,27 @@ def getConfig():
                         "red",
                     )
                 )
-            STOP_WORDS = DEFAULT_STOP_WORDS   
+            STOP_WORDS = DEFAULT_STOP_WORDS
 
         # If there are extra stop words passed using the -swf / --stopwords-file then add them to STOP_WORDS
         try:
             if args.stopwords_file != "":
                 STOP_WORDS = STOP_WORDS + "," + extraStopWords
-        except:
+        except Exception:
             if verbose():
                 writerr(
                     colored(
-                        'Unable to add extra stop words from file "'+str(args.stopwords_file)+'"',
+                        'Unable to add extra stop words from file "'
+                        + str(args.stopwords_file)
+                        + '"',
                         "red",
                     )
                 )
         # Make the Stop Word list and make all lower case
         try:
             lstStopWords = STOP_WORDS.split(",")
-            lstStopWords = list(map(str.lower,lstStopWords))
-        except:
+            lstStopWords = list(map(str.lower, lstStopWords))
+        except Exception:
             if verbose():
                 writerr(
                     colored(
@@ -2051,10 +2482,10 @@ def getConfig():
                         "red",
                     )
                 )
-        
+
         try:
             COMMON_TLDS = config.get("commonTLDs", DEFAULT_COMMON_TLDS)
-        except:
+        except Exception:
             if verbose():
                 writerr(
                     colored(
@@ -2063,14 +2494,26 @@ def getConfig():
                     )
                 )
             COMMON_TLDS = DEFAULT_COMMON_TLDS
-          
+
     except Exception as e:
         if vverbose():
             print(str(e))
             if args.config is None:
-                writerr(colored('WARNING: Cannot find file "config.yml", so using default values', 'yellow'))
+                writerr(
+                    colored(
+                        'WARNING: Cannot find file "config.yml", so using default values',
+                        "yellow",
+                    )
+                )
             else:
-                writerr(colored('WARNING: Cannot find file "' + args.config + '", so using default values', 'yellow'))
+                writerr(
+                    colored(
+                        'WARNING: Cannot find file "'
+                        + args.config
+                        + '", so using default values',
+                        "yellow",
+                    )
+                )
         LINK_EXCLUSIONS = DEFAULT_LINK_EXCLUSIONS
         CONTENTTYPE_EXCLUSIONS = DEFAULT_CONTENTTYPE_EXCLUSIONS
         FILEEXT_EXCLUSIONS = DEFAULT_FILEEXT_EXCLUSIONS
@@ -2104,9 +2547,11 @@ def printProgressBar(
         printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
     """
     try:
-        percent = ("{0:." + str(decimals) + "f}").format(
-            100 * (iteration / float(total))
-        ).rjust(5)
+        percent = (
+            ("{0:." + str(decimals) + "f}")
+            .format(100 * (iteration / float(total)))
+            .rjust(5)
+        )
         filledLength = int(length * iteration // total)
         bar = fill * filledLength + "-" * (length - filledLength)
         # If the program is not piped with something else, write to stdout, otherwise write to stderr
@@ -2158,7 +2603,7 @@ def processDepth():
                     for fail in failedPrefixLinks:
                         try:
                             linksFound.remove(fail)
-                        except:
+                        except Exception:
                             pass
 
                 # Get the current number of Links found this time
@@ -2224,8 +2669,11 @@ def showOptions():
                     )
 
         if args.config is not None:
-            write(colored('--config: ' + args.config, 'magenta')+colored(' The path of the YML config file.','white'))
-            
+            write(
+                colored("--config: " + args.config, "magenta")
+                + colored(" The path of the YML config file.", "white")
+            )
+
         write(
             colored("-o: " + args.output, "magenta")
             + colored(" Where the links output will be sent.", "white")
@@ -2237,7 +2685,9 @@ def showOptions():
         if args.output_wordlist != "":
             write(
                 colored("-owl: " + args.output_wordlist, "magenta")
-                + colored(" Where the target specific wordlist output will be sent.", "white")
+                + colored(
+                    " Where the target specific wordlist output will be sent.", "white"
+                )
             )
         write(
             colored("-ow: " + str(args.output_overwrite), "magenta")
@@ -2305,66 +2755,75 @@ def showOptions():
                 write(
                     colored("-nwlpl: " + str(args.no_wordlist_plurals), "magenta")
                     + colored(
-                        " When words are found for a target specific wordlist, additional words will NOT be added for singular and plurals.", "white"
+                        " When words are found for a target specific wordlist, additional words will NOT be added for singular and plurals.",
+                        "white",
                     )
                 )
             if args.no_wordlist_pathwords:
                 write(
                     colored("-nwlpw: " + str(args.no_wordlist_pathwords), "magenta")
                     + colored(
-                        " Path words found in any links will NOT be processed to include as words in the target specific wordlist.", "white"
+                        " Path words found in any links will NOT be processed to include as words in the target specific wordlist.",
+                        "white",
                     )
                 )
             if args.no_wordlist_parameters:
                 write(
                     colored("-nwlpm: " + str(args.no_wordlist_parameters), "magenta")
                     + colored(
-                        " Any parameters found will NOT be processed to include as words in the target specific wordlist.", "white"
+                        " Any parameters found will NOT be processed to include as words in the target specific wordlist.",
+                        "white",
                     )
                 )
             if args.no_wordlist_comments:
                 write(
                     colored("-nwlc: " + str(args.no_wordlist_comments), "magenta")
                     + colored(
-                        " Any comments found in repsonses will NOT be processed to include as words in the target specific wordlist.", "white"
+                        " Any comments found in repsonses will NOT be processed to include as words in the target specific wordlist.",
+                        "white",
                     )
                 )
             if args.no_wordlist_imgalt:
                 write(
                     colored("-nwlia: " + str(args.no_wordlist_imgalt), "magenta")
                     + colored(
-                        " Any image 'alt' attributes found in repsonses will NOT be processed to include as words in the target specific wordlist.", "white"
+                        " Any image 'alt' attributes found in repsonses will NOT be processed to include as words in the target specific wordlist.",
+                        "white",
                     )
                 )
             if args.no_wordlist_digits:
                 write(
                     colored("-nwld: " + str(args.no_wordlist_digits), "magenta")
                     + colored(
-                        " When words are found for a target specific wordlist, words with any numerical digits in will NOT be added.", "white"
+                        " When words are found for a target specific wordlist, words with any numerical digits in will NOT be added.",
+                        "white",
                     )
                 )
             if args.no_wordlist_lowercase:
                 write(
                     colored("-nwll: " + str(args.no_wordlist_lowercase), "magenta")
                     + colored(
-                        " When words are found for a target specific wordlist, words with any uppercase characters in will NOT be added as an additonal lowercase word.", "white"
+                        " When words are found for a target specific wordlist, words with any uppercase characters in will NOT be added as an additonal lowercase word.",
+                        "white",
                     )
                 )
             if args.wordlist_maxlen > 0:
                 write(
                     colored("-wlml: " + str(args.wordlist_maxlen), "magenta")
                     + colored(
-                        " The maximum length of words to add to the target specific wordlist (excluding plurals).", "white"
+                        " The maximum length of words to add to the target specific wordlist (excluding plurals).",
+                        "white",
                     )
-                )    
+                )
             if args.stopwords_file != "":
                 write(
                     colored("-swf: " + str(args.stopwords_file), "magenta")
                     + colored(
-                        " The file of additional Stop Words used to exlude words from the target specific wordlist.", "white"
+                        " The file of additional Stop Words used to exlude words from the target specific wordlist.",
+                        "white",
                     )
                 )
-            
+
         if not burpFile and not zapFile and not caidoFile:
             write(
                 colored("-d: " + str(args.depth), "magenta")
@@ -2394,13 +2853,15 @@ def showOptions():
         write(
             colored("-prefixed: " + str(args.prefixed), "magenta")
             + colored(
-                " Whether the link will be flagged as a prefixed URL in the output with '(PREFIXED)'.", "white"
+                " Whether the link will be flagged as a prefixed URL in the output with '(PREFIXED)'.",
+                "white",
             )
         )
         write(
             colored("-xrel: " + str(args.exclude_relative_links), "magenta")
             + colored(
-                " Whether relative links (starting with ./ or ../) will be excluded.", "white"
+                " Whether relative links (starting with ./ or ../) will be excluded.",
+                "white",
             )
         )
         if not burpFile and not zapFile and not caidoFile and not dirPassed:
@@ -2411,7 +2872,9 @@ def showOptions():
             if args.rate_limit > 0:
                 write(
                     colored("-rl: " + str(args.rate_limit), "magenta")
-                    + colored(" Maximum requests per second (rate limiting enabled).", "white")
+                    + colored(
+                        " Maximum requests per second (rate limiting enabled).", "white"
+                    )
                 )
             write(
                 colored("-t: " + str(args.timeout), "magenta")
@@ -2419,7 +2882,10 @@ def showOptions():
             )
             write(
                 colored("-r: " + str(args.retries), "magenta")
-                + colored(" The number of times to retry a request after a failure (e.g. timeout, connection error, etc).", "white")
+                + colored(
+                    " The number of times to retry a request after a failure (e.g. timeout, connection error, etc).",
+                    "white",
+                )
             )
             write(
                 colored("-inc: " + str(args.include), "magenta")
@@ -2501,40 +2967,94 @@ def showOptions():
                     "white",
                 )
             )
-            
+
         write(
-                colored("-ascii-only: " + str(args.ascii_only), "magenta")
-                + colored(" Whether links and parameters will only be added if they only contain ASCII characters.", "white")
+            colored("-ascii-only: " + str(args.ascii_only), "magenta")
+            + colored(
+                " Whether links and parameters will only be added if they only contain ASCII characters.",
+                "white",
             )
-        
+        )
+
         if args.max_time_limit > 0:
-            write(colored('-mtl: ' + str(args.max_time_limit), 'magenta')+colored(" The maximum time limit (in minutes) to run before stopping.","white"))
-        
+            write(
+                colored("-mtl: " + str(args.max_time_limit), "magenta")
+                + colored(
+                    " The maximum time limit (in minutes) to run before stopping.",
+                    "white",
+                )
+            )
+
         if burpFile and args.burpfile_remove_tags is not None:
             write(
-                colored("--burpfile-remove-tags: " + str(args.burpfile_remove_tags), "magenta")
-                + colored(" Whether unecessary tags will be removed from the Burp file (permanent change).", "white")
+                colored(
+                    "--burpfile-remove-tags: " + str(args.burpfile_remove_tags),
+                    "magenta",
+                )
+                + colored(
+                    " Whether unecessary tags will be removed from the Burp file (permanent change).",
+                    "white",
+                )
             )
-    
+
         if args.content_length:
-            write(colored('-cl: ' + str(args.content_length), 'magenta')+colored(" Display the Content-Length of the response when crawling.","white"))
-            
+            write(
+                colored("-cl: " + str(args.content_length), "magenta")
+                + colored(
+                    " Display the Content-Length of the response when crawling.",
+                    "white",
+                )
+            )
+
         if args.all_tlds:
-            write(colored('--all-tlds: True', 'magenta')+colored(" All links found will be returned, even if the TLD is not common. This can result in a number of false positives where variable names, etc. may also be a possible genuine domain.","white"))
-            
-        write(colored('Link exclusions: ', 'magenta')+colored(LINK_EXCLUSIONS))
-        write(colored('Content-Type exclusions: ', 'magenta')+colored(CONTENTTYPE_EXCLUSIONS))    
-        if dirPassed:  
-            write(colored('File Extension exclusions: ', 'magenta')+colored(FILEEXT_EXCLUSIONS)) 
-        write(colored('Link Regex Files: ', 'magenta')+colored(LINK_REGEX_FILES))
+            write(
+                colored("--all-tlds: True", "magenta")
+                + colored(
+                    " All links found will be returned, even if the TLD is not common. This can result in a number of false positives where variable names, etc. may also be a possible genuine domain.",
+                    "white",
+                )
+            )
+
+        write(colored("Link exclusions: ", "magenta") + colored(LINK_EXCLUSIONS))
+        write(
+            colored("Content-Type exclusions: ", "magenta")
+            + colored(CONTENTTYPE_EXCLUSIONS)
+        )
+        if dirPassed:
+            write(
+                colored("File Extension exclusions: ", "magenta")
+                + colored(FILEEXT_EXCLUSIONS)
+            )
+        write(colored("Link Regex Files: ", "magenta") + colored(LINK_REGEX_FILES))
         if not args.all_tlds:
-            write(colored('Common Domain TLDs: ', 'magenta')+colored(COMMON_TLDS))
-        write(colored('Get Links Found in Response as Params: ', 'magenta')+colored(str(RESP_PARAM_LINKSFOUND)))
-        write(colored('Get Path Words in Retrieved Links as Params: ', 'magenta')+colored(str(RESP_PARAM_PATHWORDS)))
-        write(colored('Get Response JSON Key Values as Params: ', 'magenta')+colored(str(RESP_PARAM_JSON)))
-        write(colored('Get Response JS Vars as Params: ', 'magenta')+colored(str(RESP_PARAM_JSVARS)))
-        write(colored('Get Response XML Attributes as Params: ', 'magenta')+colored(str(RESP_PARAM_XML)))
-        write(colored('Get Response Input (and Textarea/Select/Button) Fields ID and Attribute as Params: ', 'magenta')+colored(str(RESP_PARAM_INPUTFIELD)))
+            write(colored("Common Domain TLDs: ", "magenta") + colored(COMMON_TLDS))
+        write(
+            colored("Get Links Found in Response as Params: ", "magenta")
+            + colored(str(RESP_PARAM_LINKSFOUND))
+        )
+        write(
+            colored("Get Path Words in Retrieved Links as Params: ", "magenta")
+            + colored(str(RESP_PARAM_PATHWORDS))
+        )
+        write(
+            colored("Get Response JSON Key Values as Params: ", "magenta")
+            + colored(str(RESP_PARAM_JSON))
+        )
+        write(
+            colored("Get Response JS Vars as Params: ", "magenta")
+            + colored(str(RESP_PARAM_JSVARS))
+        )
+        write(
+            colored("Get Response XML Attributes as Params: ", "magenta")
+            + colored(str(RESP_PARAM_XML))
+        )
+        write(
+            colored(
+                "Get Response Input (and Textarea/Select/Button) Fields ID and Attribute as Params: ",
+                "magenta",
+            )
+            + colored(str(RESP_PARAM_INPUTFIELD))
+        )
         write()
 
     except Exception as e:
@@ -2561,15 +3081,17 @@ def getScopeDomains():
         try:
             scopeFile = open(args.scope_prefix, "r")
             # Get all lines from the file, but remove any blank lines and remove any trailing spaces from a line
-            inScopePrefixDomains = [line.rstrip() for line in scopeFile if line.rstrip() != '']
+            inScopePrefixDomains = [
+                line.rstrip() for line in scopeFile if line.rstrip() != ""
+            ]
             scopeFile.close()
 
             for prefix in inScopePrefixDomains:
                 if prefix.find(".") < 0 or prefix.find(" ") > 0 or prefix.find("*") > 0:
                     scopePrefixError = True
-        except:
+        except Exception:
             # Remove any trailing / from the prefix
-            args.scope_prefix = args.scope_prefix.rstrip('/')
+            args.scope_prefix = args.scope_prefix.rstrip("/")
             if (
                 args.scope_prefix.find(".") < 0
                 or args.scope_prefix.find(" ") > 0
@@ -2595,7 +3117,7 @@ def getScopeDomains():
             for filter in inScopeFilterDomains:
                 if filter.find(".") < 0 or filter.find(" ") > 0:
                     scopeFilterError = True
-        except:
+        except Exception:
             if args.scope_filter.find(".") < 0 or args.scope_filter.find(" ") >= 0:
                 scopeFilterError = True
         if scopeFilterError:
@@ -2606,6 +3128,7 @@ def getScopeDomains():
                 )
             )
             sys.exit()
+
 
 def processFileContent(filepath, responseCount=1):
     global stdinFile
@@ -2619,13 +3142,11 @@ def processFileContent(filepath, responseCount=1):
         else:
             # Set the request to the name of the file
             request = os.path.join(filepath)
-                            
+
             # Set the response as the contents of the file
-            with open(
-                request, "r", encoding="utf-8", errors="ignore"
-            ) as file:
+            with open(request, "r", encoding="utf-8", errors="ignore") as file:
                 response = file.read()
-            
+
         try:
             # Get potential links
             getResponseLinks(response, request)
@@ -2633,18 +3154,26 @@ def processFileContent(filepath, responseCount=1):
             getResponseParams(response, request)
         except Exception as e:
             if vverbose():
-                writerr(colored("ERROR processFileContent 2: Request " + str(responseCount) + ": " + str(e),"red"))
+                writerr(
+                    colored(
+                        "ERROR processFileContent 2: Request "
+                        + str(responseCount)
+                        + ": "
+                        + str(e),
+                        "red",
+                    )
+                )
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR processFileContent 1: " + str(e), "red"))
-            
+
+
 # Get links from all files in a specified directory
 def processDirectory():
     global totalResponses, waymoreMode, waymoreFiles
 
     dirPath = args.input
     request = ""
-    response = ""
 
     # Get the number of files in the directory (and sub directories) that are less than --max-file-size. If --max-file-size is Zero then process all files
     try:
@@ -2654,37 +3183,70 @@ def processDirectory():
             for f in files:
                 if (
                     args.max_file_size == 0
-                    or (os.path.getsize(os.path.join(path, f))) / (1024*1024)
+                    or (os.path.getsize(os.path.join(path, f))) / (1024 * 1024)
                     < args.max_file_size
-                ):                    
+                ):
                     # Check if running against a waymore results directory
                     # Waymore Mode will be if waymore.txt exists in the directory, or if index.txt exists and there
                     # is at least one .xnl file, or if "waymore_index.txt","waymore.new","waymore.txt.new","waymore.old","waymore.txt.old","responses*.tmp","continueResp*.tmp" or "combinedInline" files exist.
-                    if f in ("waymore.txt", "waymore.new", "waymore.txt.new", "waymore.old", "waymore.txt.old", "waymore_index.txt") or \
-                    (xnlFileFound and f == "index.txt") or \
-                    (f.startswith("responses") and f.endswith(".tmp")) or \
-                    (f.startswith("continueResp") and f.endswith(".tmp")) or \
-                    "combinedInline" in f:
+                    if (
+                        f
+                        in (
+                            "waymore.txt",
+                            "waymore.new",
+                            "waymore.txt.new",
+                            "waymore.old",
+                            "waymore.txt.old",
+                            "waymore_index.txt",
+                        )
+                        or (xnlFileFound and f == "index.txt")
+                        or (f.startswith("responses") and f.endswith(".tmp"))
+                        or (f.startswith("continueResp") and f.endswith(".tmp"))
+                        or "combinedInline" in f
+                    ):
                         waymoreMode = True
 
-                    if f not in ("waymore.txt", "waymore.new", "waymore.txt.new", "waymore.old", "waymore.txt.old","index.txt", "waymore_index.txt") and \
-                    not (f.startswith("responses") and f.endswith(".tmp")) and \
-                    not (f.startswith("continueResp") and f.endswith(".tmp")) and \
-                    "combinedInline" not in f:
+                    if (
+                        f
+                        not in (
+                            "waymore.txt",
+                            "waymore.new",
+                            "waymore.txt.new",
+                            "waymore.old",
+                            "waymore.txt.old",
+                            "index.txt",
+                            "waymore_index.txt",
+                        )
+                        and not (f.startswith("responses") and f.endswith(".tmp"))
+                        and not (f.startswith("continueResp") and f.endswith(".tmp"))
+                        and "combinedInline" not in f
+                    ):
                         totalResponses = totalResponses + 1
-                                            
+
     except Exception as e:
         writerr(colored("ERROR processDirectory 1: " + str(e)))
 
     if waymoreMode:
-        write(colored("Processing response files in ","cyan")+colored("Waymore Results Directory ","yellow")+colored(args.input + ":\n", "cyan"))
-        
+        write(
+            colored("Processing response files in ", "cyan")
+            + colored("Waymore Results Directory ", "yellow")
+            + colored(args.input + ":\n", "cyan")
+        )
+
         # Iterate directory and sub directories
         for path, subdirs, files in os.walk(dirPath):
             for filename in files:
-                
+
                 # If waymore mode and the file is waymore.txt, waymore.new, waymore.txt.new, waymore.old, waymore.txt.old, waymore_index.txt or index.txt then save them for later
-                if filename in ("waymore.txt","waymore.new","waymore.txt.new","waymore.old","waymore.txt.old","waymore_index.txt","index.txt"):
+                if filename in (
+                    "waymore.txt",
+                    "waymore.new",
+                    "waymore.txt.new",
+                    "waymore.old",
+                    "waymore.txt.old",
+                    "waymore_index.txt",
+                    "index.txt",
+                ):
                     fullPath = path
                     if not fullPath.endswith("/"):
                         fullPath = fullPath + "/"
@@ -2692,7 +3254,7 @@ def processDirectory():
                     waymoreFiles.add(fullPath)
     else:
         write(colored("Processing files in directory " + args.input + ":\n", "cyan"))
-            
+
     try:
         # If there are no files to process, tell the user
         if totalResponses == 0:
@@ -2700,9 +3262,23 @@ def processDirectory():
                 writerr(colored("There are no files to process.", "red"))
             else:
                 if waymoreMode:
-                    writerr(colored("There are no response files with a size greater than " + str(args.max_file_size) + " Mb to process (you can change the limit with -mfs).","red"))
+                    writerr(
+                        colored(
+                            "There are no response files with a size greater than "
+                            + str(args.max_file_size)
+                            + " Mb to process (you can change the limit with -mfs).",
+                            "red",
+                        )
+                    )
                 else:
-                    writerr(colored("There are no files with a size greater than " + str(args.max_file_size) + " Mb to process (you can change the limit with -mfs).","red"))
+                    writerr(
+                        colored(
+                            "There are no files with a size greater than "
+                            + str(args.max_file_size)
+                            + " Mb to process (you can change the limit with -mfs).",
+                            "red",
+                        )
+                    )
         else:
             responseCount = 0
             printProgressBar(
@@ -2715,27 +3291,53 @@ def processDirectory():
             # Iterate directory and sub directories
             for path, subdirs, files in os.walk(dirPath):
                 for filename in files:
-                    
+
                     # If waymore mode and the file is waymore.txt, waymore.new, waymore.txt.new, waymore.old, waymore.txt.old, waymore_index.txt or index.txt then save them for later
                     if waymoreMode:
-                        if filename in ("waymore.txt","waymore.new","waymore.txt.new","waymore.old","waymore.txt.old","waymore_index.txt","index.txt"):
+                        if filename in (
+                            "waymore.txt",
+                            "waymore.new",
+                            "waymore.txt.new",
+                            "waymore.old",
+                            "waymore.txt.old",
+                            "waymore_index.txt",
+                            "index.txt",
+                        ):
                             fullPath = path
                             if not fullPath.endswith("/"):
                                 fullPath = fullPath + "/"
                             fullPath = fullPath + filename
                             waymoreFiles.add(fullPath)
-                            
-                    # Check if the file size is less than --max-file-size 
+
+                    # Check if the file size is less than --max-file-size
                     # AND if in waymore mode that it isn't one of "waymore_index.txt","waymore.txt","waymore.new","waymore.txt.new","waymore.old","waymore.txt.old","index.txt","responses*.tmp","continueResp*.tmp","combinedInline"
                     if (
                         args.max_file_size == 0
-                        or (os.path.getsize(os.path.join(path, filename))) / (1024 * 1024) < args.max_file_size
+                        or (os.path.getsize(os.path.join(path, filename)))
+                        / (1024 * 1024)
+                        < args.max_file_size
                     ) and (
-                        not waymoreMode or (
+                        not waymoreMode
+                        or (
                             waymoreMode
-                            and filename not in ("waymore.txt", "waymore.new",  "waymore.txt.new", "waymore.old", "waymore.txt.old", "waymore_index.txt", "index.txt")
-                            and not (filename.startswith("responses") and filename.endswith(".tmp"))
-                            and not (filename.startswith("continueResp") and filename.endswith(".tmp"))
+                            and filename
+                            not in (
+                                "waymore.txt",
+                                "waymore.new",
+                                "waymore.txt.new",
+                                "waymore.old",
+                                "waymore.txt.old",
+                                "waymore_index.txt",
+                                "index.txt",
+                            )
+                            and not (
+                                filename.startswith("responses")
+                                and filename.endswith(".tmp")
+                            )
+                            and not (
+                                filename.startswith("continueResp")
+                                and filename.endswith(".tmp")
+                            )
                             and "combinedInline" not in filename
                         )
                     ):
@@ -2763,7 +3365,7 @@ def processDirectory():
                                         + str(currentMemPercent)
                                         + "%)   "
                                     )
-                            except:
+                            except Exception:
                                 if vverbose():
                                     suffix = 'Complete (To show memory usage, run "pip install psutil")'
                         printProgressBar(
@@ -2779,8 +3381,8 @@ def processDirectory():
                         request = os.path.join(path, filename)
 
                         # Process the file
-                        processFileContent(str(request),responseCount)
-      
+                        processFileContent(str(request), responseCount)
+
     except Exception as e:
         if vverbose():
             writerr(
@@ -2795,13 +3397,14 @@ def processDirectory():
                 )
             )
 
+
 def processCaidoMessage(request, response, responseCount):
     """
     Process a specific message from an Caido CSV text output file. There is a "message" for each request and response
     """
     global totalResponses, currentMemUsage, currentMemPercent
     try:
-                    
+
         # Show progress bar
         fillTest = responseCount % 2
         if fillTest == 0:
@@ -2821,7 +3424,7 @@ def processCaidoMessage(request, response, responseCount):
                         + str(currentMemPercent)
                         + "%)   "
                     )
-            except:
+            except Exception:
                 if vverbose():
                     suffix = 'Complete (To show memory usage, run "pip install psutil")'
         printProgressBar(
@@ -2835,13 +3438,14 @@ def processCaidoMessage(request, response, responseCount):
 
         # Get the links
         getResponseLinks(response, request)
-        
+
         # Get potential parameters from the response
         getResponseParams(response, request)
-                    
+
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR processCaudiMessage 1: " + str(e), "red"))
+
 
 def processCaidoFile():
     """
@@ -2860,7 +3464,7 @@ def processCaidoFile():
             else:
                 fileSize = os.path.getsize(args.input)
                 filePath = os.path.abspath(args.input).replace(" ", r"\ ")
-                
+
                 cmd = "cat " + filePath + " | wc -l"
                 cat = subprocess.run(
                     cmd, shell=True, text=True, stdout=subprocess.PIPE, check=True
@@ -2877,7 +3481,7 @@ def processCaidoFile():
                         "cyan",
                     )
                 )
-        except:
+        except Exception:
             write(colored("Processing Caido file " + args.input + ":", "cyan"))
 
         try:
@@ -2891,13 +3495,11 @@ def processCaidoFile():
             )
 
             # Open the Caido file and read line by line without loading into memory
-            with open(
-                args.input, "r", encoding="utf-8", errors="ignore"
-            ) as caidoFile:
+            with open(args.input, "r", encoding="utf-8", errors="ignore") as caidoFile:
                 csv.field_size_limit(sys.maxsize)
-                reader = csv.DictReader(caidoFile, delimiter=',')
+                reader = csv.DictReader(caidoFile, delimiter=",")
                 for line in reader:
-        
+
                     if stopProgram is not None:
                         break
 
@@ -2911,10 +3513,12 @@ def processCaidoFile():
                         else:
                             schema = "http://"
                         caidoRequest = schema + line["host"] + line["path"]
-                        
+
                         # Get the Caido response
-                        caidoResponse = base64.b64decode(line["response_raw"]).decode("utf-8", "replace")
-                        
+                        caidoResponse = base64.b64decode(line["response_raw"]).decode(
+                            "utf-8", "replace"
+                        )
+
                         # Process the Caido request and response
                         processCaidoMessage(caidoRequest, caidoResponse, responseCount)
 
@@ -2937,17 +3541,17 @@ def processZapMessage(zapMessage, responseCount):
         # Split the message into request (just URL) and response
         try:
             request = zapMessage.split("\n\n", 1)[0].strip().split(" ")[1].strip()
-        except Exception as e:
-            request = ''
+        except Exception:
+            request = ""
         try:
             # If the request wasn't found then set the response as the whole Zap message
-            if request == '':
+            if request == "":
                 response = zapMessage
             else:
                 response = re.split(r"\nHTTP\/[0-9]", zapMessage)[1]
-        except Exception as e:
-            response = ''
-                    
+        except Exception:
+            response = ""
+
         # Show progress bar
         fillTest = responseCount % 2
         if fillTest == 0:
@@ -2967,7 +3571,7 @@ def processZapMessage(zapMessage, responseCount):
                         + str(currentMemPercent)
                         + "%)   "
                     )
-            except:
+            except Exception:
                 if vverbose():
                     suffix = 'Complete (To show memory usage, run "pip install psutil")'
         printProgressBar(
@@ -2981,10 +3585,10 @@ def processZapMessage(zapMessage, responseCount):
 
         # Get the links
         getResponseLinks(response, request)
-        
+
         # Get potential parameters from the response
         getResponseParams(response, request)
-                    
+
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR processZapMessage 1: " + str(e), "red"))
@@ -3009,7 +3613,11 @@ def processZapFile():
                 fileSize = os.path.getsize(args.input)
                 filePath = os.path.abspath(args.input).replace(" ", r"\ ")
 
-                cmd = r"grep -Eo '^={3,4}\s?[0-9]+\s={10}$' --text " + filePath + " | wc -l"
+                cmd = (
+                    r"grep -Eo '^={3,4}\s?[0-9]+\s={10}$' --text "
+                    + filePath
+                    + " | wc -l"
+                )
 
                 grep = subprocess.run(
                     cmd, shell=True, text=True, stdout=subprocess.PIPE, check=True
@@ -3026,7 +3634,7 @@ def processZapFile():
                         "cyan",
                     )
                 )
-        except:
+        except Exception:
             write(colored("Processing OWASP ZAP file " + args.input + ":", "cyan"))
 
         try:
@@ -3118,22 +3726,31 @@ def processBurpFile():
                         if not sys.stdin.isatty():
                             sys.stdin = open("/dev/tty")
                         reply = input("Do you want to remove tags form the file? y/n: ")
-                except:
+                except Exception:
                     reply = "n"
             else:
                 reply = "n"
 
             if reply.lower() == "y":
                 try:
-                    matched = re.compile('(<time|<host|<port|<prot|<meth|<path|<exte|<requ|<stat|<responselength|<mime|<comm)').search
-                    with open(filePath, encoding='utf-8') as burpFile:
-                        with NamedTemporaryFile(mode='w', encoding='utf-8', dir=os.path.dirname(filePath), delete=False) as tempFile:
+                    matched = re.compile(
+                        "(<time|<host|<port|<prot|<meth|<path|<exte|<requ|<stat|<responselength|<mime|<comm)"
+                    ).search
+                    with open(filePath, encoding="utf-8") as burpFile:
+                        with NamedTemporaryFile(
+                            mode="w",
+                            encoding="utf-8",
+                            dir=os.path.dirname(filePath),
+                            delete=False,
+                        ) as tempFile:
                             for line in burpFile:
                                 if not matched(line):
-                                    print(line, end='', file=tempFile)
+                                    print(line, end="", file=tempFile)
                     os.replace(tempFile.name, burpFile.name)
                 except Exception as e:
-                    writerr(colored("Unable to remove the tags, but that's fine!","yellow"))
+                    writerr(
+                        colored("Unable to remove the tags, but that's fine!", "yellow")
+                    )
                     if verbose():
                         writerr(colored("There was a problem: " + str(e)))
 
@@ -3151,7 +3768,7 @@ def processBurpFile():
                 "cyan",
             )
         )
-    except:
+    except Exception:
         write(colored("Processing Burp file " + args.input + ":", "cyan"))
 
     request = ""
@@ -3191,7 +3808,7 @@ def processBurpFile():
                                     + str(currentMemPercent)
                                     + "%)   "
                                 )
-                        except:
+                        except Exception:
                             if vverbose():
                                 suffix = 'Complete (To show memory usage, run "pip install psutil")'
                     printProgressBar(
@@ -3205,7 +3822,7 @@ def processBurpFile():
 
                     try:
                         request = elem.text
-                    except:
+                    except Exception:
                         if verbose():
                             writerr(
                                 colored(
@@ -3220,7 +3837,7 @@ def processBurpFile():
                         response = base64.b64decode(elem.text).decode(
                             "utf-8", "replace"
                         )
-                    except:
+                    except Exception:
                         pass
 
             if (
@@ -3263,6 +3880,7 @@ def processBurpFile():
                 )
             )
 
+
 def processEachInput(input):
     """
     Process the input, whether its from -i or <stdin>
@@ -3271,7 +3889,7 @@ def processEachInput(input):
 
     if stopProgram is None:
         checkMaxTimeLimit()
-    
+
     # Set the -i / --input to the current input
     args.input = input
     fileContent = False
@@ -3287,7 +3905,7 @@ def processEachInput(input):
                 try:
                     inputFile = open(input, "r")
                     firstLine = inputFile.readline()
-                    
+
                     # Check if the file passed is a Burp file
                     burpFile = firstLine.lower().startswith("<?xml")
 
@@ -3304,10 +3922,10 @@ def processEachInput(input):
                             # If it's not a Burp, ZAP or Caido file then assume it is a standard file or URLs
                             if not caidoFile:
                                 stdFile = True
-                    
+
                     # Close the file after determining type - it will be reopened by processing functions
                     inputFile.close()
-                                
+
                 except Exception as e:
                     writerr(
                         colored("Cannot read input file " + input + ":" + str(e), "red")
@@ -3323,7 +3941,11 @@ def processEachInput(input):
             stdFile = True
 
         # If no scope filter was not passed and the input is a domain/URL (or file of domains/URLS), raise an error. This is now a mandatory field for this input (it wasn't in previous versions).
-        if args.scope_filter is None and not waymoreMode and (urlPassed or stdFile or stdinFile):
+        if (
+            args.scope_filter is None
+            and not waymoreMode
+            and (urlPassed or stdFile or stdinFile)
+        ):
             writerr(
                 colored(
                     "You need to provide a Scope Filter with the -sf / --scope-filter argument. This was optional in previous versions but is now mandatory if input is a domain/URL (or file of domains/URLs) to prevent crawling sites that are not in scope, and also prevent misleading results. The value should be a valid file of domains, or a single domain. No schema should be included and wildcard is optional, e.g. example1.com, sub.example2.com, example3.*",
@@ -3331,14 +3953,14 @@ def processEachInput(input):
                 )
             )
             sys.exit()
-            
+
         # Set headers to use if going to be making requests
         if urlPassed or stdFile:
             setHeaders()
 
         # Get the scope -sp and -sf domains if required
         getScopeDomains()
-        
+
         # Show the user their selected options if -vv is passed (but don't show in waymore mode)
         if vverbose() and not waymoreMode:
             showOptions()
@@ -3398,13 +4020,11 @@ def processEachInput(input):
                                         p.join()
                             else:
                                 fileContent = True
-                                processFileContent(input)                      
+                                processFileContent(input)
                             inputFile.close()
-                        else: # Else it's piped from another process so go through the saved stdin
+                        else:  # Else it's piped from another process so go through the saved stdin
                             if verbose():
-                                write(
-                                    colored("Reading input from <stdin>:", "cyan")
-                                )
+                                write(colored("Reading input from <stdin>:", "cyan"))
                             # Check if the first line starts with `//` or `http`, or is a domain format. If so, process as a file of URLs,
                             # otherwise process as content
                             if is_domain_format(stdinFile[0]):
@@ -3415,7 +4035,7 @@ def processEachInput(input):
                                     p.join()
                             else:
                                 fileContent = True
-                                processFileContent("<stdin>") 
+                                processFileContent("<stdin>")
                     except Exception as e:
                         if vverbose():
                             writerr(
@@ -3465,7 +4085,7 @@ def processInput():
 
         # Set the file extension exclusions
         lstFileExtExclusions = FILEEXT_EXCLUSIONS.split(",")
-        
+
         firstLine = ""
         if not sys.stdin.isatty():
             count = 1
@@ -3491,14 +4111,16 @@ def processInput():
                     match = re.search(r"={3,4}\s?[0-9]+\s={10}", firstLine)
                     if match is not None:
                         zapFile = True
-                        
+
                     # If not a Burp or ZAP file, check if it is a Caido File
                     if not zapFile:
                         caidoFile = firstLine.lower().startswith("id,host,method")
-                        
-                        # If not any special file, then check if first line starts with // or http. 
+
+                        # If not any special file, then check if first line starts with // or http.
                         # If it does then it will be considered a file of URLs, otherwise the contents will be searched
-                        if not (firstLine.startswith('//') or firstLine.startswith('http')):
+                        if not (
+                            firstLine.startswith("//") or firstLine.startswith("http")
+                        ):
                             fileContent = True
 
         # If input wasn't piped then just process the -i / --input value
@@ -3573,7 +4195,7 @@ def setHeaders():
                 headerName = header.split(":")[0]
                 headerValue = header.split(":")[1]
                 requestHeaders[headerName.strip()] = headerValue.strip()
-        except:
+        except Exception:
             if verbose():
                 writerr(
                     colored(
@@ -3587,15 +4209,17 @@ def setHeaders():
 def getPathWords(url):
     global paramsFound, lstPathWords
     try:
-        # Get the path from the passed string. If it isn't a valid path then an error will be raised so ignore 
+        # Get the path from the passed string. If it isn't a valid path then an error will be raised so ignore
         try:
             path = urlparse(url).path
-        except:
-            path = ''
-        
-        if path != '':    
+        except Exception:
+            path = ""
+
+        if path != "":
             # If found, split the path on /
-            words = set(re.compile(r"[\:/?=&#]+", re.UNICODE).split(path) + path.split('/'))
+            words = set(
+                re.compile(r"[\:/?=&#]+", re.UNICODE).split(path) + path.split("/")
+            )
             temp = []
             for x in words:
                 temp.extend(x.split(","))
@@ -3609,9 +4233,14 @@ def getPathWords(url):
                     and not (len(word) == 1 and not word.isalpha())
                 ):
                     # Only add the word if argument --ascii-only is False, or if its True and only contains ASCII characters
-                    if not args.ascii_only or (args.ascii_only and word.strip().isascii()):
+                    if not args.ascii_only or (
+                        args.ascii_only and word.strip().isascii()
+                    ):
                         # If a wordlist is requested then add to a list of path words unless the -nwlpw option was passed
-                        if args.output_wordlist != "" and not args.no_wordlist_pathwords:
+                        if (
+                            args.output_wordlist != ""
+                            and not args.no_wordlist_pathwords
+                        ):
                             lstPathWords.add(word.strip())
                         # Add to the list of parameters if requested
                         if RESP_PARAM_PATHWORDS:
@@ -3620,6 +4249,7 @@ def getPathWords(url):
         if vverbose():
             writerr(colored("ERROR getPathWords 1: " + str(e), "red"))
 
+
 # A function that attempts to take a given English word, determine if its a plural or singular.
 # If a plural, then return a new word as singular. If a singular, then return a new word as plural.
 # IMPORTANT: This is prone to error as the english language has many exceptions to rules!
@@ -3627,98 +4257,104 @@ def processPlural(originalWord):
     try:
         newWord = ""
         word = originalWord.strip().lower()
-        
+
         # Process Plurals and get a new word for singular
-        
-        # If word is over 30 characters long 
+
+        # If word is over 30 characters long
         # OR contains numbers and is over 10 characters long
         # OR ends in "ous"
         # then there will not be a new word
-        if len(word) > 30 or (any(char.isdigit() for char in word) and len(word) > 10) or word[-4:] == "ous":
+        if (
+            len(word) > 30
+            or (any(char.isdigit() for char in word) and len(word) > 10)
+            or word[-4:] == "ous"
+        ):
             newWord = ""
         # If word ends in "xes", "oes" or "sses" then remove the last "es" for the new word
-        elif word[-3:] in ["xes","oes"] or word[-4:] == "sses":
+        elif word[-3:] in ["xes", "oes"] or word[-4:] == "sses":
             newWord = originalWord[:-2]
         # If word ends in "ies"
         elif word[-3:] == "ies":
             # If there is 1 letter before "ies" then the new word will just end "ie"
             if len(word) == 4:
                 if originalWord.isupper():
-                    newWord = originalWord[1]+"IE"
+                    newWord = originalWord[1] + "IE"
                 else:
-                    newWord = originalWord[1]+"ie"
-            else: # the new word will just have "ies" replaced with "y"
+                    newWord = originalWord[1] + "ie"
+            else:  # the new word will just have "ies" replaced with "y"
                 if originalWord.isupper():
-                    newWord = originalWord[:-3]+"Y"
-                else: 
-                    newWord = originalWord[:-3]+"y"
+                    newWord = originalWord[:-3] + "Y"
+                else:
+                    newWord = originalWord[:-3] + "y"
         # If the word ends in "s" and isn't proceeded by "s" then the new word will have the last "s" removed
         elif word[-1:] == "s" and word[-2:-1] != "s":
             newWord = originalWord[:-1]
-            
+
         # Process Singular and get a new word for plural
-        
+
         # If word ends in "x","o" or "ss" then add "es" for the new word
-        elif word[-1:] in ["x","o"] or word[-2:] == "ss":
+        elif word[-1:] in ["x", "o"] or word[-2:] == "ss":
             if originalWord.isupper():
-                newWord = originalWord+"ES"
+                newWord = originalWord + "ES"
             else:
-                newWord = originalWord+"es"
+                newWord = originalWord + "es"
         # If word ends in "y" and isn't proceeded by a vowel, then replace "y" with "ies" for new word
-        elif word[-1:] == "y" and word[-2:-1] not in ["a","e","i","o","u"]:
+        elif word[-1:] == "y" and word[-2:-1] not in ["a", "e", "i", "o", "u"]:
             if originalWord.isupper():
-                newWord = originalWord[:-1]+"IES"
+                newWord = originalWord[:-1] + "IES"
             else:
-                newWord = originalWord[:-1]+"ies"    
+                newWord = originalWord[:-1] + "ies"
         # If word ends in "o" and not prefixed by a vowel, then add "es" to get a new plural
-        elif word[-1:] == "o" and word[-2:-1] not in ["a","e","i","o","u"]:
+        elif word[-1:] == "o" and word[-2:-1] not in ["a", "e", "i", "o", "u"]:
             if originalWord.isupper():
-                newWord = originalWord[:-1]+"ES"
+                newWord = originalWord[:-1] + "ES"
             else:
-                newWord = originalWord[:-1]+"es"    
+                newWord = originalWord[:-1] + "es"
         # Else just add an "s" to get a new plural word
-        else: 
+        else:
             if originalWord.isupper():
-                newWord = originalWord+"S"
+                newWord = originalWord + "S"
             else:
-                newWord = originalWord+"s"
+                newWord = originalWord + "s"
         return newWord
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR processPlural 1: " + str(e), "red"))
 
+
 # URL encode any unicode characters in the word and also remove any unwanted characters
 def sanitizeWord(word):
     try:
-    # If the word contains any non ASCII characters, then url encode them
+        # If the word contains any non ASCII characters, then url encode them
         try:
             word.encode("ascii")
-        except:
+        except Exception:
             try:
-                word = urllib.quote(word.encode('utf-8'))
-            except:
+                word = urllib.quote(word.encode("utf-8"))
+            except Exception:
                 word = ""
-        
-        if word != '':
-            word = REGEX_WORDSUB.sub('', word)
-        
+
+        if word != "":
+            word = REGEX_WORDSUB.sub("", word)
+
         return word
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR sanitizeWord 1: " + str(e), "red"))
+
 
 # Get a string from the passed text that starts with { and gets to the last } ensuring they are balanced
 def find_balanced_braces(text, start):
     try:
         end = len(text)
         stack = []
-        i = text.find('{', start)
+        i = text.find("{", start)
         if i == -1:
             return None, start
         while i < len(text):
-            if text[i] == '{':
-                stack.append('{')
-            elif text[i] == '}':
+            if text[i] == "{":
+                stack.append("{")
+            elif text[i] == "}":
                 stack.pop()
                 if not stack:
                     end = i + 1
@@ -3729,30 +4365,33 @@ def find_balanced_braces(text, start):
         if vverbose():
             writerr(colored("ERROR find_balanced_braces 1: " + str(e), "red"))
 
-# Add parameters from the JSON string passed, i.e. the keys before :    
+
+# Add parameters from the JSON string passed, i.e. the keys before :
 def process_json_string(jsonString):
     try:
         js_params = REGEX_JSNESTEDPARAM.finditer(jsonString)
         for param in js_params:
             if param and param.group():
                 parameter = param.group().strip()
-                parameter = parameter.rstrip(':')
-                parameter = parameter.replace('\'', '').replace('"', '')
-                parameter = parameter.replace('[', '').replace(']', '')
+                parameter = parameter.rstrip(":")
+                parameter = parameter.replace("'", "").replace('"', "")
+                parameter = parameter.replace("[", "").replace("]", "")
                 paramsFound.add(parameter)
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR process_json_string 1: " + str(e), "red"))
 
+
 def ensure_unicode(text):
     if isinstance(text, bytes):
-        return text.decode('utf-8')
+        return text.decode("utf-8")
     return text
-    
+
+
 # Get XML and JSON responses, extract keys and add them to the paramsFound list
 # In addition it will extract name and id from <input> fields in HTML
 def getResponseParams(response, request):
-    global paramsFound, inScopePrefixDomains, burpFile, zapFile, caidoFile, dirPassed, wordsFound, lstStopWords,fileContent
+    global paramsFound, inScopePrefixDomains, burpFile, zapFile, caidoFile, dirPassed, wordsFound, lstStopWords, fileContent
     try:
 
         if burpFile or zapFile or caidoFile:
@@ -3790,17 +4429,22 @@ def getResponseParams(response, request):
         contentType = ""
         try:
             contentType = header["content-type"].split(";")[0].upper()
-        except:
+        except Exception:
             # Ensure body is a string before calling splitlines
             body_str = body if isinstance(body, str) else str(body)
             for line in body_str.splitlines():
-                if line.lower().startswith('content-type:'):
-                    contentType = line.split(':', 1)[1].strip().split(';')[0].strip().upper()
+                if line.lower().startswith("content-type:"):
+                    contentType = (
+                        line.split(":", 1)[1].strip().split(";")[0].strip().upper()
+                    )
             pass
 
         # Get words from the body of the page if a wordlist output was given
         try:
-            if (args.output_wordlist != "" and contentType.lower() in WORDS_CONTENT_TYPES) and request.lower().find(".js.map") < 0:
+            if (
+                args.output_wordlist != ""
+                and contentType.lower() in WORDS_CONTENT_TYPES
+            ) and request.lower().find(".js.map") < 0:
                 # Parse html content with beautifulsoup4. If lxml is installed, use that as the parser because its quickest.
                 # If lxml isn't installed then try html5lib because that's the next quickest, but use deafult as last resort
                 allText = ""
@@ -3818,34 +4462,75 @@ def getResponseParams(response, request):
                 except Exception as e:
                     if vverbose():
                         writerr(colored("ERROR getResponseParams 10: " + str(e), "red"))
-                
+
                 # Get words from meta tag contents
                 for tag in soup.find_all("meta", content=True):
-                    if tag.get("property", "").lower() in ["og:title","og:description","title","og:site_name","fb:admins"] or tag.get("name", "").lower() in ["description","keywords","twitter:title","twitter:description","application-name","author","subject","copyright","abstract","topic","summary","owner","directory","category","og:title","og:type","og:site_name","og:description","csrf-param","apple-mobile-web-app-title","twitter:label1","twitter:data1","twitter:label2","twitter:data2","twitter:title"]:
-                        allText = allText + tag['content'] + ' '
+                    if tag.get("property", "").lower() in [
+                        "og:title",
+                        "og:description",
+                        "title",
+                        "og:site_name",
+                        "fb:admins",
+                    ] or tag.get("name", "").lower() in [
+                        "description",
+                        "keywords",
+                        "twitter:title",
+                        "twitter:description",
+                        "application-name",
+                        "author",
+                        "subject",
+                        "copyright",
+                        "abstract",
+                        "topic",
+                        "summary",
+                        "owner",
+                        "directory",
+                        "category",
+                        "og:title",
+                        "og:type",
+                        "og:site_name",
+                        "og:description",
+                        "csrf-param",
+                        "apple-mobile-web-app-title",
+                        "twitter:label1",
+                        "twitter:data1",
+                        "twitter:label2",
+                        "twitter:data2",
+                        "twitter:title",
+                    ]:
+                        allText = allText + tag["content"] + " "
 
                 # Get words from link tag titles
                 for tag in soup.find_all("link", content=True):
-                    if tag.get("rel", "").lower() in ["alternate","index","start","prev","next","search"]:
-                        allText = allText + tag['title']
-                        
+                    if tag.get("rel", "").lower() in [
+                        "alternate",
+                        "index",
+                        "start",
+                        "prev",
+                        "next",
+                        "search",
+                    ]:
+                        allText = allText + tag["title"]
+
                 # Get words from any "alt" attribute of images if required
                 if not args.no_wordlist_imgalt:
-                    for img in soup.find_all('img', alt=True):
-                        allText = allText + img['alt'] + ' '
-                
+                    for img in soup.find_all("img", alt=True):
+                        allText = allText + img["alt"] + " "
+
                 # Get words from any comments if required
                 if not args.no_wordlist_comments:
-                    for comment in soup.find_all(string=lambda text:isinstance(text, Comment)):
-                        allText = allText + comment + ' '
-                    
+                    for comment in soup.find_all(
+                        string=lambda text: isinstance(text, Comment)
+                    ):
+                        allText = allText + comment + " "
+
                 # Remove tags we don't want content from
-                for data in soup(['style', 'script', 'link']): 
+                for data in soup(["style", "script", "link"]):
                     data.decompose()
-                    
+
                 # Get words from the body text
                 allText = allText + " ".join(soup.stripped_strings)
-                
+
                 # Build list of potential words over 3 characters long, that don't appear in url paths
                 potentialWords = REGEX_WORDS.findall(allText)
                 potentialWords = set(potentialWords)
@@ -3853,50 +4538,69 @@ def getResponseParams(response, request):
                 # Process all words found
                 for word in potentialWords:
                     # Ignore certain words if found in robots.txt
-                    if request.lower().find("robots.txt") > 0 and word in ("allow","disallow","sitemap","user-agent"):
+                    if request.lower().find("robots.txt") > 0 and word in (
+                        "allow",
+                        "disallow",
+                        "sitemap",
+                        "user-agent",
+                    ):
                         continue
                     word = sanitizeWord(word)
-                    
-                     # If -nwld argument was passed, only proceed with word if it has no digits
-                    if not (args.no_wordlist_digits and any(char.isdigit() for char in word)):
-                        if re.search('[a-zA-Z]', word):
+
+                    # If -nwld argument was passed, only proceed with word if it has no digits
+                    if not (
+                        args.no_wordlist_digits and any(char.isdigit() for char in word)
+                    ):
+                        if re.search("[a-zA-Z]", word):
                             # strip apostrophes
                             word = word.replace("'", "")
                             # add the word to the list if not a stop word and is not above the max length
-                            if word.lower() not in lstStopWords and (args.wordlist_maxlen == 0 or len(word) <= args.wordlist_maxlen):
+                            if word.lower() not in lstStopWords and (
+                                args.wordlist_maxlen == 0
+                                or len(word) <= args.wordlist_maxlen
+                            ):
                                 wordsFound.add(word)
                                 if not args.no_wordlist_lowercase:
                                     wordsFound.add(word.lower())
                                 # If --no-wordlist-plural option wasn't passed, check if there is a singular/plural word to add
                                 if not args.no_wordlist_plurals:
                                     newWord = processPlural(word)
-                                    if newWord != "" and len(newWord) > 3 and newWord.lower() not in lstStopWords:
+                                    if (
+                                        newWord != ""
+                                        and len(newWord) > 3
+                                        and newWord.lower() not in lstStopWords
+                                    ):
                                         wordsFound.add(newWord)
                                         if not args.no_wordlist_lowercase:
                                             wordsFound.add(newWord.lower())
                                         # If the original word was uppercase and didn't end in "S" but the new one does, also add the original word with a lower case "s"
-                                        if not args.no_wordlist_lowercase and word.isupper() and word[-1:] != 'S' and newWord == word + 'S':
-                                            wordsFound.add(word + 's')
+                                        if (
+                                            not args.no_wordlist_lowercase
+                                            and word.isupper()
+                                            and word[-1:] != "S"
+                                            and newWord == word + "S"
+                                        ):
+                                            wordsFound.add(word + "s")
         except Exception as e:
             if vverbose():
                 writerr(colored("ERROR getResponseParams 9: " + str(e), "red"))
-        
-         # Get parameters from the response where they are like &PARAM= or ?PARAM=
+
+        # Get parameters from the response where they are like &PARAM= or ?PARAM=
         try:
             possibleParams = REGEX_PARAMSPOSSIBLE.finditer(body)
             for key in possibleParams:
                 if key is not None and key.group() != "":
-                    param = key.group().replace("%5c","")
-                    param = REGEX_PARAMSSUB.sub("",param).strip()
-                    param = param.replace("\\","").replace("&","")
+                    param = key.group().replace("%5c", "")
+                    param = REGEX_PARAMSSUB.sub("", param).strip()
+                    param = param.replace("\\", "").replace("&", "")
                     paramsFound.add(param)
         except Exception as e:
             if vverbose():
-                    writerr(colored("ERROR getResponseParams 10: " + str(e), "red"))
-        
+                writerr(colored("ERROR getResponseParams 10: " + str(e), "red"))
+
         # If it is content-type we want to process then carry on
-        if includeContentType(header,request):
-        
+        if includeContentType(header, request):
+
             # Get regardless of the content type
             # Javascript variable could be in the html, script and even JSON response within a .js.map file
             if RESP_PARAM_JSVARS:
@@ -3907,7 +4611,9 @@ def getResponseParams(response, request):
                     for key in js_keys:
                         if key is not None and key.group() != "":
                             # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
-                            if not args.ascii_only or (args.ascii_only and key.group().strip().isascii()):
+                            if not args.ascii_only or (
+                                args.ascii_only and key.group().strip().isascii()
+                            ):
                                 paramsFound.add(key.group().strip())
                 except Exception as e:
                     if vverbose():
@@ -3919,7 +4625,9 @@ def getResponseParams(response, request):
                     for key in js_keys:
                         if key is not None and key.group() != "":
                             # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
-                            if not args.ascii_only or (args.ascii_only and key.group().strip().isascii()):
+                            if not args.ascii_only or (
+                                args.ascii_only and key.group().strip().isascii()
+                            ):
                                 paramsFound.add(key.group().strip())
                 except Exception as e:
                     if vverbose():
@@ -3931,7 +4639,9 @@ def getResponseParams(response, request):
                     for key in js_keys:
                         if key is not None and key.group() != "":
                             # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
-                            if not args.ascii_only or (args.ascii_only and key.group().strip().isascii()):
+                            if not args.ascii_only or (
+                                args.ascii_only and key.group().strip().isascii()
+                            ):
                                 paramsFound.add(key.group().strip())
                 except Exception as e:
                     if vverbose():
@@ -3940,7 +4650,7 @@ def getResponseParams(response, request):
                 # Get parameters from nested objects
                 try:
                     start = 0
-                    text = body.encode('ascii', 'replace').decode('ascii')
+                    text = body.encode("ascii", "replace").decode("ascii")
                     while start < len(text):
                         match = REGEX_JSNESTED.search(text, start)
                         if not match:
@@ -3955,7 +4665,7 @@ def getResponseParams(response, request):
                 except Exception as e:
                     if vverbose():
                         writerr(colored("ERROR getResponseParams 5: " + str(e), "red"))
-                            
+
             # If mime type is JSON then get the JSON attributes
             if contentType.find("JSON") > 0:
                 if RESP_PARAM_JSON:
@@ -3964,11 +4674,15 @@ def getResponseParams(response, request):
                         json_keys = REGEX_JSONKEYS.findall(body)
                         for key in json_keys:
                             # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
-                            if not args.ascii_only or (args.ascii_only and key.strip().isascii()):
+                            if not args.ascii_only or (
+                                args.ascii_only and key.strip().isascii()
+                            ):
                                 paramsFound.add(key.strip())
                     except Exception as e:
                         if vverbose():
-                            writerr(colored("ERROR getResponseParams 5: " + str(e), "red"))
+                            writerr(
+                                colored("ERROR getResponseParams 5: " + str(e), "red")
+                            )
 
             # If the mime type is XML then get the xml keys
             elif contentType.find("XML") > 0:
@@ -3978,14 +4692,18 @@ def getResponseParams(response, request):
                         xml_keys = REGEX_XMLATTR.findall(body)
                         for key in xml_keys:
                             # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
-                            if not args.ascii_only or (args.ascii_only and key.strip().isascii()):
+                            if not args.ascii_only or (
+                                args.ascii_only and key.strip().isascii()
+                            ):
                                 paramsFound.add(key.strip())
                     except Exception as e:
                         if vverbose():
-                            writerr(colored("ERROR getResponseParams 6: " + str(e), "red"))
+                            writerr(
+                                colored("ERROR getResponseParams 6: " + str(e), "red")
+                            )
 
             # If the mime type is HTML (or JAVASCRIPT becuase it could be building HTML) then get <input>, <textarea>, <select> OR <button> name and id values, and meta tag names
-            elif contentType.find("HTML") or contentType.find("JAVASCRIPT")> 0:
+            elif contentType.find("HTML") or contentType.find("JAVASCRIPT") > 0:
 
                 if RESP_PARAM_INPUTFIELD:
                     # Get Input field name and id attributes
@@ -3999,7 +4717,9 @@ def getResponseParams(response, request):
                                 input_name_val = input_name_val.replace('"', "")
                                 input_name_val = input_name_val.replace("'", "")
                                 # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
-                                if not args.ascii_only or (args.ascii_only and input_name_val.strip().isascii()):
+                                if not args.ascii_only or (
+                                    args.ascii_only and input_name_val.strip().isascii()
+                                ):
                                     paramsFound.add(input_name_val.strip())
                             input_id = REGEX_HTMLINP_ID.search(key)
                             if input_id is not None and input_id.group() != "":
@@ -4008,15 +4728,20 @@ def getResponseParams(response, request):
                                 input_id_val = input_id_val.replace('"', "")
                                 input_id_val = input_id_val.replace("'", "")
                                 # Only add the parameter if argument --ascii-only is False, or if its True and only contains ASCII characters
-                                if not args.ascii_only or (args.ascii_only and input_id_val.strip().isascii()):
+                                if not args.ascii_only or (
+                                    args.ascii_only and input_id_val.strip().isascii()
+                                ):
                                     paramsFound.add(input_id_val.strip())
                     except Exception as e:
                         if vverbose():
-                            writerr(colored("ERROR getResponseParams 7: " + str(e), "red"))
+                            writerr(
+                                colored("ERROR getResponseParams 7: " + str(e), "red")
+                            )
 
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR getResponseParams 1: " + str(e), "red"))
+
 
 # For validating -m / --memory-threshold argument
 def argcheckPercent(value):
@@ -4027,6 +4752,7 @@ def argcheckPercent(value):
         )
     return ivalue
 
+
 # For validating  --burpfile-remove-tags argument
 def argcheckBurpfileRemoveTags(value):
     if value.lower() == "true":
@@ -4034,19 +4760,17 @@ def argcheckBurpfileRemoveTags(value):
     elif value.lower() == "false":
         boolValue = False
     else:
-        raise argparse.ArgumentTypeError(
-            "Either True or False must be passed."
-        )
+        raise argparse.ArgumentTypeError("Either True or False must be passed.")
     return boolValue
+
 
 # For validating --retries argument
 def argcheckRetries(value):
     ivalue = int(value)
     if ivalue < 0 or ivalue > 5:
-        raise argparse.ArgumentTypeError(
-            "The number of retries can be 0 to 5."
-        )
+        raise argparse.ArgumentTypeError("The number of retries can be 0 to 5.")
     return ivalue
+
 
 # For validating -swf / --stopwords-file argument
 def argcheckStopwordsFile(filename):
@@ -4054,17 +4778,22 @@ def argcheckStopwordsFile(filename):
     try:
         f = open(filename, "r")
         data = f.read()
-        extraStopWords = data.strip().replace("\r\n",",").replace("\n",",").replace("'","").replace(" ",",")
-    except FileNotFoundError:
-        raise argparse.ArgumentTypeError(
-            "A valid file name must be provided."
+        extraStopWords = (
+            data.strip()
+            .replace("\r\n", ",")
+            .replace("\n", ",")
+            .replace("'", "")
+            .replace(" ", ",")
         )
+    except FileNotFoundError:
+        raise argparse.ArgumentTypeError("A valid file name must be provided.")
     finally:
         try:
             f.close()
-        except:
+        except Exception:
             pass
     return filename
+
 
 # Get width of the progress bar based on the width of the terminal
 def getProgressBarLength():
@@ -4074,7 +4803,7 @@ def getProgressBarLength():
         else:
             offset = 50
         progressBarLength = terminalWidth - offset
-    except:
+    except Exception:
         progressBarLength = 20
     return progressBarLength
 
@@ -4086,6 +4815,7 @@ def getSPACER(text):
     SPACER = " " * lenSpacer
     return text + SPACER
 
+
 # Check if the maximum time limit argument was passed and if it has been exceeded
 def checkMaxTimeLimit():
     global startDateTime, stopProgram
@@ -4094,26 +4824,32 @@ def checkMaxTimeLimit():
         if runTime.seconds / 60 > args.max_time_limit:
             stopProgram = StopProgram.MAX_TIME_LIMIT
 
+
 # Check if the truncate limit argument was passed and is within acepted values
 def checkTruncateLimit(value):
     ivalue = int(value)
     if ivalue < 1000 or ivalue > 9999999999999999:
-        raise argparse.ArgumentTypeError(f"Value must be between 1000 and 9999999999999999, but got {ivalue}")
+        raise argparse.ArgumentTypeError(
+            f"Value must be between 1000 and 9999999999999999, but got {ivalue}"
+        )
     return ivalue
-     
+
+
 # Run xnLinkFinder
 def main():
     global args, userAgents, stopProgram, burpFile, zapFile, caidoFile, dirPassed, waymoreMode, currentUAGroup, waymoreFiles, linksVisited, maxMemoryPercent, linksFound, paramsFound, contentTypesProcessed, totalRequests, skippedRequests, failedRequests, oosLinksFound, lstPathWords, wordsFound, LINK_REGEX_FILES
-    
+
     # Tell Python to run the handler() function when SIGINT is received
     signal(SIGINT, handler)
 
     # Suppress warning messages that can arise from beautifulsoup4
-    warnings.filterwarnings('ignore')
-    
+    warnings.filterwarnings("ignore")
+
     # Parse command line arguments
     parser = argparse.ArgumentParser(
-        description="xnLinkFinder (v" + __import__('xnLinkFinder').__version__ + ") - by @Xnl-h4ck3r"
+        description="xnLinkFinder (v"
+        + __import__("xnLinkFinder").__version__
+        + ") - by @Xnl-h4ck3r"
     )
     parser.add_argument(
         "-i",
@@ -4426,7 +5162,7 @@ def main():
         "--stopwords-file",
         action="store",
         help='A file of additional Stop Words (in addition to "stopWords" in the YML Config file) used to exclude words from the target specific wordlist. Stop Words are used in Natural Language Processing and different lists can be found in different libraries. You may want to add words in different languages, depending on your target.',
-        type=argcheckStopwordsFile
+        type=argcheckStopwordsFile,
     )
     parser.add_argument(
         "-brt",
@@ -4435,7 +5171,7 @@ def main():
         help="Whether to remove tags if a Burp file is passed as input. This is asked interactively if the flag is not passed. Pass as True or False. If this argument is not passed then the question will be asked interactively.",
         type=argcheckBurpfileRemoveTags,
         default=None,
-        metavar="<bool>"
+        metavar="<bool>",
     )
     parser.add_argument(
         "-all",
@@ -4449,19 +5185,21 @@ def main():
         action="store_true",
         help="Show the Content-Length of the response when crawling.",
     )
-    parser.add_argument("-nb", "--no-banner", action="store_true", help="Hides the tool banner.")
+    parser.add_argument(
+        "-nb", "--no-banner", action="store_true", help="Hides the tool banner."
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     parser.add_argument(
         "-vv", "--vverbose", action="store_true", help="Increased verbose output"
     )
-    parser.add_argument('--version', action='store_true', help="Show version number")
+    parser.add_argument("--version", action="store_true", help="Show version number")
     args = parser.parse_args()
 
     # If --version was passed, display version and exit
     if args.version:
         showVersion()
         sys.exit()
-        
+
     # If no input was given, raise an error
     if sys.stdin.isatty():
         if args.input is None:
@@ -4472,7 +5210,7 @@ def main():
                 )
             )
             sys.exit()
-            
+
     # Show banner unless requested to hide
     if not args.no_banner:
         showBanner()
@@ -4481,16 +5219,16 @@ def main():
     getConfig()
 
     # Get the current Process ID to use to get memory usage that is displayed with -vv option
-    try:
-        process = psutil.Process(os.getpid())
-    except:
-        pass
+    # try:
+    #    process = psutil.Process(os.getpid())
+    # except Exception:
+    #    pass
 
     try:
 
         # Set User Agents to use
         setUserAgents()
-           
+
         # Process each user agent group
         for i in range(len(userAgents)):
             if stopProgram is not None:
@@ -4507,30 +5245,34 @@ def main():
 
         # if waymore mode, then process the Waymore files next
         if waymoreMode:
-            
+
             # Reset directory flag to now process individual files
             dirPassed = False
-            
+
             # For waymore mode, set the -inc / --include flage to True and -s429
             args.include = True
             args.s429 = True
-            
+
             # Save the original input directory to set back later
             originalInput = args.input
-            
+
             # Process each user agent group
             for i in range(len(userAgents)):
                 if stopProgram is not None:
                     break
-                
+
                 currentUAGroup = i
-            
+
                 # Process the Waymore files
                 for wf in waymoreFiles:
-                    write(colored("\nProcessing links in ","cyan")+colored("Waymore File ","yellow")+colored(wf + ":", "cyan"))
+                    write(
+                        colored("\nProcessing links in ", "cyan")
+                        + colored("Waymore File ", "yellow")
+                        + colored(wf + ":", "cyan")
+                    )
                     processEachInput(wf)
                 linksVisited = set()
-                
+
             # Once all data has been found, process the output
             args.input = originalInput
             processOutput()
@@ -4542,11 +5284,11 @@ def main():
             paramsFound = set()
             contentTypesProcessed = set()
             wordsFound = set()
-            lstPathWords = set() 
+            lstPathWords = set()
             totalRequests = 0
             skippedRequests = 0
             failedRequests = 0
-            
+
         # If the program was stopped then alert the user
         if stopProgram is not None:
             if stopProgram == StopProgram.MEMORY_THRESHOLD:
@@ -4597,12 +5339,18 @@ def main():
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR main 1: " + str(e), "red"))
-            
+
     try:
         if sys.stdout.isatty():
-            writerr(colored('✅ Want to buy me a coffee? ☕ https://ko-fi.com/xnlh4ck3r 🤘', 'green'))
-    except:
+            writerr(
+                colored(
+                    "✅ Want to buy me a coffee? ☕ https://ko-fi.com/xnlh4ck3r 🤘",
+                    "green",
+                )
+            )
+    except Exception:
         pass
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

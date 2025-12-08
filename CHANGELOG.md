@@ -1,5 +1,12 @@
 ## Changelog
 
+- v7.4
+
+  - Changes
+
+    - BUG FIX: Fixed regex timeout functionality on Windows/WSL. The `safe_regex_findall()` function was failing in multiple ways: (1) Worker function inside the function couldn't be pickled on Windows 'spawn' method, (2) Process failures were incorrectly reported as timeouts. Fixed by moving worker to module level (`_regex_worker_mp`) and adding time-based validation - timeouts are only reported if the process is both alive AND at least 80% of the timeout period has elapsed. This prevents false immediate timeout reports while maintaining the ability to terminate catastrophic backtracking. Falls back to direct regex execution if multiprocessing fails entirely.
+    - Format code to comply with black and ruff checks.
+
 - v7.3
 
   - New
