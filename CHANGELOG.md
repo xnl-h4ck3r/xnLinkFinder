@@ -1,5 +1,11 @@
 ## Changelog
 
+- v7.5
+
+  - Changed
+
+    - Amend the `domain_regex` to also check for unicode characters and `%` symbol, so it will also pick up domains like `thisätest.com` and `this%C3%A4test.com`.
+
 - v7.4
 
   - Changes

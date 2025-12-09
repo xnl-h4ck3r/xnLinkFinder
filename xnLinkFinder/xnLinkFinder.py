@@ -1021,7 +1021,7 @@ def getResponseLinks(response, url):
                 extra_keys = []
                 try:
                     # Additional domain regex
-                    domain_regex = r"(?:[a-zA-Z0-9_-]+\.){0,5}[a-zA-Z0-9_-]+\.[a-zA-Z]{2,24}(?:\/[^\s\"'<>()\[\]{}]*)?"
+                    domain_regex = r"(?:[a-zA-Z0-9%\u0080-\uFFFF_-]+\.){0,5}[a-zA-Z0-9%\u0080-\uFFFF_-]+\.[a-zA-Z]{2,24}(?:\/[^\s\"'<>()\[\]{}]*)?"
 
                     # Extract additional domains
                     extra_keys = safe_regex_findall(domain_regex, body)
