@@ -137,9 +137,11 @@ DEFAULT_REGEX_TIMEOUT = 45
 
 # Chunk large responses to prevent regex timeouts on extreme cases
 # If response body is larger than this, split into chunks (in bytes)
-LARGE_RESPONSE_THRESHOLD = 50000   # 50KB (lowered to catch responses like the 87KB example)
-CHUNK_SIZE = 40000                 # 40KB chunks (smaller chunks for better reliability)
-CHUNK_OVERLAP = 5000               # 5KB overlap to catch patterns spanning chunk boundaries
+LARGE_RESPONSE_THRESHOLD = (
+    50000  # 50KB (lowered to catch responses like the 87KB example)
+)
+CHUNK_SIZE = 40000  # 40KB chunks (smaller chunks for better reliability)
+CHUNK_OVERLAP = 5000  # 5KB overlap to catch patterns spanning chunk boundaries
 
 # Yaml config values
 LINK_EXCLUSIONS = ""
@@ -775,14 +777,10 @@ def regex_worker(pattern, string, flags):
         return str(e)
 
 
-
-
-
-
 def safe_regex_findall(pattern, string, timeout=DEFAULT_REGEX_TIMEOUT):
     """
     Runs regex search and returns matches.
-    
+
     Note: The timeout parameter is kept for backward compatibility but is no longer used.
     The multiprocessing timeout mechanism was removed because it caused false positives
     (e.g., timeouts on 1,422 byte responses). Regex patterns already have bounded quantifiers
@@ -792,6 +790,8 @@ def safe_regex_findall(pattern, string, timeout=DEFAULT_REGEX_TIMEOUT):
         return [m.group(0) for m in re.finditer(pattern, string, re.IGNORECASE)]
     except Exception:
         return []
+
+
 def safe_regex_findall_chunked(pattern, string, timeout=DEFAULT_REGEX_TIMEOUT):
     """
     Wrapper around safe_regex_findall that chunks large content.
@@ -800,33 +800,33 @@ def safe_regex_findall_chunked(pattern, string, timeout=DEFAULT_REGEX_TIMEOUT):
     """
     try:
         content_length = len(string)
-        
+
         # If content is small enough, use regular processing
         if content_length <= LARGE_RESPONSE_THRESHOLD:
             return safe_regex_findall(pattern, string, timeout)
-        
+
         # Content is large, process in chunks
         all_matches = []
         chunk_start = 0
-        
+
         while chunk_start < content_length:
             # Calculate chunk end with overlap
             chunk_end = min(chunk_start + CHUNK_SIZE, content_length)
             chunk = string[chunk_start:chunk_end]
-            
+
             # Process this chunk
             chunk_matches = safe_regex_findall(pattern, chunk, timeout)
-            
+
             # Add matches from this chunk
             if isinstance(chunk_matches, list):
                 all_matches.extend(chunk_matches)
-            
+
             # Move to next chunk with overlap
             chunk_start += CHUNK_SIZE - CHUNK_OVERLAP
-        
+
         # Remove duplicates by converting to set and back to list
         return list(set(all_matches))
-        
+
     except Exception as e:
         if vverbose():
             writerr(colored(f"ERROR safe_regex_findall_chunked: {str(e)}", "red"))
