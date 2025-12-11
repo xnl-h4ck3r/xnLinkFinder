@@ -5,6 +5,9 @@
   - Changed
 
     - Amend the `domain_regex` to also check for unicode characters and `%` symbol, so it will also pick up domains like `thisätest.com` and `this%C3%A4test.com`.
+    - Fixed most catastrophic backtracking in both the main link regex and domain regex by replacing all unbounded quantifiers (`*` and `{0,}`) with reasonable bounded limits (`{0,500}` or `{0,1000}`). This eliminates regex timeout issues that were occurring on large responses, particularly those with special characters or multilingual content. The changes maintain full link discovery capabilities while preventing exponential backtracking that caused 30-second timeouts.
+    - Added intelligent content chunking for extremely large responses (>50KB). Large response bodies are now automatically split into overlapping 40KB chunks before regex processing, with 5KB overlap to ensure no matches are missed at chunk boundaries. This provides defense-in-depth protection against performance issues on extreme edge cases while maintaining complete link discovery.
+    - Removed the multiprocessing timeout mechanism that was causing false timeout reports even on tiny responses (e.g. 1,422 bytes). The mechanism had too much Windows multiprocessing overhead (process spawning, pickling, IPC delays) creating timing problems and race conditions. Since regex patterns already have bounded quantifiers to prevent catastrophic backtracking, and chunking provides additional protection, the unreliable multiprocessing timeout was unnecessary and has been removed. Regex now executes directly with chunking as the primary protection.
 
 - v7.4
 

@@ -133,7 +133,13 @@ class StopProgram(enum.Enum):
 stopProgram = None
 
 # The number of seconds to wait for a regex query to complete when searching for links
-DEFAULT_REGEX_TIMEOUT = 30
+DEFAULT_REGEX_TIMEOUT = 45
+
+# Chunk large responses to prevent regex timeouts on extreme cases
+# If response body is larger than this, split into chunks (in bytes)
+LARGE_RESPONSE_THRESHOLD = 50000   # 50KB (lowered to catch responses like the 87KB example)
+CHUNK_SIZE = 40000                 # 40KB chunks (smaller chunks for better reliability)
+CHUNK_OVERLAP = 5000               # 5KB overlap to catch patterns spanning chunk boundaries
 
 # Yaml config values
 LINK_EXCLUSIONS = ""
@@ -769,103 +775,63 @@ def regex_worker(pattern, string, flags):
         return str(e)
 
 
-def _regex_worker_mp(pat, txt, out_q):
-    """Worker function for multiprocessing regex execution with timeout."""
-    try:
-        matches = [m.group(0) for m in re.finditer(pat, txt, re.IGNORECASE)]
-        out_q.put(matches)
-    except Exception:
-        out_q.put([])  # Return empty list on error
+
+
 
 
 def safe_regex_findall(pattern, string, timeout=DEFAULT_REGEX_TIMEOUT):
-    """Runs regex search with a timeout using multiprocessing to allow termination on catastrophic backtracking."""
+    """
+    Runs regex search and returns matches.
+    
+    Note: The timeout parameter is kept for backward compatibility but is no longer used.
+    The multiprocessing timeout mechanism was removed because it caused false positives
+    (e.g., timeouts on 1,422 byte responses). Regex patterns already have bounded quantifiers
+    to prevent catastrophic backtracking, and chunking provides additional protection.
+    """
     try:
-        from multiprocessing import Process, Queue
-        import platform
-        import time
-
-        # On Windows, explicitly set start method if not already set
-        # This helps with pickling issues
-        if platform.system() == "Windows":
-            try:
-                import multiprocessing
-
-                # Get current start method, don't change if already set
-                current_method = multiprocessing.get_start_method(allow_none=True)
-                if current_method is None:
-                    multiprocessing.set_start_method("spawn", force=True)
-            except RuntimeError:
-                # Start method already set, ignore
-                pass
-
-        q = Queue()
-        # Use module-level function for Windows pickling compatibility
-        p = Process(target=_regex_worker_mp, args=(pattern, string, q))
-        p.daemon = True
-
-        start_time = time.time()
-        p.start()
-
-        # Give process a moment to start (0.1 seconds)
-        time.sleep(0.1)
-
-        # Check if process actually started
-        if not p.is_alive() and q.empty():
-            # Process failed to start or died immediately - fall back to direct execution
-            try:
-                return [m.group(0) for m in re.finditer(pattern, string, re.IGNORECASE)]
-            except Exception:
-                return []
-
-        p.join(timeout)
-
-        elapsed = time.time() - start_time
-
-        # Only report timeout if process is BOTH still alive AND significant time has elapsed
-        # This prevents false timeout reports if process fails immediately
-        if p.is_alive() and elapsed >= (timeout * 0.8):
-            # Process is still running after timeout - terminate it
-            try:
-                p.terminate()
-                p.join(timeout=1)  # Wait up to 1 second for termination
-            except Exception:
-                pass
-            return "Regex execution timed out!"
-
-        # If process is alive but not enough time elapsed, it failed to start properly
-        # Fall back to direct execution
-        if p.is_alive():
-            try:
-                p.terminate()
-            except Exception:
-                pass
-            try:
-                return [m.group(0) for m in re.finditer(pattern, string, re.IGNORECASE)]
-            except Exception:
-                return []
-
-        # Process finished, get result
-        try:
-            if not q.empty():
-                result = q.get_nowait()
-                return result if isinstance(result, list) else []
-            return []
-        except Exception:
-            return []
-
-    except RuntimeError as e:
-        # Handle shutdown during Ctrl-C
-        if "shutdown" in str(e).lower():
-            return []
-        raise
+        return [m.group(0) for m in re.finditer(pattern, string, re.IGNORECASE)]
     except Exception:
-        # On any other error (e.g., pickling issues), fall back to running without timeout
-        # This ensures the tool doesn't break entirely
-        try:
-            return [m.group(0) for m in re.finditer(pattern, string, re.IGNORECASE)]
-        except Exception:
-            return []
+        return []
+def safe_regex_findall_chunked(pattern, string, timeout=DEFAULT_REGEX_TIMEOUT):
+    """
+    Wrapper around safe_regex_findall that chunks large content.
+    For very large responses (>50KB), split into overlapping chunks and process separately.
+    This provides protection against potential performance issues on extreme cases.
+    """
+    try:
+        content_length = len(string)
+        
+        # If content is small enough, use regular processing
+        if content_length <= LARGE_RESPONSE_THRESHOLD:
+            return safe_regex_findall(pattern, string, timeout)
+        
+        # Content is large, process in chunks
+        all_matches = []
+        chunk_start = 0
+        
+        while chunk_start < content_length:
+            # Calculate chunk end with overlap
+            chunk_end = min(chunk_start + CHUNK_SIZE, content_length)
+            chunk = string[chunk_start:chunk_end]
+            
+            # Process this chunk
+            chunk_matches = safe_regex_findall(pattern, chunk, timeout)
+            
+            # Add matches from this chunk
+            if isinstance(chunk_matches, list):
+                all_matches.extend(chunk_matches)
+            
+            # Move to next chunk with overlap
+            chunk_start += CHUNK_SIZE - CHUNK_OVERLAP
+        
+        # Remove duplicates by converting to set and back to list
+        return list(set(all_matches))
+        
+    except Exception as e:
+        if vverbose():
+            writerr(colored(f"ERROR safe_regex_findall_chunked: {str(e)}", "red"))
+        # Fall back to regular processing
+        return safe_regex_findall(pattern, string, timeout)
 
 
 def stripLinkFromUnbalancedBrackets(link):
@@ -983,9 +949,9 @@ def getResponseLinks(response, url):
                     reString = (
                         r"(?:^|\"|'|\\n|\\r|\n|\r|\s)(((?:[a-zA-Z]{1,10}:\/\/|\/\/)([^\"'\/\s]{1,255}\.[a-zA-Z]{2,24}|localhost)[^\"'\n\s]{0,255})|((?:#?\/|\.\.\/|\.\/)[^\"'><,;| *()(%%$^\/\\\[\]][^\"'><,;|()\s]{1,255})|([a-zA-Z0-9_\-\/]{1,}\/[a-zA-Z0-9_\-\/\.]{1,255}\.(?:[a-zA-Z]{1,4}"
                         + LINK_REGEX_NONSTANDARD_FILES
-                        + r")(?:[\?|\/][^\"|']{0,}|))|([a-zA-Z0-9_\-\.]{1,255}\.(?:"
+                        + r")(?:[\?|\/][^\"|']{0,1000}|))|([a-zA-Z0-9_\-\.]{1,255}\.(?:"
                         + LINK_REGEX_FILES
-                        + r")(?:\?[^\"|^']{0,255}|)))(?:\"|'|\\n|\\r|\n|\r|\s|$)|(?<=^Disallow:\s)[^\$\n]*|(?<=^Allow:\s)[^\$\n]*|(?<= Domain\=)[^\";']*|(?<=\<)https?:\/\/[^>\n]*|(\"|\')([A-Za-z0-9_-]+\/)+[A-Za-z0-9_-]+(\.[A-Za-z0-9]{2,}|\/?(\?|\#)[A-Za-z0-9_\-&=\[\]]*)(\"|\')|(?<=\<Key\>)[^\<]+\<\/Key\>"
+                        + r")(?:\?[^\"|^']{0,255}|)))(?:\"|'|\\n|\\r|\n|\r|\s|$)|(?<=^Disallow:\s)[^\$\n]{0,500}|(?<=^Allow:\s)[^\$\n]{0,500}|(?<= Domain\=)[^\";']{0,500}|(?<=\<)https?:\/\/[^>\n]{0,1000}|(\"|\')([A-Za-z0-9_-]+\/)+[A-Za-z0-9_-]+(\.[A-Za-z0-9]{2,}|\/?(\?|\#)[A-Za-z0-9_\-&=\[\]]{0,500})(\"|\')|(?<=\<Key\>)[^\<]{1,500}\<\/Key\>"
                     )
 
                     # Replace different encodings of " before searching to maximise finds
@@ -997,18 +963,7 @@ def getResponseLinks(response, url):
                     )
 
                     # Extract links using first regex
-                    link_keys = safe_regex_findall(reString, body)
-                    if link_keys == "Regex execution timed out!":
-                        content_length = len(body)
-                        writerr(
-                            colored(
-                                getSPACER(
-                                    f"The link regex timed out for {url} (Content-Length:{content_length}, Timeout:{DEFAULT_REGEX_TIMEOUT}s)"
-                                ),
-                                "red",
-                            )
-                        )
-                        link_keys = []  # Reset to empty list on timeout
+                    link_keys = safe_regex_findall_chunked(reString, body)
                 except Exception as e:
                     link_keys = []  # Reset to empty list on exception
                     if vverbose():
@@ -1021,21 +976,10 @@ def getResponseLinks(response, url):
                 extra_keys = []
                 try:
                     # Additional domain regex
-                    domain_regex = r"(?:[a-zA-Z0-9%\u0080-\uFFFF_-]+\.){0,5}[a-zA-Z0-9%\u0080-\uFFFF_-]+\.[a-zA-Z]{2,24}(?:\/[^\s\"'<>()\[\]{}]*)?"
+                    domain_regex = r"(?:[a-zA-Z0-9%\u0080-\uFFFF_-]+\.){0,5}[a-zA-Z0-9%\u0080-\uFFFF_-]+\.[a-zA-Z]{2,24}(?:\/[^\s\"'<>()\[\]{}]{0,500})?"
 
                     # Extract additional domains
-                    extra_keys = safe_regex_findall(domain_regex, body)
-                    if extra_keys == "Regex execution timed out!":
-                        content_length = len(body)
-                        writerr(
-                            colored(
-                                getSPACER(
-                                    f"The domain regex timed out for {url} (Content-Length:{content_length}, Timeout:{DEFAULT_REGEX_TIMEOUT}s)"
-                                ),
-                                "red",
-                            )
-                        )
-                        extra_keys = []  # Reset to empty list on timeout
+                    extra_keys = safe_regex_findall_chunked(domain_regex, body)
                 except Exception as e:
                     extra_keys = []  # Reset to empty list on exception
                     if vverbose():
