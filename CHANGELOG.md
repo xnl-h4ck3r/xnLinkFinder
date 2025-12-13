@@ -1,5 +1,12 @@
 ## Changelog
 
+- v7.6
+
+  - Changed
+
+    - Filter out blank lines when reading the scope filter file.
+    - Ensure that the scope filter checks are case-insensitive.
+
 - v7.5
 
   - Changed

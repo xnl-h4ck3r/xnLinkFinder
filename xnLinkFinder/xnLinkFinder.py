@@ -527,7 +527,7 @@ def includeLink(link, origin):
                         search = args.scope_filter.replace(".", r"\.")
                         search = search.replace("*", "")
                         regexStr = r"^([A-Z,a-z]*)?(:\/\/|//|^)[^\/|?|#]*" + search
-                        if re.search(regexStr, link):
+                        if re.search(regexStr, link, re.IGNORECASE):
                             include = True
                         else:
                             # If OOS domains need to be logged, add to the set
@@ -542,7 +542,7 @@ def includeLink(link, origin):
                                 regexStr = (
                                     r"^([A-Z,a-z]*)?(:\/\/|//|^)[^\/|?|#]*" + search
                                 )
-                                if re.search(regexStr, link):
+                                if re.search(regexStr, link, re.IGNORECASE):
                                     include = True
                                 else:
                                     # If OOS domains need to be logged, add to the set
@@ -3056,7 +3056,9 @@ def getScopeDomains():
         scopeFilterError = False
         try:
             scopeFile = open(args.scope_filter, "r")
-            inScopeFilterDomains = [line.rstrip() for line in scopeFile]
+            inScopeFilterDomains = [
+                line.rstrip() for line in scopeFile if line.rstrip() != ""
+            ]
             scopeFile.close()
             for filter in inScopeFilterDomains:
                 if filter.find(".") < 0 or filter.find(" ") > 0:
