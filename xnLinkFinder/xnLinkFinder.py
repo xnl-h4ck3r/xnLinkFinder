@@ -3899,25 +3899,27 @@ def processHarMessage(entry, responseCount):
             mimeType = entry["response"]["content"]["mimeType"].split(";")[0]
         except Exception:
             mimeType = ""
-            
+
         try:
             responseText = entry["response"]["content"]["text"]
-            
+
             # Check if content encoding is base64
             try:
                 encoding = entry["response"]["content"]["encoding"]
             except Exception:
                 encoding = ""
-            
+
             if encoding == "base64":
                 try:
-                    responseText = base64.b64decode(responseText).decode("utf-8", "ignore")
+                    responseText = base64.b64decode(responseText).decode(
+                        "utf-8", "ignore"
+                    )
                 except Exception:
                     pass
-                    
+
         except Exception:
             responseText = ""
-            
+
         response = ""
         if mimeType != "":
             response += "Content-Type: " + mimeType + "\r\n\r\n"
@@ -3929,9 +3931,12 @@ def processHarMessage(entry, responseCount):
             # Add headers
             for header in entry["request"]["headers"]:
                 requestFull += header["name"] + ": " + header["value"] + "\n"
-            
+
             # Add post data if available
-            if "postData" in entry["request"] and "text" in entry["request"]["postData"]:
+            if (
+                "postData" in entry["request"]
+                and "text" in entry["request"]["postData"]
+            ):
                 requestFull += "\n" + entry["request"]["postData"]["text"]
         except Exception:
             pass
@@ -3943,7 +3948,7 @@ def processHarMessage(entry, responseCount):
         elif fillTest == 1:
             fillChar = "o"
         suffix = "Complete "
-        
+
         # Show memory usage if -vv option chosen, and check memory every 25 requests (or if its the last)
         if responseCount % 25 == 0 or responseCount == totalResponses:
             try:
@@ -3959,7 +3964,7 @@ def processHarMessage(entry, responseCount):
             except Exception:
                 if vverbose():
                     suffix = 'Complete (To show memory usage, run "pip install psutil")'
-        
+
         printProgressBar(
             responseCount,
             totalResponses,
@@ -3993,7 +3998,7 @@ def processHarFile():
     global totalResponses, currentMemUsage, currentMemPercent, stopProgram
     try:
         fileSize = os.path.getsize(args.input)
-        
+
         write(
             colored(
                 "\nProcessing HAR file "
@@ -4009,7 +4014,7 @@ def processHarFile():
             # Load the JSON file
             with open(args.input, "r", encoding="utf-8", errors="ignore") as f:
                 harData = json.load(f)
-            
+
             if "log" in harData and "entries" in harData["log"]:
                 entries = harData["log"]["entries"]
                 totalResponses = len(entries)
@@ -4025,11 +4030,16 @@ def processHarFile():
                 for entry in entries:
                     if stopProgram is not None:
                         break
-                    
+
                     responseCount += 1
                     processHarMessage(entry, responseCount)
             else:
-                writerr(colored("ERROR processHarFile: 'log' or 'entries' not found in JSON", "red"))
+                writerr(
+                    colored(
+                        "ERROR processHarFile: 'log' or 'entries' not found in JSON",
+                        "red",
+                    )
+                )
 
         except Exception as e:
             if vverbose():
@@ -4065,7 +4075,7 @@ def processEachInput(input):
                 try:
                     inputFile = open(input, "r")
                     firstLine = inputFile.readline()
-                    
+
                     # Check if the file passed is a Burp file
                     burpFile = firstLine.lower().startswith("<?xml")
 
@@ -4084,7 +4094,10 @@ def processEachInput(input):
                                 try:
                                     if input.endswith(".har"):
                                         harFile = True
-                                    elif firstLine.strip().startswith("{") and firstLine.find('"log"') > 0:
+                                    elif (
+                                        firstLine.strip().startswith("{")
+                                        and firstLine.find('"log"') > 0
+                                    ):
                                         harFile = True
                                     else:
                                         # If the first line didn't have "log", maybe it's on the second line?
@@ -4300,11 +4313,17 @@ def processInput():
                         # If not a Burp, ZAP or Caido file, check if it is a HAR file
                         if not caidoFile:
                             try:
-                                if firstLine.strip().startswith("{") and firstLine.find('"log"') > 0:
+                                if (
+                                    firstLine.strip().startswith("{")
+                                    and firstLine.find('"log"') > 0
+                                ):
                                     harFile = True
                                 else:
                                     if firstLine.strip() == "{":
-                                        if len(stdinFile) > 1 and stdinFile[1].find('"log"') > 0:
+                                        if (
+                                            len(stdinFile) > 1
+                                            and stdinFile[1].find('"log"') > 0
+                                        ):
                                             harFile = True
                             except Exception:
                                 pass
@@ -4313,7 +4332,8 @@ def processInput():
                             # If it does then it will be considered a file of URLs, otherwise the contents will be searched
                             if not harFile:
                                 if not (
-                                    firstLine.startswith("//") or firstLine.startswith("http")
+                                    firstLine.startswith("//")
+                                    or firstLine.startswith("http")
                                 ):
                                     fileContent = True
 
