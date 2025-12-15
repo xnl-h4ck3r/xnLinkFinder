@@ -1,5 +1,11 @@
 ## Changelog
 
+- v7.8
+
+  - New
+
+    - Added support for HAR (HTTP Archive) files as input. Passing a `.har` file with `-i` will now process the file similarly to proxy files, extracting links and parameters from both requests and responses.
+
 - v7.7
 
   - New

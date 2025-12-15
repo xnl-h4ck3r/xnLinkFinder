@@ -28,6 +28,7 @@ from datetime import datetime
 from bs4 import BeautifulSoup, Comment
 
 import csv
+import json
 import urllib
 import tldextract
 from pathlib import Path
@@ -63,6 +64,7 @@ inScopeFilterDomains = None
 burpFile = False
 zapFile = False
 caidoFile = False
+harFile = False
 stdFile = False
 urlPassed = False
 dirPassed = False
@@ -611,7 +613,7 @@ def includeContentType(header, url):
     Determine if the content type is in the exclusions
     Returns whether the content type is included
     """
-    global burpFile, zapFile, caidoFile
+    global burpFile, zapFile, caidoFile, harFile
 
     include = True
 
@@ -624,6 +626,8 @@ def includeContentType(header, url):
                     header,
                     re.IGNORECASE,
                 )[0]
+            elif harFile:
+                contentType = header.get("content-type", "")
             else:
                 contentType = header["content-type"]
             contentType = contentType.split(";")[0]
@@ -874,14 +878,14 @@ def getResponseLinks(response, url):
     """
     Get a list of links found
     """
-    global inScopePrefixDomains, burpFile, zapFile, caidoFile, dirPassed, COMMON_TLDS, fileContent
+    global inScopePrefixDomains, burpFile, zapFile, caidoFile, harFile, dirPassed, COMMON_TLDS, fileContent
     try:
 
         # if the --include argument is True then add the input links to the output too (unless the input was a directory)
         if args.include and not dirPassed:
             addLink(url, url)
 
-        if burpFile or zapFile or caidoFile:
+        if burpFile or zapFile or caidoFile or harFile:
             # Ensure response is a string for file-based inputs
             if not isinstance(response, str):
                 response = str(response)
@@ -2569,7 +2573,7 @@ def processDepth():
 
 def showOptions():
 
-    global burpFile, zapFile, caidoFile, stdFile, urlPassed, dirPassed, inScopePrefixDomains, inScopeFilterDomains
+    global burpFile, zapFile, caidoFile, harFile, stdFile, urlPassed, dirPassed, inScopePrefixDomains, inScopeFilterDomains
 
     try:
         write(colored("Selected config and settings:", "cyan"))
@@ -2593,6 +2597,11 @@ def showOptions():
                 write(
                     colored("-i: " + args.input + " (Caido File) ", "magenta")
                     + colored("Links will be found in saved Caido responses.", "white")
+                )
+            elif harFile:
+                write(
+                    colored("-i: " + args.input + " (HAR File) ", "magenta")
+                    + colored("Links will be found in saved HAR responses.", "white")
                 )
             else:
                 if dirPassed:
@@ -3873,11 +3882,169 @@ def processBurpFile():
             )
 
 
+def processHarMessage(entry, responseCount):
+    """
+    Process a specific entry from a HAR JSON object.
+    """
+    global totalResponses, currentMemUsage, currentMemPercent
+    try:
+        # Get the request URL
+        try:
+            requestUrl = entry["request"]["url"]
+        except Exception:
+            requestUrl = ""
+
+        # Get the response content
+        try:
+            mimeType = entry["response"]["content"]["mimeType"].split(";")[0]
+        except Exception:
+            mimeType = ""
+            
+        try:
+            responseText = entry["response"]["content"]["text"]
+            
+            # Check if content encoding is base64
+            try:
+                encoding = entry["response"]["content"]["encoding"]
+            except Exception:
+                encoding = ""
+            
+            if encoding == "base64":
+                try:
+                    responseText = base64.b64decode(responseText).decode("utf-8", "ignore")
+                except Exception:
+                    pass
+                    
+        except Exception:
+            responseText = ""
+            
+        response = ""
+        if mimeType != "":
+            response += "Content-Type: " + mimeType + "\r\n\r\n"
+        response += responseText
+
+        # Get the full request (headers and post data) to search
+        requestFull = ""
+        try:
+            # Add headers
+            for header in entry["request"]["headers"]:
+                requestFull += header["name"] + ": " + header["value"] + "\n"
+            
+            # Add post data if available
+            if "postData" in entry["request"] and "text" in entry["request"]["postData"]:
+                requestFull += "\n" + entry["request"]["postData"]["text"]
+        except Exception:
+            pass
+
+        # Show progress bar
+        fillTest = responseCount % 2
+        if fillTest == 0:
+            fillChar = "O"
+        elif fillTest == 1:
+            fillChar = "o"
+        suffix = "Complete "
+        
+        # Show memory usage if -vv option chosen, and check memory every 25 requests (or if its the last)
+        if responseCount % 25 == 0 or responseCount == totalResponses:
+            try:
+                getMemory()
+                if vverbose():
+                    suffix = (
+                        "Complete (Mem Usage "
+                        + humanReadableSize(currentMemUsage)
+                        + ", Total Mem "
+                        + str(currentMemPercent)
+                        + "%)   "
+                    )
+            except Exception:
+                if vverbose():
+                    suffix = 'Complete (To show memory usage, run "pip install psutil")'
+        
+        printProgressBar(
+            responseCount,
+            totalResponses,
+            prefix="Checking " + str(totalResponses) + " responses:",
+            suffix=suffix,
+            length=getProgressBarLength(),
+            fill=fillChar,
+        )
+
+        # Get the links
+        if response != "":
+            getResponseLinks(response, requestUrl)
+        if requestFull != "":
+            getResponseLinks(requestFull, requestUrl)
+
+        # Get potential parameters from the response
+        if response != "":
+            getResponseParams(response, requestUrl)
+        if requestFull != "":
+            getResponseParams(requestFull, requestUrl)
+
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR processHarMessage 1: " + str(e), "red"))
+
+
+def processHarFile():
+    """
+    Process a HAR (HTTP Archive) JSON file.
+    """
+    global totalResponses, currentMemUsage, currentMemPercent, stopProgram
+    try:
+        fileSize = os.path.getsize(args.input)
+        
+        write(
+            colored(
+                "\nProcessing HAR file "
+                + args.input
+                + " ("
+                + humanReadableSize(fileSize)
+                + "):",
+                "cyan",
+            )
+        )
+
+        try:
+            # Load the JSON file
+            with open(args.input, "r", encoding="utf-8", errors="ignore") as f:
+                harData = json.load(f)
+            
+            if "log" in harData and "entries" in harData["log"]:
+                entries = harData["log"]["entries"]
+                totalResponses = len(entries)
+                printProgressBar(
+                    0,
+                    totalResponses,
+                    prefix="Checking " + str(totalResponses) + " responses:",
+                    suffix="Complete ",
+                    length=getProgressBarLength(),
+                )
+
+                responseCount = 0
+                for entry in entries:
+                    if stopProgram is not None:
+                        break
+                    
+                    responseCount += 1
+                    processHarMessage(entry, responseCount)
+            else:
+                writerr(colored("ERROR processHarFile: 'log' or 'entries' not found in JSON", "red"))
+
+        except Exception as e:
+            if vverbose():
+                writerr(colored("ERROR processHarFile 2: " + str(e), "red"))
+
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR processHarFile 1: " + str(e), "red"))
+
+
 def processEachInput(input):
     """
     Process the input, whether its from -i or <stdin>
     """
-    global burpFile, zapFile, caidoFile, urlPassed, stdFile, stdinFile, dirPassed, stdinMultiple, linksFound, linksVisited, totalRequests, skippedRequests, failedRequests, paramsFound, waymoreMode, stopProgram, contentTypesProcessed, oosLinksFound, lstPathWords, wordsFound, fileContent
+    global burpFile, zapFile, caidoFile, harFile, urlPassed, stdFile, stdinFile, dirPassed, stdinMultiple, linksFound, linksVisited, totalRequests, skippedRequests, failedRequests, paramsFound, waymoreMode, stopProgram, contentTypesProcessed, oosLinksFound, lstPathWords, wordsFound, fileContent
 
     if stopProgram is None:
         checkMaxTimeLimit()
@@ -3891,13 +4058,14 @@ def processEachInput(input):
         # or a Burp XML file with Requests and Responses
         # or a ZAP ASCII text file with Requests and Responses
         # or a Caido CSV text file with Requests and Responses
+        # or a HAR JSON file with Requests and Responses
         # if the value passed is not a valid file, or a directory, then assume it is an individual URL:
         if not stdinMultiple:
             if os.path.isfile(input):
                 try:
                     inputFile = open(input, "r")
                     firstLine = inputFile.readline()
-
+                    
                     # Check if the file passed is a Burp file
                     burpFile = firstLine.lower().startswith("<?xml")
 
@@ -3911,9 +4079,26 @@ def processEachInput(input):
                         if not zapFile:
                             caidoFile = firstLine.lower().startswith("id,host,method")
 
-                            # If it's not a Burp, ZAP or Caido file then assume it is a standard file or URLs
+                            # If it's not a Burp, ZAP or Caido file, check if it is a HAR file
                             if not caidoFile:
-                                stdFile = True
+                                try:
+                                    if input.endswith(".har"):
+                                        harFile = True
+                                    elif firstLine.strip().startswith("{") and firstLine.find('"log"') > 0:
+                                        harFile = True
+                                    else:
+                                        # If the first line didn't have "log", maybe it's on the second line?
+                                        # But let's check correctly for JSON structure slightly deeper if first line is just {
+                                        if firstLine.strip() == "{":
+                                            nextLine = inputFile.readline()
+                                            if nextLine.find('"log"') > 0:
+                                                harFile = True
+                                except Exception:
+                                    pass
+
+                                # If it's not a Burp, ZAP, Caido or HAR file then assume it is a standard file or URLs
+                                if not harFile:
+                                    stdFile = True
 
                     # Close the file after determining type - it will be reopened by processing functions
                     inputFile.close()
@@ -3969,6 +4154,10 @@ def processEachInput(input):
         elif caidoFile:
             # If it's a Caido file
             processCaidoFile()
+
+        elif harFile:
+            # If it's a HAR file
+            processHarFile()
 
         else:
 
@@ -4067,7 +4256,7 @@ def processInput():
     # Tell Python to run the handler() function when SIGINT is received
     signal(SIGINT, handler)
 
-    global lstExclusions, lstFileExtExclusions, burpFile, zapFile, caidoFile, stdFile, inputFile, urlPassed, dirPassed, stdinMultiple, stopProgram, stdinFile, fileContent
+    global lstExclusions, lstFileExtExclusions, burpFile, zapFile, caidoFile, harFile, stdFile, inputFile, urlPassed, dirPassed, stdinMultiple, stopProgram, stdinFile, fileContent
 
     try:
         # Set the link exclusions, and add any additional exclusions passed with -x (--exclude)
@@ -4108,12 +4297,25 @@ def processInput():
                     if not zapFile:
                         caidoFile = firstLine.lower().startswith("id,host,method")
 
-                        # If not any special file, then check if first line starts with // or http.
-                        # If it does then it will be considered a file of URLs, otherwise the contents will be searched
-                        if not (
-                            firstLine.startswith("//") or firstLine.startswith("http")
-                        ):
-                            fileContent = True
+                        # If not a Burp, ZAP or Caido file, check if it is a HAR file
+                        if not caidoFile:
+                            try:
+                                if firstLine.strip().startswith("{") and firstLine.find('"log"') > 0:
+                                    harFile = True
+                                else:
+                                    if firstLine.strip() == "{":
+                                        if len(stdinFile) > 1 and stdinFile[1].find('"log"') > 0:
+                                            harFile = True
+                            except Exception:
+                                pass
+
+                            # If not any special file, then check if first line starts with // or http.
+                            # If it does then it will be considered a file of URLs, otherwise the contents will be searched
+                            if not harFile:
+                                if not (
+                                    firstLine.startswith("//") or firstLine.startswith("http")
+                                ):
+                                    fileContent = True
 
         # If input wasn't piped then just process the -i / --input value
         if sys.stdin.isatty():
@@ -4383,10 +4585,10 @@ def ensure_unicode(text):
 # Get XML and JSON responses, extract keys and add them to the paramsFound list
 # In addition it will extract name and id from <input> fields in HTML
 def getResponseParams(response, request):
-    global paramsFound, inScopePrefixDomains, burpFile, zapFile, caidoFile, dirPassed, wordsFound, lstStopWords, fileContent
+    global paramsFound, inScopePrefixDomains, burpFile, zapFile, caidoFile, harFile, dirPassed, wordsFound, lstStopWords, fileContent
     try:
 
-        if burpFile or zapFile or caidoFile:
+        if burpFile or zapFile or caidoFile or harFile:
             # Ensure response is a string for file-based inputs
             if not isinstance(response, str):
                 response = str(response)
@@ -4847,7 +5049,7 @@ def main():
         "-i",
         "--input",
         action="store",
-        help="Input a: URL, text file of URLs, a Directory of files to search, a Burp XML output file or an ZAP output file.",
+        help="Input a: URL, text file of URLs, a Directory of files to search, a Burp XML output file, ZAP output file, Caido CSV file, or a HAR JSON file.",
     )
     parser.add_argument(
         "-o",

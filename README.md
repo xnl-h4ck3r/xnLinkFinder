@@ -1,6 +1,6 @@
 <center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/blob/main/xnLinkFinder/images/title.png"></center>
 
-## About - v7.7
+## About - v7.8
 
 This is a tool used to discover endpoints (and potential parameters) for a given target. It can find them by:
 
@@ -11,6 +11,7 @@ This is a tool used to discover endpoints (and potential parameters) for a given
 - get them from a **Burp** project (pass location of a Burp XML file)
 - get them from an **ZAP** project (pass location of a ZAP ASCII message file)
 - get them from a **Caido** project (pass location of a Caido export CSV file)
+- get them from a **HAR (HTTP Archive) file** (pass location of a HAR JSON file)
 - processing a [waymore](https://github.com/xnl-h4ck3r/waymore) results directory (searching archived response files from `waymore -mode R` and also requesting URLs from `waymore.txt` and the original URLs from `waymore_index.txt` - see [waymore README.md](https://github.com/xnl-h4ck3r/waymore/blob/main/README.md))
 
 The python script is based on the link finding capabilities of my Burp extension [GAP](https://github.com/xnl-h4ck3r/burp-extensions).
@@ -50,7 +51,7 @@ pipx install git+https://github.com/xnl-h4ck3r/xnLinkFinder.git
 
 | Arg         | Long Arg                   | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | ----------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| -i          | --input                    | Input a: URL, text file of URLs, a Directory of files to search, a Burp XML output file, a ZAP output file, or a Caido CSV, or a single file to search contents.                                                                                                                                                                                                                                                                                                                                   |
+| -i          | --input                    | Input a: URL, text file of URLs, a Directory of files to search, a Burp XML output file, a ZAP output file, a Caido CSV file, a HAR JSON file, or a single file to search contents.                                                                                                                                                                                                                                                                                                                                   |
 | -o          | --output                   | The file to save the Links output to, including path if necessary (default: output.txt). If set to `cli` then output is only written to STDOUT. If the file already exist it will just be appended to (and de-duplicated) unless option `-ow` is passed.                                                                                                                                                                                                                                           |
 | -op         | --output-params            | The file to save the Potential Parameters output to, including path if necessary (default: parameters.txt). If set to `cli` then output is only written to STDOUT (but not piped to another program). If the file already exist it will just be appended to (and de-duplicated) unless option `-ow` is passed.                                                                                                                                                                                     |
 | -owl        | --output-wordlist          | The file to save the target specific Wordlist output to, including path if necessary (default: No wordlist output). If set to `cli` then output is only written to STDOUT (but not piped to another program). If the file already exist it will just be appended to (and de-duplicated) unless option -ow is passed.                                                                                                                                                                               |
@@ -63,8 +64,8 @@ pipx install git+https://github.com/xnl-h4ck3r/xnLinkFinder.git
 | -c          | --cookies †                | Add cookies to pass with HTTP requests. Pass in the format `'name1=value1; name2=value2;'`                                                                                                                                                                                                                                                                                                                                                                                                         |
 | -H          | --headers †                | Add custom headers to pass with HTTP requests. Pass in the format `'Header1: value1; Header2: value2;'`                                                                                                                                                                                                                                                                                                                                                                                            |
 | -ra         | --regex-after              | RegEx for filtering purposes against found endpoints before output (e.g. `/api/v[0-9]\.[0-9]\*` ). If it matches, the link is output.                                                                                                                                                                                                                                                                                                                                                              |
-| -d          | --depth †                  | The level of depth to search. For example, if a value of 2 is passed, then all links initially found will then be searched for more links (default: 1). This option is ignored for Burp files, ZAP files and Caido files because they can be huge and consume lots of memory. It is also advisable to use the `-sp` (`--scope-prefix`) argument to ensure a request to links found without a domain can be attempted.                                                                              |
-| -p          | --processes †              | Basic multithreading is done when getting requests for a URL, or file of URLs (not a Burp file, ZAP file or Caido file). This argument determines the number of processes (threads) used (default: 25)                                                                                                                                                                                                                                                                                             |
+| -d          | --depth †                  | The level of depth to search. For example, if a value of 2 is passed, then all links initially found will then be searched for more links (default: 1). This option is ignored for Burp files, ZAP files, Caido files, and HAR files because they can be huge and consume lots of memory. It is also advisable to use the `-sp` (`--scope-prefix`) argument to ensure a request to links found without a domain can be attempted.                                                                              |
+| -p          | --processes †              | Basic multithreading is done when getting requests for a URL, or file of URLs (not a Burp file, ZAP file, Caido file, or HAR file). This argument determines the number of processes (threads) used (default: 25)                                                                                                                                                                                                                                                                                             |
 | -rl         | --rate-limit †             | Maximum number of requests to send per second (default: 0, no rate limiting). This helps prevent overwhelming the target server.                                                                                                                                                                                                                                                                                                                                                                   |
 | -x          | --exclude                  | Additional Link exclusions (to the list in `config.yml`) in a comma separated list, e.g. `careers,forum`                                                                                                                                                                                                                                                                                                                                                                                           |
 | -orig       | --origin                   | Whether you want the origin of the link to be in the output. Displayed as `LINK-URL [ORIGIN-URL]` in the output (default: false)                                                                                                                                                                                                                                                                                                                                                                   |
@@ -104,7 +105,7 @@ pipx install git+https://github.com/xnl-h4ck3r/xnLinkFinder.git
 |             | --version                  | Show current version number.                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | -h          | --help                     | show the help message and exit                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
-† NOT RELEVANT FOR INPUT OF DIRECTORY, BURP XML FILE, ZAP FILE OR CAIDO CSV FILE
+† NOT RELEVANT FOR INPUT OF DIRECTORY, BURP XML FILE, ZAP FILE, CAIDO CSV FILE, OR HAR FILE
 
 ## config.yml
 
@@ -152,7 +153,7 @@ If you have a file of JS file URLs for example, you can look for links in those:
 xnLinkFinder -i target_js.txt -sf target.com
 ```
 
-NOTE: A passed file is assumed to be a list of URLs if the first line starts with `//` or `http` or is a format of a domain (e.g. `example.com`, `sub.example.co.uk`), otherwise it is considered to be a file to search the contents for (unless it is a Burp, Zap or Caido file).
+NOTE: A passed file is assumed to be a list of URLs if the first line starts with `//` or `http` or is a format of a domain (e.g. `example.com`, `sub.example.co.uk`), otherwise it is considered to be a file to search the contents for (unless it is a Burp, Zap, Caido, or HAR file).
 
 ### Find Links from the contents of a file - Basic
 
@@ -162,7 +163,7 @@ If you have a saved response for example, you can look for links in those:
 xnLinkFinder -i response.txt -sf target.com
 ```
 
-NOTE: A passed file is assumed to be a list of URLs if the first line starts with `//` or `http` or is a format of a domain (e.g. `example.com`, `sub.example.co.uk`), otherwise it is considered to be a file to search the contents for (unless it is a Burp, Zap or Caido file).
+NOTE: A passed file is assumed to be a list of URLs if the first line starts with `//` or `http` or is a format of a domain (e.g. `example.com`, `sub.example.co.uk`), otherwise it is considered to be a file to search the contents for (unless it is a Burp, Zap, Caido, or HAR file).
 
 ### Find Links from a files in a directory - Basic
 
@@ -223,6 +224,16 @@ xnLinkFinder -i caido_redbull.csv
 
 NOTE: xnLinkFinder makes the assumption that if the first line of the file passed with `-i` is in the format `id,host,method`, then you are trying to process a Caido export CSV file.
 
+### Find Links from a HAR (HTTP Archive) JSON file - Basic
+
+A HAR file is a JSON file that contains a list of HTTP requests and responses. It is a common format for storing HTTP traffic. You can export a HAR file from most web browsers, usually from the Network tab in the Developer Tools. Pass the file as input:
+
+```
+xnLinkFinder -i browser.har
+```
+
+NOTE: xnLinkFinder makes the assumption that if the file name ends with `.har` OR the first line of the file contains `"log"` and starts with `{` then you are trying to process a HAR file.
+
 ### Find Links from a Waymore results directory
 
 The [waymore](https://github.com/xnl-h4ck3r/waymore) tool can be used to get URLs from various third party APIs, and also download archived responses from various sources. Passing a waymore results directory to `xnLinKFinder` will search the contents of archived responses, and also request URLs from `waymore.txt` and also the archived URLs from `waymore_index.txt` (or `index.txt` for older versions of `waymore`) and get more links from those responses. If `-d`/`--depth` is zero, then the URLs from `waymore_index.txt` will just be returned but not requested.
@@ -247,7 +258,7 @@ You can also pass the input through `stdin` instead of `-i`.
 cat redbull_subs.txt | xnLinkFinder -sp https://redbull.com -sf rebbull.* -d 3
 ```
 
-NOTE: You can't pipe in a Burp, ZAP or Caido file, these must be passed using `-i`.
+NOTE: You can't pipe in a Burp, ZAP, Caido, or HAR file, these must be passed using `-i`.
 
 ## Recommendations and Notes
 
@@ -305,6 +316,7 @@ If you come across any problems at all, or have ideas for improvements, please f
 ## TODO
 
 - Add specific regex check for Requests when a proxy file is passed as input. Currently it uses the same regex as Requests, but this is not ideal.
+- Get Cookie names to add to the list of potential parameters.
 
 ## Example output
 
