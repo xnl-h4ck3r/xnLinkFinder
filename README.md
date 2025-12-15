@@ -1,6 +1,6 @@
 <center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/blob/main/xnLinkFinder/images/title.png"></center>
 
-## About - v7.6
+## About - v7.7
 
 This is a tool used to discover endpoints (and potential parameters) for a given target. It can find them by:
 
@@ -195,14 +195,14 @@ xnLinkFinder -i target_burp.xml -o target_burp.txt -sp https://www.target.com -s
 
 ### Find Links from a ZAP project - Basic
 
-In ZAP, select the items you want to search by highlighting the History for example, clicking menu `Export` and selecting `Export Messages to File...`. This will let you save an ASCII text file of all requests and responses you want to search.
+In ZAP, select the items you want to search by highlighting the History for example, clicking menu `Export` and selecting `Save Messages...` (or `Export Messages to File...` in older versions). This will let you save an ASCII text file of all requests and responses you want to search.
 To get all links from the file (even with HUGE files, you'll be able to get all the links):
 
 ```
 xnLinkFinder -i target_zap.txt
 ```
 
-NOTE: xnLinkFinder makes the assumption that if the first line of the file passed with `-i` is in the format `==== 99 ==========` (v2.11.1) or `===99 ==========` (v2.12) for example, then you are trying to process a ZAP ASCII text file.
+NOTE: `xnLinkFinder` makes the assumption that if the first line of the file passed with `-i` is in the format `==== 99 ==========` or `===99 ==========` for example, then you are trying to process a ZAP ASCII text file.
 
 ### Find Links from a Cadio export CSV file - Basic
 
@@ -304,7 +304,7 @@ If you come across any problems at all, or have ideas for improvements, please f
 
 ## TODO
 
-- I seem to have completed all the TODO's I originally had! If you think of any that need adding, let me know 🤘
+- Add specific regex check for Requests when a proxy file is passed as input. Currently it uses the same regex as Requests, but this is not ideal.
 
 ## Example output
 

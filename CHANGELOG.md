@@ -1,5 +1,18 @@
 ## Changelog
 
+- v7.7
+
+  - New
+
+    - When a proxy file was passed as input, only the Responses were searched for links and parameters. This has been changed to also search the Requests too. NOTE: The same regex for finding links and parameters is used for both the Request and Response, BUT there does need to be specific regex for Requests that are different. This change will come soon, but for now this change will find more than before but not everything.
+
+  - Changed
+
+    - Remove references to OWASP in the code in reference to ZAP as they no longer maintain the ZAP proxy.
+    - Update instructions for using ZAP to reflect the latest version, 2.16.1.
+    - Don't remove the `<request>` tags from the Burp file.
+    - BUG FIX: When passing a Caido CSV file, it would ignore the first record because that is a CSV header, but that record isn't read for some reason, so it was actually ignoring the first valid record.
+  
 - v7.6
 
   - Changed

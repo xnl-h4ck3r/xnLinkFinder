@@ -2586,7 +2586,7 @@ def showOptions():
                 )
             elif zapFile:
                 write(
-                    colored("-i: " + args.input + " (OWASP ZAP File) ", "magenta")
+                    colored("-i: " + args.input + " (ZAP File) ", "magenta")
                     + colored("Links will be found in saved ZAP responses.", "white")
                 )
             elif caidoFile:
@@ -3344,7 +3344,7 @@ def processDirectory():
             )
 
 
-def processCaidoMessage(request, response, responseCount):
+def processCaidoMessage(requestUrl, requestFull, response, responseCount):
     """
     Process a specific message from an Caido CSV text output file. There is a "message" for each request and response
     """
@@ -3383,14 +3383,16 @@ def processCaidoMessage(request, response, responseCount):
         )
 
         # Get the links
-        getResponseLinks(response, request)
+        getResponseLinks(response, requestUrl)
+        getResponseLinks(requestFull, requestUrl)
 
         # Get potential parameters from the response
-        getResponseParams(response, request)
+        getResponseParams(response, requestUrl)
+        getResponseParams(requestFull, requestUrl)
 
     except Exception as e:
         if vverbose():
-            writerr(colored("ERROR processCaudiMessage 1: " + str(e), "red"))
+            writerr(colored("ERROR processCaidoMessage 1: " + str(e), "red"))
 
 
 def processCaidoFile():
@@ -3415,7 +3417,7 @@ def processCaidoFile():
                 cat = subprocess.run(
                     cmd, shell=True, text=True, stdout=subprocess.PIPE, check=True
                 )
-                totalResponses = int(cat.stdout) - 2
+                totalResponses = int(cat.stdout) - 1
 
                 write(
                     colored(
@@ -3449,26 +3451,26 @@ def processCaidoFile():
                     if stopProgram is not None:
                         break
 
-                    # The first line of the CSV is the headers so ignore
-                    if responseCount > 0:
+                    # Get the Caido request (just the URL)
+                    port = line["port"]
+                    if port == "443":
+                        schema = "https://"
+                    else:
+                        schema = "http://"
+                    caidoRequestUrl = schema + line["host"] + line["path"]
 
-                        # Get the Caido request (just the URL)
-                        port = line["port"]
-                        if port == "443":
-                            schema = "https://"
-                        else:
-                            schema = "http://"
-                        caidoRequest = schema + line["host"] + line["path"]
-
-                        # Get the Caido response
-                        caidoResponse = base64.b64decode(line["response_raw"]).decode(
-                            "utf-8", "replace"
-                        )
-
-                        # Process the Caido request and response
-                        processCaidoMessage(caidoRequest, caidoResponse, responseCount)
-
+                    # Get the Caido response
+                    caidoResponse = base64.b64decode(line["response_raw"]).decode(
+                        "utf-8", "replace"
+                    )
+                    caidoRequestFull = base64.b64decode(line["raw"]).decode(
+                        "utf-8", "replace"
+                    )
+                    
+                    # Process the Caido request and response
                     responseCount = responseCount + 1
+                    processCaidoMessage(caidoRequestUrl, caidoRequestFull, caidoResponse, responseCount)
+
         except Exception as e:
             if vverbose():
                 writerr(colored("ERROR processCaidoFile 2: " + str(e), "red"))
@@ -3480,18 +3482,23 @@ def processCaidoFile():
 
 def processZapMessage(zapMessage, responseCount):
     """
-    Process a specific message from an OWASP ZAP ASCII text output file. There is a "message" for each request and response
+    Process a specific message from an ZAP ASCII text output file. There is a "message" for each request and response
     """
     global totalResponses, currentMemUsage, currentMemPercent
     try:
-        # Split the message into request (just URL) and response
+        # Split the message into request URL, full request body and response
         try:
-            request = zapMessage.split("\n\n", 1)[0].strip().split(" ")[1].strip()
+            requestUrl = zapMessage.split("\n\n", 1)[0].strip().split(" ")[1].strip()
         except Exception:
-            request = ""
+            requestUrl = ""
+        try:
+            requestFull = re.split(r"\nHTTP\/[0-9]", zapMessage)[0]
+            print(requestFull)
+        except Exception:
+            requestFull = ""
         try:
             # If the request wasn't found then set the response as the whole Zap message
-            if request == "":
+            if requestUrl == "":
                 response = zapMessage
             else:
                 response = re.split(r"\nHTTP\/[0-9]", zapMessage)[1]
@@ -3530,10 +3537,12 @@ def processZapMessage(zapMessage, responseCount):
         )
 
         # Get the links
-        getResponseLinks(response, request)
+        getResponseLinks(response, requestUrl)
+        getResponseLinks(requestFull, requestUrl)
 
         # Get potential parameters from the response
-        getResponseParams(response, request)
+        getResponseParams(response, requestUrl)
+        getResponseParams(requestFull, requestUrl)
 
     except Exception as e:
         if vverbose():
@@ -3542,11 +3551,11 @@ def processZapMessage(zapMessage, responseCount):
 
 def processZapFile():
     r"""
-    Process an ASCII text file that is output from OWASP ZAP.
+    Process an ASCII text file that is output from ZAP.
     By selecting the requests/responses you want in ZAP, you can then select Report -> Export Messages to File...
     This will save a file of all responses to check for links.
     It is assumed that each request/response "message" will start with a line matching REGEX ^={3,4}\s?[0-9]+\s={10}$
-    (this was tested with ZAP v2.11.1 and v2.12)
+    (this was tested with ZAP v2.11.1, v2.12 and v2.16.1)
     """
     global totalResponses, currentMemUsage, currentMemPercent, stopProgram, stdinMultiple
 
@@ -3554,7 +3563,7 @@ def processZapFile():
         try:
             # If piped from stdin then
             if stdinMultiple:
-                write(colored("\nProcessing OWASP ZAP file from STDIN:", "cyan"))
+                write(colored("\nProcessing ZAP file from STDIN:", "cyan"))
             else:
                 fileSize = os.path.getsize(args.input)
                 filePath = os.path.abspath(args.input).replace(" ", r"\ ")
@@ -3572,7 +3581,7 @@ def processZapFile():
 
                 write(
                     colored(
-                        "\nProcessing OWASP ZAP file "
+                        "\nProcessing ZAP file "
                         + args.input
                         + " ("
                         + humanReadableSize(fileSize)
@@ -3581,7 +3590,7 @@ def processZapFile():
                     )
                 )
         except Exception:
-            write(colored("Processing OWASP ZAP file " + args.input + ":", "cyan"))
+            write(colored("Processing ZAP file " + args.input + ":", "cyan"))
 
         try:
             zapMessage = ""
@@ -3680,7 +3689,7 @@ def processBurpFile():
             if reply.lower() == "y":
                 try:
                     matched = re.compile(
-                        "(<time|<host|<port|<prot|<meth|<path|<exte|<requ|<stat|<responselength|<mime|<comm)"
+                        "(<time|<host|<port|<prot|<meth|<path|<exte|<stat|<responselength|<mime|<comm)"
                     ).search
                     with open(filePath, encoding="utf-8") as burpFile:
                         with NamedTemporaryFile(
@@ -3717,7 +3726,8 @@ def processBurpFile():
     except Exception:
         write(colored("Processing Burp file " + args.input + ":", "cyan"))
 
-    request = ""
+    requestUrl = ""
+    requestFull = ""
     response = ""
     try:
         responseCount = 0
@@ -3767,7 +3777,7 @@ def processBurpFile():
                     )
 
                     try:
-                        request = elem.text
+                        requestUrl = elem.text
                     except Exception:
                         if verbose():
                             writerr(
@@ -3785,20 +3795,27 @@ def processBurpFile():
                         )
                     except Exception:
                         pass
+                if elem.tag == "request":
+                    try:
+                        requestFull = base64.b64decode(elem.text).decode(
+                            "utf-8", "replace"
+                        )
+                    except Exception:
+                        pass
 
             if (
                 response is not None
-                and request is not None
+                and requestUrl is not None
                 and response != ""
-                and request != ""
+                and requestUrl != ""
             ):
                 try:
                     elem.clear()
                     # Get potential links
-                    getResponseLinks(response, request)
+                    getResponseLinks(response, requestUrl)
                     # Get potential parameters from the response
-                    getResponseParams(response, request)
-                    request = ""
+                    getResponseParams(response, requestUrl)
+
                     response = ""
                 except Exception as e:
                     if vverbose():
@@ -3812,6 +3829,33 @@ def processBurpFile():
                             )
                         )
 
+            if (
+                requestFull is not None
+                and requestUrl is not None
+                and requestFull != ""
+                and requestUrl != ""
+            ):
+                try:
+                    elem.clear()
+                    # Get potential links
+                    getResponseLinks(requestFull, requestUrl)
+                    # Get potential parameters from the response
+                    getResponseParams(requestFull, requestUrl)
+                    
+                    requestFull = ""
+                except Exception as e:
+                    if vverbose():
+                        writerr(
+                            colored(
+                                "ERROR processBurpFile 4: Request "
+                                + str(responseCount)
+                                + ": "
+                                + str(e),
+                                "red",
+                            )
+                        )
+            requestUrl = ""
+
     except Exception as e:
         if vverbose():
             writerr(
@@ -3819,7 +3863,7 @@ def processBurpFile():
                     "ERROR processBurpFile 1: Response "
                     + str(responseCount)
                     + ", URL: "
-                    + request
+                    + requestUrl
                     + " ERROR: "
                     + str(e),
                     "red",
@@ -3843,7 +3887,7 @@ def processEachInput(input):
         # If the -i (--input) can be a standard file (text file with URLs per line),
         # or a directory containing files to search,
         # or a Burp XML file with Requests and Responses
-        # or a OWASP ZAP ASCII text file with Requests and Responses
+        # or a ZAP ASCII text file with Requests and Responses
         # or a Caido CSV text file with Requests and Responses
         # if the value passed is not a valid file, or a directory, then assume it is an individual URL:
         if not stdinMultiple:
@@ -3855,7 +3899,7 @@ def processEachInput(input):
                     # Check if the file passed is a Burp file
                     burpFile = firstLine.lower().startswith("<?xml")
 
-                    # If not a Burp file, check if it is an OWASP ZAP file
+                    # If not a Burp file, check if it is an ZAP file
                     if not burpFile:
                         match = re.search(r"={3,4}\s?[0-9]+\s={10}", firstLine)
                         if match is not None:
@@ -3917,7 +3961,7 @@ def processEachInput(input):
             processBurpFile()
 
         elif zapFile:
-            # If it's an OWASP ZAP file
+            # If it's an ZAP file
             processZapFile()
 
         elif caidoFile:
@@ -4052,7 +4096,7 @@ def processInput():
                 # Check if the stdin passed is a Burp file
                 burpFile = firstLine.lower().startswith("<?xml")
 
-                # If not a Burp file, check of it is an OWASP ZAP file
+                # If not a Burp file, check of it is an ZAP file
                 if not burpFile:
                     match = re.search(r"={3,4}\s?[0-9]+\s={10}", firstLine)
                     if match is not None:
@@ -4801,7 +4845,7 @@ def main():
         "-i",
         "--input",
         action="store",
-        help="Input a: URL, text file of URLs, a Directory of files to search, a Burp XML output file or an OWASP ZAP output file.",
+        help="Input a: URL, text file of URLs, a Directory of files to search, a Burp XML output file or an ZAP output file.",
     )
     parser.add_argument(
         "-o",
