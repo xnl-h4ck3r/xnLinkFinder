@@ -3466,10 +3466,12 @@ def processCaidoFile():
                     caidoRequestFull = base64.b64decode(line["raw"]).decode(
                         "utf-8", "replace"
                     )
-                    
+
                     # Process the Caido request and response
                     responseCount = responseCount + 1
-                    processCaidoMessage(caidoRequestUrl, caidoRequestFull, caidoResponse, responseCount)
+                    processCaidoMessage(
+                        caidoRequestUrl, caidoRequestFull, caidoResponse, responseCount
+                    )
 
         except Exception as e:
             if vverbose():
@@ -3841,7 +3843,7 @@ def processBurpFile():
                     getResponseLinks(requestFull, requestUrl)
                     # Get potential parameters from the response
                     getResponseParams(requestFull, requestUrl)
-                    
+
                     requestFull = ""
                 except Exception as e:
                     if vverbose():
