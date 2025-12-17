@@ -34,6 +34,7 @@ import tldextract
 from pathlib import Path
 import time
 import threading
+import inflect
 
 try:
     from . import __version__
@@ -56,6 +57,9 @@ try:
     del html5lib  # Only imported to check availability
 except Exception:
     html5libInstalled = False
+
+# Initialize inflect engine for pluralization/singularization
+_inflect_engine = inflect.engine()
 
 warnings.filterwarnings("ignore", category=UserWarning, module="bs4")
 
@@ -135,7 +139,7 @@ class StopProgram(enum.Enum):
 stopProgram = None
 
 # The number of seconds to wait for a regex query to complete when searching for links
-DEFAULT_REGEX_TIMEOUT = 45
+DEFAULT_REGEX_TIMEOUT = 30
 
 # Chunk large responses to prevent regex timeouts on extreme cases
 # If response body is larger than this, split into chunks (in bytes)
@@ -4464,76 +4468,67 @@ def getPathWords(url):
             writerr(colored("ERROR getPathWords 1: " + str(e), "red"))
 
 
-# A function that attempts to take a given English word, determine if its a plural or singular.
-# If a plural, then return a new word as singular. If a singular, then return a new word as plural.
-# IMPORTANT: This is prone to error as the english language has many exceptions to rules!
+# A function that takes a given English word and returns its singular/plural variation.
+# Uses the inflect library for accurate handling of singular/plural words and English language rules.
+# Also handles hyphenated and underscore compound words by singularizing/pluralizing the last component.
 def processPlural(originalWord):
+    """
+    Generate singular/plural variation of a word using inflect library.
+    Handles hyphenated and underscore compound words (e.g., recap-video → recap-videos, user_profile → user_profiles)
+    Returns empty string if no variation exists or word is too long.
+    """
     try:
-        newWord = ""
         word = originalWord.strip().lower()
 
-        # Process Plurals and get a new word for singular
+        # Handle hyphenated or underscored compound words (e.g., recap-video, user_profile)
+        if "-" in originalWord or "_" in originalWord:
+            # Find the last separator position
+            last_dash = originalWord.rfind("-")
+            last_underscore = originalWord.rfind("_")
 
-        # If word is over 30 characters long
-        # OR contains numbers and is over 10 characters long
-        # OR ends in "ous"
-        # then there will not be a new word
-        if (
-            len(word) > 30
-            or (any(char.isdigit() for char in word) and len(word) > 10)
-            or word[-4:] == "ous"
-        ):
-            newWord = ""
-        # If word ends in "xes", "oes" or "sses" then remove the last "es" for the new word
-        elif word[-3:] in ["xes", "oes"] or word[-4:] == "sses":
-            newWord = originalWord[:-2]
-        # If word ends in "ies"
-        elif word[-3:] == "ies":
-            # If there is 1 letter before "ies" then the new word will just end "ie"
-            if len(word) == 4:
-                if originalWord.isupper():
-                    newWord = originalWord[1] + "IE"
-                else:
-                    newWord = originalWord[1] + "ie"
-            else:  # the new word will just have "ies" replaced with "y"
-                if originalWord.isupper():
-                    newWord = originalWord[:-3] + "Y"
-                else:
-                    newWord = originalWord[:-3] + "y"
-        # If the word ends in "s" and isn't proceeded by "s" then the new word will have the last "s" removed
-        elif word[-1:] == "s" and word[-2:-1] != "s":
-            newWord = originalWord[:-1]
+            # Pick the separator that appears last
+            sep_index = max(last_dash, last_underscore)
 
-        # Process Singular and get a new word for plural
+            prefix = originalWord[:sep_index]
+            sep = originalWord[sep_index]
+            last_part = originalWord[sep_index + 1 :]
+            last_part_lower = last_part.lower()
 
-        # If word ends in "x","o" or "ss" then add "es" for the new word
-        elif word[-1:] in ["x", "o"] or word[-2:] == "ss":
-            if originalWord.isupper():
-                newWord = originalWord + "ES"
-            else:
-                newWord = originalWord + "es"
-        # If word ends in "y" and isn't proceeded by a vowel, then replace "y" with "ies" for new word
-        elif word[-1:] == "y" and word[-2:-1] not in ["a", "e", "i", "o", "u"]:
-            if originalWord.isupper():
-                newWord = originalWord[:-1] + "IES"
-            else:
-                newWord = originalWord[:-1] + "ies"
-        # If word ends in "o" and not prefixed by a vowel, then add "es" to get a new plural
-        elif word[-1:] == "o" and word[-2:-1] not in ["a", "e", "i", "o", "u"]:
-            if originalWord.isupper():
-                newWord = originalWord[:-1] + "ES"
-            else:
-                newWord = originalWord[:-1] + "es"
-        # Else just add an "s" to get a new plural word
-        else:
-            if originalWord.isupper():
-                newWord = originalWord + "S"
-            else:
-                newWord = originalWord + "s"
-        return newWord
+            # Try singular
+            singular = _inflect_engine.singular_noun(last_part_lower)
+            if singular:
+                new_last_part = _preserve_case(last_part, singular)
+                return f"{prefix}{sep}{new_last_part}"
+
+            # Otherwise plural
+            plural = _inflect_engine.plural(last_part_lower)
+            new_last_part = _preserve_case(last_part, plural)
+            return f"{prefix}{sep}{new_last_part}"
+
+        # Handle non-hyphenated words
+        # Try to get singular form (returns False if already singular)
+        singular = _inflect_engine.singular_noun(word)
+        if singular:
+            # Word was plural, return singular with original casing
+            return _preserve_case(originalWord, singular)
+
+        # Word was singular, return plural with original casing
+        plural = _inflect_engine.plural(word)
+        return _preserve_case(originalWord, plural)
+
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR processPlural 1: " + str(e), "red"))
+        return ""
+
+
+def _preserve_case(original, converted):
+    """Preserve the original word's casing in the converted word."""
+    if original.isupper():
+        return converted.upper()
+    elif original[0].isupper():
+        return converted.capitalize()
+    return converted
 
 
 # URL encode any unicode characters in the word and also remove any unwanted characters

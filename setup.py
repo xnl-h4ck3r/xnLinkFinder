@@ -63,6 +63,7 @@ setup(
         "html5lib",
         "urllib3",
         "tldextract",
+        "inflect",
     ],
     entry_points={
         "console_scripts": [

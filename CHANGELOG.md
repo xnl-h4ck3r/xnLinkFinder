@@ -1,5 +1,12 @@
 ## Changelog
 
+- v7.9
+
+  - Changed
+
+    - Replaced the crude rule-based `processPlural` function with the `inflect` library for significantly more accurate singular/plural word variations in wordlist generation. The new implementation correctly handles irregular plurals (child→children, person→people, mouse→mice), words ending in -f/-fe (knife→knives, leaf→leaves), Latin/Greek plurals (analysis→analyses, criterion→criteria), and many other English language exceptions that the previous rule-based approach missed.
+    - Change `DEFAULT_REGEX_TIMEOUT` to 30 seconds. It was intended as that but was accidentally set to 45 in previous testing.
+
 - v7.8
 
   - New
