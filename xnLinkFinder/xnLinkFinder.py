@@ -1446,11 +1446,11 @@ def processUrl(url):
                     if not url.lower().startswith("http"):
                         requestUrl = "http://" + url
 
-                    # If the --replay-proxy argument was passed, try to use it
-                    if args.replay_proxy != "":
+                    # If the --forward-proxy argument was passed, try to use it
+                    if args.forward_proxy != "":
                         proxies = {
-                            "http": args.replay_proxy,
-                            "https": args.replay_proxy,
+                            "http": args.forward_proxy,
+                            "https": args.forward_proxy,
                         }
                         verify = False
                     else:
@@ -1496,26 +1496,65 @@ def processUrl(url):
                     else:
                         content_length = ""
 
-                    # If the replay proxy is being used, and the title in the response contains "Burp Suite" and has an error of "Unknown Host" then set the response code to 504. This is because if Burp is used for a proxy, it returns 200 because the response is the error from Burp.
-                    if args.replay_proxy and resp.text.find("<title>Burp Suite") > 0:
-                        if resp.text.find("Unknown&#32;host") > 0:
-                            resp.status_code = 504
-                        else:
-                            if os.environ.get("USER") == "xnl":
-                                try:
-                                    writerr(
-                                        colored(
-                                            getSPACER(
-                                                "Burp Response - Code: "
-                                                + str(resp.status_code)
-                                                + "\nResp: "
-                                                + resp.text
-                                            ),
-                                            "yellow",
+                    # If the forward proxy is being used, and the response indicates an unknown Host then set the response code to 504. This is because proxies return 200 because the response is the error from proxy.
+                    if args.forward_proxy:
+                        if resp.text.find("<title>Burp Suite") > 0:
+                            if resp.text.find("Unknown&#32;host") > 0:
+                                resp.status_code = 504
+                            else:
+                                if os.environ.get("USER") == "xnl":
+                                    try:
+                                        writerr(
+                                            colored(
+                                                getSPACER(
+                                                    "Burp Response - Code: "
+                                                    + str(resp.status_code)
+                                                    + "\nResp: "
+                                                    + resp.text
+                                                ),
+                                                "yellow",
+                                            )
                                         )
-                                    )
-                                except Exception:
-                                    pass
+                                    except Exception:
+                                        pass
+                        elif resp.text.find("<title>Caido") > 0:
+                            if resp.text.field("No such host") > 0:
+                                resp.status_code = 504
+                            else:
+                                if os.environ.get("USER") == "xnl":
+                                    try:
+                                        writerr(
+                                            colored(
+                                                getSPACER(
+                                                    "Caido Response - Code: "
+                                                    + str(resp.status_code)
+                                                    + "\nResp: "
+                                                    + resp.text
+                                                ),
+                                                "yellow",
+                                            )
+                                        )
+                                    except Exception:
+                                        pass
+                        elif resp.text.find("zaproxy.org") > 0:
+                            if resp.text.field("No such host") > 0:
+                                resp.status_code = 504
+                            else:
+                                if os.environ.get("USER") == "xnl":
+                                    try:
+                                        writerr(
+                                            colored(
+                                                getSPACER(
+                                                    "Zap Response - Code: "
+                                                    + str(resp.status_code)
+                                                    + "\nResp: "
+                                                    + resp.text
+                                                ),
+                                                "yellow",
+                                            )
+                                        )
+                                    except Exception:
+                                        pass
 
                     if resp.status_code == 200:
                         if verbose():
@@ -1581,7 +1620,7 @@ def processUrl(url):
                 except requests.exceptions.ProxyError:
                     writerr(
                         colored(
-                            "Cannot connect to the proxy " + args.replay_proxy, "red"
+                            "Cannot connect to the forward proxy " + args.forward_proxy, "red"
                         )
                     )
                     pass
@@ -2908,12 +2947,12 @@ def showOptions():
                     "white",
                 )
             )
-            proxy = args.replay_proxy
+            proxy = args.forward_proxy
             if proxy == "":
                 proxy = "{none}"
             write(
-                colored("-rp: " + proxy, "magenta")
-                + colored(" Replay requests using this proxy.", "white")
+                colored("-fp: " + proxy, "magenta")
+                + colored(" Forward requests using this proxy.", "white")
             )
 
         if dirPassed:
@@ -5291,10 +5330,10 @@ def main():
         metavar="<integer>",
     )
     parser.add_argument(
-        "-rp",
-        "--replay-proxy",
+        "-fp",
+        "--forward-proxy",
         action="store",
-        help="For active link finding with URL (or file of URLs), replay the requests through this proxy.",
+        help="For active link finding with URL (or file of URLs), replay the requests through a proxy such as Burp or Caido, e.g http://127.0.0.1:8080",
         default="",
     )
     parser.add_argument(
@@ -5426,12 +5465,6 @@ def main():
 
     # Get the config settings from the config.yml file
     getConfig()
-
-    # Get the current Process ID to use to get memory usage that is displayed with -vv option
-    # try:
-    #    process = psutil.Process(os.getpid())
-    # except Exception:
-    #    pass
 
     try:
 
