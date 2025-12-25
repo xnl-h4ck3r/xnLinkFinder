@@ -1622,7 +1622,8 @@ def processUrl(url):
                 except requests.exceptions.ProxyError:
                     writerr(
                         colored(
-                            "Cannot connect to the forward proxy " + args.forward_proxy, "red"
+                            "Cannot connect to the forward proxy " + args.forward_proxy,
+                            "red",
                         )
                     )
                     pass
