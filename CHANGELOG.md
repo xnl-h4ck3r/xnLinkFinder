@@ -6,6 +6,7 @@
 
     - Change `-rp`/`--replay-proxy` to `-fp`/`--forward-proxy` so the naming matches the same as the `xnldorker` tool for consistency.
     - Check for an unknown host error for all proxies, not just Burp, in order to set as 504 not 200 response the proxy gives for their error page.
+    - BUG FIX: Prefix the `-fp`/`--forward-proxy` value with `http://` if the passed value doesn't start with `http` so it doesn't display misleading errors about connection issues to the target URL instead of the proxy.
 
 - v7.9
 
