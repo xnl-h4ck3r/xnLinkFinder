@@ -1,5 +1,11 @@
 ## Changelog
 
+- v7.11
+
+  - Changed
+
+    - BUG FIX: Fixed an issues introduced in v7.10 that caused the `--forward-proxy` to be used all the time and fail when requesting URLs.
+
 - v7.10
 
   - Changed

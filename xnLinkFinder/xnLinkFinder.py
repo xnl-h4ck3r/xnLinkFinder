@@ -1447,9 +1447,9 @@ def processUrl(url):
                         requestUrl = "http://" + url
 
                     # If the --forward-proxy argument was passed, try to use it
-                    if not args.forward_proxy.lower().startswith("http"):
-                        args.forward_proxy = "http://" + args.forward_proxy
                     if args.forward_proxy != "":
+                        if not args.forward_proxy.lower().startswith("http"):
+                            args.forward_proxy = "http://" + args.forward_proxy
                         proxies = {
                             "http": args.forward_proxy,
                             "https": args.forward_proxy,
