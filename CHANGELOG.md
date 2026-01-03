@@ -1,5 +1,17 @@
 ## Changelog
 
+- v7.12
+
+  - New
+
+    - Added `--heap` argument to capture browser heap snapshots using Playwright and extract links from strings in memory. This helps discover dynamically generated links that standard static analysis might miss.
+    - Added `playwright` to the `setup.py` requirements.
+
+  - Changed
+
+    - BUG FIX: Improved URL normalization in `processUrl` to ensure heap snapshots are triggered correctly even for domain-only inputs without a schema.
+    - Updated `showOptions` to display the status of the `--heap` argument.
+
 - v7.11
 
   - Changed

@@ -64,6 +64,7 @@ setup(
         "urllib3",
         "tldextract",
         "inflect",
+        "playwright",
     ],
     entry_points={
         "console_scripts": [

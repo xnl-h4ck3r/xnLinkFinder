@@ -10,7 +10,7 @@ import argparse
 import warnings
 from termcolor import colored
 from signal import signal, SIGINT
-import multiprocessing.dummy as mp
+import multiprocessing as mp
 import base64
 import xml.etree.ElementTree as etree
 import yaml
@@ -35,6 +35,12 @@ from pathlib import Path
 import time
 import threading
 import inflect
+
+try:
+    from playwright.sync_api import sync_playwright
+    playwrightInstalled = True
+except ImportError:
+    playwrightInstalled = False
 
 try:
     from . import __version__
@@ -276,7 +282,7 @@ REGEX_HTMLINP_NAME = re.compile(
     r"(?<=\sname)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|\'))", re.IGNORECASE
 )
 REGEX_HTMLINP_ID = re.compile(
-    r"(?<=\sid)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|'))", re.IGNORECASE
+    r"(?<=\sid)[\s]*\=[\s]*(\"|')(.*?)(?=(\"|\'))", re.IGNORECASE
 )
 
 # Regex for Sourcemap
@@ -1143,6 +1149,7 @@ def getResponseLinks(response, url):
                                     lastpos = len(link)
                                 mapFile = link[firstpos + 1 : lastpos]
 
+
                                 # Get the responseurl up to last /
                                 lastpos = responseUrl.rfind("/")
                                 mapPath = responseUrl[0 : lastpos + 1]
@@ -1373,6 +1380,54 @@ def shouldMakeRequest(url):
     return makeRequest
 
 
+def get_heap_snapshot_links(url):
+    """
+    Take a heap snapshot of a visited URL and return links found in it
+    """
+    if not playwrightInstalled:
+        if verbose():
+            writerr(colored("ERROR: Playwright not installed. Run 'pip install playwright' to use --heap.", "red"))
+        return ""
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context()
+            page = context.new_page()
+            
+            if verbose():
+                write(colored(f"Taking heap snapshot for {url}...", "cyan"))
+            
+            page.goto(url, wait_until="networkidle")
+            
+            # Use CDP to take a heap snapshot
+            client = page.context.new_cdp_session(page)
+            
+            # Collect the snapshot data chunks
+            snapshot_chunks = []
+            def on_add_heap_snapshot_chunk(params):
+                snapshot_chunks.append(params["chunk"])
+                
+            client.on("HeapProfiler.addHeapSnapshotChunk", on_add_heap_snapshot_chunk)
+            
+            client.send("HeapProfiler.takeHeapSnapshot", {"reportProgress": False})
+            
+            # The snapshot is a JSON string composed of chunks
+            snapshot_json = "".join(snapshot_chunks)
+            snapshot_data = json.loads(snapshot_json)
+            
+            # Extract strings from the snapshot
+            heap_strings = "\n".join(snapshot_data.get("strings", []))
+            
+            browser.close()
+            return heap_strings
+            
+    except Exception as e:
+        if vverbose():
+            writerr(colored(f"ERROR get_heap_snapshot_links: {str(e)}", "red"))
+        return ""
+
+
 def processUrl(url):
 
     global burpFile, zapFile, caidoFile, totalRequests, skippedRequests, failedRequests, userAgent, requestHeaders, tooManyRequests, tooManyForbidden, tooManyTimeouts, tooManyConnectionErrors, stopProgram, waymoreMode, stopProgram, failedPrefixLinks, currentDepth
@@ -1445,6 +1500,12 @@ def processUrl(url):
                     requestUrl = url
                     if not url.lower().startswith("http"):
                         requestUrl = "http://" + url
+
+                    # If the --heap argument was passed and it's a URL, get links from a heap snapshot
+                    if args.heap and requestUrl.find("://") > 0:
+                        heap_strings = get_heap_snapshot_links(requestUrl)
+                        if heap_strings != "":
+                            getResponseLinks(heap_strings, requestUrl + " [HEAP]")
 
                     # If the --forward-proxy argument was passed, try to use it
                     if args.forward_proxy != "":
@@ -3001,6 +3062,15 @@ def showOptions():
                 colored("-cl: " + str(args.content_length), "magenta")
                 + colored(
                     " Display the Content-Length of the response when crawling.",
+                    "white",
+                )
+            )
+
+        if args.heap:
+            write(
+                colored("--heap: " + str(args.heap), "magenta")
+                + colored(
+                    " Take a heap snapshot of visited URLs and extract links from browser memory.",
                     "white",
                 )
             )
@@ -5338,6 +5408,12 @@ def main():
         action="store",
         help="For active link finding with URL (or file of URLs), replay the requests through a proxy such as Burp or Caido, e.g http://127.0.0.1:8080",
         default="",
+    )
+    parser.add_argument(
+        "--heap",
+        action="store_true",
+        help="Whether to take a heap snapshot of visited URLs and extract links from browser memory. This will take longer but could discover dynamically generated links that standard static analysis might miss (Requires Playwright to be installed).",
+        default=False,
     )
     parser.add_argument(
         "-ascii-only",
