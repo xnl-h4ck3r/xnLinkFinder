@@ -38,6 +38,7 @@ import inflect
 
 try:
     from playwright.sync_api import sync_playwright
+
     playwrightInstalled = True
 except ImportError:
     playwrightInstalled = False
@@ -1149,7 +1150,6 @@ def getResponseLinks(response, url):
                                     lastpos = len(link)
                                 mapFile = link[firstpos + 1 : lastpos]
 
-
                                 # Get the responseurl up to last /
                                 lastpos = responseUrl.rfind("/")
                                 mapPath = responseUrl[0 : lastpos + 1]
@@ -1386,7 +1386,12 @@ def get_heap_snapshot_links(url):
     """
     if not playwrightInstalled:
         if verbose():
-            writerr(colored("ERROR: Playwright not installed. Run 'pip install playwright' to use --heap.", "red"))
+            writerr(
+                colored(
+                    "ERROR: Playwright not installed. Run 'pip install playwright' to use --heap.",
+                    "red",
+                )
+            )
         return ""
 
     try:
@@ -1394,34 +1399,35 @@ def get_heap_snapshot_links(url):
             browser = p.chromium.launch(headless=True)
             context = browser.new_context()
             page = context.new_page()
-            
+
             if verbose():
                 write(colored(f"Taking heap snapshot for {url}...", "cyan"))
-            
+
             page.goto(url, wait_until="networkidle")
-            
+
             # Use CDP to take a heap snapshot
             client = page.context.new_cdp_session(page)
-            
+
             # Collect the snapshot data chunks
             snapshot_chunks = []
+
             def on_add_heap_snapshot_chunk(params):
                 snapshot_chunks.append(params["chunk"])
-                
+
             client.on("HeapProfiler.addHeapSnapshotChunk", on_add_heap_snapshot_chunk)
-            
+
             client.send("HeapProfiler.takeHeapSnapshot", {"reportProgress": False})
-            
+
             # The snapshot is a JSON string composed of chunks
             snapshot_json = "".join(snapshot_chunks)
             snapshot_data = json.loads(snapshot_json)
-            
+
             # Extract strings from the snapshot
             heap_strings = "\n".join(snapshot_data.get("strings", []))
-            
+
             browser.close()
             return heap_strings
-            
+
     except Exception as e:
         if vverbose():
             writerr(colored(f"ERROR get_heap_snapshot_links: {str(e)}", "red"))
