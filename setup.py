@@ -65,6 +65,7 @@ setup(
         "tldextract",
         "inflect",
         "playwright",
+        "pypdf",
     ],
     entry_points={
         "console_scripts": [
@@ -84,4 +85,11 @@ else:
         "\n\033[92mThe file "
         + target_directory
         + "/config.yml has been created.\n\033[0m"
+    )
+
+# If the OS is linux and pdftotext is not installed, then suggest it
+if os.name == "posix" and shutil.which("pdftotext") is None:
+    print(
+        "\n\033[33mNOTE: If you want better results for extracting links from PDF files, it is recommended to install poppler-utils:\n"
+        "sudo apt install -y poppler-utils\033[0m"
     )

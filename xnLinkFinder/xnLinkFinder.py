@@ -44,6 +44,19 @@ try:
 except ImportError:
     playwrightInstalled = False
 
+import io
+import shutil
+
+try:
+    import pypdf
+
+    pypdfInstalled = True
+except ImportError:
+    pypdfInstalled = False
+
+# Check if pdftotext is available
+pdftotextInstalled = shutil.which("pdftotext") is not None
+
 try:
     from . import __version__
 except Exception:
@@ -609,6 +622,9 @@ def includeFile(fileOrUrl):
         for exc in lstFileExtExclusions:
             try:
                 if fileOrUrl.endswith(exc.lower()):
+                    # If PDF extraction is supported, don't exclude .pdf
+                    if exc.lower() == ".pdf" and (pdftotextInstalled or pypdfInstalled):
+                        continue
                     include = False
             except Exception as e:
                 if vverbose():
@@ -666,6 +682,11 @@ def includeContentType(header, url):
             lstExcludeContentType = CONTENTTYPE_EXCLUSIONS.split(",")
             for excludeContentType in lstExcludeContentType:
                 if contentType.lower() == excludeContentType.lower():
+                    # If PDF extraction is supported, don't exclude application/pdf
+                    if contentType.lower() == "application/pdf" and (
+                        pdftotextInstalled or pypdfInstalled
+                    ):
+                        continue
                     include = False
 
             # If the content type can be included and -vv option was passed, add to the set to display at the end
@@ -798,10 +819,73 @@ def is_domain_format(line):
         )
 
         return bool(re.match(domain_pattern, line))
-    except Exception as e:
-        if vverbose():
-            writerr(colored("ERROR is_domain_format 1: " + str(e), "red"))
+    except Exception:
         return False
+
+
+def pdf_to_text(pdf_content):
+    """
+    Convert PDF bytes to text using pdftotext command or pypdf library as fallback.
+    """
+    global pdftotextInstalled, pypdfInstalled
+
+    # First try pdftotext command line tool
+    if pdftotextInstalled:
+        try:
+            with NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
+                tmp_pdf.write(pdf_content)
+                tmp_pdf_path = tmp_pdf.name
+
+            # Run pdftotext command
+            # - (dash) means use STDIN, but we use a file for better compatibility on Windows
+            # -nopgbrk: don't insert page breaks
+            # -q: quiet mode
+            # - (dash) at the end means output to STDOUT
+            result = subprocess.run(
+                ["pdftotext", "-nopgbrk", "-q", tmp_pdf_path, "-"],
+                capture_output=True,
+                text=True,
+            )
+
+            # Delete the temporary file
+            if os.path.exists(tmp_pdf_path):
+                os.remove(tmp_pdf_path)
+
+            if result.returncode == 0:
+                if vverbose():
+                    write(
+                        colored(
+                            "Successfully converted PDF to text using pdftotext",
+                            "green",
+                            attrs=["dark"],
+                        )
+                    )
+                return result.stdout
+        except Exception as e:
+            if vverbose():
+                writerr(colored("ERROR pdf_to_text (pdftotext): " + str(e), "red"))
+
+    # Fallback to pypdf
+    if pypdfInstalled:
+        try:
+            reader = pypdf.PdfReader(io.BytesIO(pdf_content))
+            text = ""
+            for page in reader.pages:
+                text += page.extract_text() + "\n"
+            if vverbose():
+                write(
+                    colored(
+                        "Successfully converted PDF to text using pypdf (run `sudo apt install -y poppler-utils` to use pdftotext instead for better results)",
+                        "green",
+                        attrs=["dark"],
+                    )
+                )
+            return text
+        except Exception as e:
+            if vverbose():
+                writerr(colored("ERROR pdf_to_text (pypdf): " + str(e), "red"))
+
+    return ""
 
 
 def regex_worker(pattern, string, flags):
@@ -936,8 +1020,8 @@ def getResponseLinks(response, url):
             body = re.sub(r"(?m)^content-type:.*\n", "", body.lower())
             responseUrl = url
         else:
-            if dirPassed or fileContent:
-                # Ensure response is a string for file/dir-based inputs
+            if dirPassed or fileContent or isinstance(response, str):
+                # Ensure response is a string for file/dir-based inputs or PDF text
                 if not isinstance(response, str):
                     response = str(response)
                 body = response
@@ -1747,12 +1831,34 @@ def processUrl(url):
                     ):
                         failedPrefix = True
                     else:
-                        # Get potential links from the response
-                        getResponseLinks(resp, url)
-                        totalRequests = totalRequests + 1
+                        # If the response is a PDF, convert it to text before processing
+                        contentType = resp.headers.get("Content-Type", "").lower()
+                        is_pdf = "application/pdf" in contentType or url.lower().split(
+                            "?"
+                        )[0].endswith(".pdf")
 
-                        # Get potential parameters from the response
-                        getResponseParams(resp, url)
+                        if is_pdf:
+                            pdf_text = pdf_to_text(resp.content)
+                            if pdf_text:
+                                getResponseLinks(pdf_text, url)
+                                # Get potential parameters from the response
+                                getResponseParams(pdf_text, url)
+                            else:
+                                if verbose():
+                                    write(
+                                        colored(
+                                            "No text could be extracted from PDF: "
+                                            + url,
+                                            "yellow",
+                                        )
+                                    )
+                        else:
+                            # Get potential links from the response
+                            getResponseLinks(resp, url)
+                            totalRequests = totalRequests + 1
+
+                            # Get potential parameters from the response
+                            getResponseParams(resp, url)
 
                 except requests.exceptions.ProxyError:
                     writerr(
@@ -4881,14 +4987,13 @@ def getResponseParams(response, request):
             body = response
             wordListBody = body
         else:
-            if dirPassed or fileContent:
-                # Ensure response is a string for file/dir-based inputs
+            if dirPassed or fileContent or isinstance(response, str):
+                # Ensure response is a string
                 if not isinstance(response, str):
                     response = str(response)
                 body = response
                 wordListBody = body
                 header = ""
-
             else:
                 body = str(response.headers) + "\r\n\r\n" + response.text
                 wordListBody = response.text

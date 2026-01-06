@@ -1,5 +1,13 @@
 ## Changelog
 
+- v7.14
+
+  - New
+
+    - Added support for extracting links from PDF files. When a request is made to a `.pdf` URL, the response is converted to text using `pdftotext` (if available) or the `pypdf` Python library as a fallback before being searched for links and parameters.
+    - Added `pypdf` to the `setup.py` requirements.
+    - Add a message in `setup.py` to suggest installing `poppler-utils` if `pdftotext` is not available. This is to help users get better results for extracting links from PDF files.
+
 - v7.13
 
   - New
