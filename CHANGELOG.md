@@ -1,5 +1,19 @@
 ## Changelog
 
+- v7.13
+
+  - New
+
+    - Implemented HTTP Keep-Alive by reusing `requests.Session` objects across multiple requests. This significantly speeds up the tool when processing multiple URLs, especially those on the same host, by avoiding repeated TCP and TLS handshakes.
+    - Added an `init_worker` function to initialize a persistent `requests.Session` in each worker process when using multiprocessing.
+
+  - Changed
+
+    - BUG FIX: Fixed `--depth` option stopping at depth 2 with "No more new URL's being found". The issue was that `linksFound` and other global sets weren't shared across worker processes when using `mp.Pool.map()`. Now using `multiprocessing.Manager` lists to share state across worker processes, which properly propagates findings back to the main process for subsequent depth iterations.
+    - BUG FIX: Shared `linksVisited` across worker processes to prevent the tool from requesting the same URL multiple times when running with multiple processes.
+    - BUG FIX: Fixed the issue where pressing Ctrl-C would display the "stopping" message multiple times (once for each active process). Now, only the main process prints the message, while worker processes exit quietly.
+    - BUG FIX: Removed 2 print statements left in from debugging previously.
+
 - v7.12
 
   - New

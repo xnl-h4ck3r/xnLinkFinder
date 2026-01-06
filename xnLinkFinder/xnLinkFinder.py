@@ -11,6 +11,7 @@ import warnings
 from termcolor import colored
 from signal import signal, SIGINT
 import multiprocessing as mp
+from multiprocessing import Manager
 import base64
 import xml.etree.ElementTree as etree
 import yaml
@@ -121,6 +122,16 @@ startDateTime = datetime.now()
 # Rate limiting variables
 lastRequestTime = 0
 rateLimitLock = threading.Lock()
+
+# Global session for Keep-Alive
+persistence_session = None
+
+# Shared state for multiprocessing (will be initialized in main)
+shared_linksFound = None
+shared_oosLinksFound = None
+shared_paramsFound = None
+shared_failedPrefixLinks = None
+shared_linksVisited = None
 
 # Try to import psutil to show memory usage
 try:
@@ -673,6 +684,7 @@ def includeContentType(header, url):
 
 # Add a link to the list and potential parameters from the link if required
 def addLink(link, url, prefixed=False):
+    global shared_linksFound, shared_paramsFound
 
     link = link.replace("&amp;", "&")
     link = link.replace("\\x26", "&")
@@ -694,7 +706,11 @@ def addLink(link, url, prefixed=False):
             linkDetail = linkDetail + "  [" + url + "]"
         if prefixed:
             linkDetail = linkDetail + " (PREFIXED)"
-        linksFound.add(linkDetail)
+        # Use shared list if available (for multiprocessing), otherwise use local set
+        if shared_linksFound is not None:
+            shared_linksFound.append(linkDetail)
+        else:
+            linksFound.add(linkDetail)
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR addLink 1: " + str(e), "red"))
@@ -720,7 +736,11 @@ def addLink(link, url, prefixed=False):
                         if not args.ascii_only or (
                             args.ascii_only and param.group().strip().isascii()
                         ):
-                            paramsFound.add(param.group().strip())
+                            # Use shared list if available
+                            if shared_paramsFound is not None:
+                                shared_paramsFound.append(param.group().strip())
+                            else:
+                                paramsFound.add(param.group().strip())
             except Exception as e:
                 if vverbose():
                     writerr(colored("ERROR addLink 2: " + str(e), "red"))
@@ -1273,47 +1293,55 @@ def handler(signal_received, frame):
     """
     global stopProgram, stopProgramCount
 
+    # Check if this is the main process
+    is_main = mp.current_process().name == "MainProcess"
+
     if stopProgram is not None:
         stopProgramCount = stopProgramCount + 1
-        if stopProgramCount == 1:
+        if is_main:
+            if stopProgramCount == 1:
+                writerr(
+                    colored(
+                        getSPACER(
+                            ">>> Please be patient... Trying to save data and end gracefully!"
+                        ),
+                        "red",
+                    )
+                )
+            elif stopProgramCount == 2:
+                writerr(
+                    colored(
+                        getSPACER(">>> SERIOUSLY... YOU DON'T WANT YOUR DATA SAVED?!"),
+                        "red",
+                    )
+                )
+            elif stopProgramCount == 3:
+                writerr(
+                    colored(
+                        getSPACER(
+                            r">>> Patience isn't your strong suit eh? ¯\_(ツ)_/¯"
+                        ),
+                        "red",
+                    )
+                )
+                sys.exit()
+    else:
+        stopProgram = StopProgram.SIGINT
+        if is_main:
             writerr(
                 colored(
                     getSPACER(
-                        ">>> Please be patient... Trying to save data and end gracefully!"
+                        '>>> "Oh my God, they killed Kenny... and xnLinkFinder!" - Kyle'
                     ),
                     "red",
                 )
             )
-        elif stopProgramCount == 2:
             writerr(
                 colored(
-                    getSPACER(">>> SERIOUSLY... YOU DON'T WANT YOUR DATA SAVED?!"),
+                    getSPACER(">>> Attempting to rescue any data gathered so far..."),
                     "red",
                 )
             )
-        elif stopProgramCount == 3:
-            writerr(
-                colored(
-                    getSPACER(r">>> Patience isn't your strong suit eh? ¯\_(ツ)_/¯"),
-                    "red",
-                )
-            )
-            sys.exit()
-    else:
-        stopProgram = StopProgram.SIGINT
-        writerr(
-            colored(
-                getSPACER(
-                    '>>> "Oh my God, they killed Kenny... and xnLinkFinder!" - Kyle'
-                ),
-                "red",
-            )
-        )
-        writerr(
-            colored(
-                getSPACER(">>> Attempting to rescue any data gathered so far..."), "red"
-            )
-        )
 
 
 def enforceRateLimit():
@@ -1359,12 +1387,19 @@ def getMemory():
 
 def shouldMakeRequest(url):
     # Should we request this url?
+    global shared_linksVisited
 
     makeRequest = False
     # Only process if we haven't visited the link before, it isn't blank and it doesn't start with a . or just one /
     # Or if waymore mode and the depth s 0
+
+    # Check both local linksVisited and shared_linksVisited (for multiprocessing)
+    already_visited = url in linksVisited
+    if shared_linksVisited is not None:
+        already_visited = already_visited or url in shared_linksVisited
+
     if (
-        url not in linksVisited
+        not already_visited
         and url != ""
         and not url.startswith(".")
         and not (waymoreMode and args.depth == 0)
@@ -1434,6 +1469,32 @@ def get_heap_snapshot_links(url):
         return ""
 
 
+def init_worker(
+    shared_links=None,
+    shared_oos=None,
+    shared_params=None,
+    shared_failed=None,
+    shared_visited=None,
+):
+    """
+    Initialize a persistent session for the worker process and set up shared state.
+    """
+    global persistence_session, shared_linksFound, shared_oosLinksFound, shared_paramsFound, shared_failedPrefixLinks, shared_linksVisited
+    persistence_session = requests.Session()
+
+    # Set shared state if provided (for multiprocessing)
+    if shared_links is not None:
+        shared_linksFound = shared_links
+    if shared_oos is not None:
+        shared_oosLinksFound = shared_oos
+    if shared_params is not None:
+        shared_paramsFound = shared_params
+    if shared_failed is not None:
+        shared_failedPrefixLinks = shared_failed
+    if shared_visited is not None:
+        shared_linksVisited = shared_visited
+
+
 def processUrl(url):
 
     global burpFile, zapFile, caidoFile, totalRequests, skippedRequests, failedRequests, userAgent, requestHeaders, tooManyRequests, tooManyForbidden, tooManyTimeouts, tooManyConnectionErrors, stopProgram, waymoreMode, stopProgram, failedPrefixLinks, currentDepth
@@ -1492,6 +1553,9 @@ def processUrl(url):
             # Don't do this for Burp, ZAP or Caido files as they can be huge, or for file names in directory mode
             if not burpFile and not zapFile and not caidoFile and not dirPassed:
                 linksVisited.add(url)
+                # Also add to shared list for multiprocessing
+                if shared_linksVisited is not None:
+                    shared_linksVisited.append(url)
 
             # Get memory usage every 25 requests
             if totalRequests % 25 == 0:
@@ -1536,7 +1600,11 @@ def processUrl(url):
                     enforceRateLimit()
 
                     # Make the request
-                    session = requests.Session()
+                    global persistence_session
+                    if persistence_session is None:
+                        persistence_session = requests.Session()
+
+                    session = persistence_session
                     if args.retries > 0:
                         retries = Retry(
                             total=args.retries,
@@ -2556,9 +2624,8 @@ def getConfig():
                 )
             COMMON_TLDS = DEFAULT_COMMON_TLDS
 
-    except Exception as e:
+    except Exception:
         if vverbose():
-            print(str(e))
             if args.config is None:
                 writerr(
                     colored(
@@ -2654,10 +2721,36 @@ def processDepth():
                         )
                     )
                 oldList = linksFound.copy()
-                p = mp.Pool(args.processes)
+
+                # Create Manager lists for cross-process state sharing
+                manager = Manager()
+                shared_links = manager.list()
+                shared_oos = manager.list()
+                shared_params = manager.list()
+                shared_failed = manager.list()
+                shared_visited = manager.list()
+
+                p = mp.Pool(
+                    args.processes,
+                    initializer=init_worker,
+                    initargs=(
+                        shared_links,
+                        shared_oos,
+                        shared_params,
+                        shared_failed,
+                        shared_visited,
+                    ),
+                )
                 p.map(processUrl, oldList)
                 p.close()
                 p.join()
+
+                # Merge shared results back into global sets
+                linksFound.update(shared_links)
+                oosLinksFound.update(shared_oos)
+                paramsFound.update(shared_params)
+                failedPrefixLinks.update(shared_failed)
+                linksVisited.update(shared_visited)
 
                 # If -spkf wasn't passed and there are any failed prefixed links, remove them from linksFound
                 if not args.scope_prefix_keep_failed and failedPrefixLinks is not None:
@@ -3626,7 +3719,6 @@ def processZapMessage(zapMessage, responseCount):
             requestUrl = ""
         try:
             requestFull = re.split(r"\nHTTP\/[0-9]", zapMessage)[0]
-            print(requestFull)
         except Exception:
             requestFull = ""
         try:
@@ -4330,10 +4422,35 @@ def processEachInput(input):
                                 inputFile.seek(0)
                                 with inputFile as f:
                                     if stopProgram is None:
-                                        p = mp.Pool(args.processes)
+                                        # Create Manager lists for cross-process state sharing
+                                        manager = Manager()
+                                        shared_links = manager.list()
+                                        shared_oos = manager.list()
+                                        shared_params = manager.list()
+                                        shared_failed = manager.list()
+                                        shared_visited = manager.list()
+
+                                        p = mp.Pool(
+                                            args.processes,
+                                            initializer=init_worker,
+                                            initargs=(
+                                                shared_links,
+                                                shared_oos,
+                                                shared_params,
+                                                shared_failed,
+                                                shared_visited,
+                                            ),
+                                        )
                                         p.map(processUrl, f)
                                         p.close()
                                         p.join()
+
+                                        # Merge shared results back into global sets
+                                        linksFound.update(shared_links)
+                                        oosLinksFound.update(shared_oos)
+                                        paramsFound.update(shared_params)
+                                        failedPrefixLinks.update(shared_failed)
+                                        linksVisited.update(shared_visited)
                             else:
                                 fileContent = True
                                 processFileContent(input)
@@ -4345,10 +4462,35 @@ def processEachInput(input):
                             # otherwise process as content
                             if is_domain_format(stdinFile[0]):
                                 if stopProgram is None:
-                                    p = mp.Pool(args.processes)
+                                    # Create Manager lists for cross-process state sharing
+                                    manager = Manager()
+                                    shared_links = manager.list()
+                                    shared_oos = manager.list()
+                                    shared_params = manager.list()
+                                    shared_failed = manager.list()
+                                    shared_visited = manager.list()
+
+                                    p = mp.Pool(
+                                        args.processes,
+                                        initializer=init_worker,
+                                        initargs=(
+                                            shared_links,
+                                            shared_oos,
+                                            shared_params,
+                                            shared_failed,
+                                            shared_visited,
+                                        ),
+                                    )
                                     p.map(processUrl, stdinFile)
                                     p.close()
                                     p.join()
+
+                                    # Merge shared results back into global sets
+                                    linksFound.update(shared_links)
+                                    oosLinksFound.update(shared_oos)
+                                    paramsFound.update(shared_params)
+                                    failedPrefixLinks.update(shared_failed)
+                                    linksVisited.update(shared_visited)
                             else:
                                 fileContent = True
                                 processFileContent("<stdin>")
