@@ -1,6 +1,6 @@
 <center><img src="https://github.com/xnl-h4ck3r/xnLinkFinder/blob/main/xnLinkFinder/images/title.png"></center>
 
-## About - v7.14
+## About - v7.15
 
 This is a tool used to discover endpoints (and potential parameters) for a given target. It can find them by:
 
@@ -47,7 +47,7 @@ Quick setup in isolated python environment using [pipx](https://pypa.github.io/p
 pipx install git+https://github.com/xnl-h4ck3r/xnLinkFinder.git
 ```
 
-**NOTE: To extract links from PDF files, you can install `pdftotext` on your system. You can install it using `sudo apt install -y poppler-utils` on Linux or `brew install poppler` on macOS. If you don't have `pdftotext` installed, `xnLinkFinder` will fall back to using the `pypdf` Python library to extract links from PDF files, which may not be as effective.**
+**NOTE: To extract links from PDF files, you can install `pdftotext` on your system. You can install it using `sudo apt install -y poppler-utils` on Linux or `brew install poppler` on macOS. If you don't have `pdftotext` installed, `xnLinkFinder` will fall back to using the `pypdf` Python library. If no text is found (e.g. for scanned PDFs), it will attempt to use `ocrmypdf` if installed (e.g. `sudo apt install -y ocrmypdf`). Using `pdftotext` and `ocrmypdf` will generally give much better results than `pypdf` alone.**
 
 ## Usage
 

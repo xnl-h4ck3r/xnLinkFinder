@@ -57,6 +57,9 @@ except ImportError:
 # Check if pdftotext is available
 pdftotextInstalled = shutil.which("pdftotext") is not None
 
+# Check if ocrmypdf is available
+ocrmypdfInstalled = shutil.which("ocrmypdf") is not None
+
 try:
     from . import __version__
 except Exception:
@@ -168,6 +171,27 @@ class StopProgram(enum.Enum):
 
 
 stopProgram = None
+shared_stopProgram = None
+active_pool = None
+
+
+def should_stop():
+    """
+    Safely check if the program should stop.
+    Handles exceptions that may occur when accessing Manager proxy objects after Ctrl-C.
+    """
+    global stopProgram, shared_stopProgram
+    if stopProgram is not None:
+        return True
+    if shared_stopProgram is not None:
+        try:
+            if shared_stopProgram.value != 0:
+                return True
+        except Exception:
+            # Manager proxy may be in bad state after Ctrl-C
+            return True
+    return False
+
 
 # The number of seconds to wait for a regex query to complete when searching for links
 DEFAULT_REGEX_TIMEOUT = 30
@@ -826,32 +850,35 @@ def is_domain_format(line):
 def pdf_to_text(pdf_content):
     """
     Convert PDF bytes to text using pdftotext command or pypdf library as fallback.
+    If no text is found, try OCR fallback with ocrmypdf.
     """
-    global pdftotextInstalled, pypdfInstalled
+    global pdftotextInstalled, pypdfInstalled, ocrmypdfInstalled
 
-    # First try pdftotext command line tool
+    # Verify if it has the PDF magic header
+    if not pdf_content.startswith(b"%PDF-"):
+        return ""
+
+    text = ""
+
+    # 1. Primary: pdftotext (Fastest and most accurate for text-based PDFs)
     if pdftotextInstalled:
         try:
             with NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
                 tmp_pdf.write(pdf_content)
                 tmp_pdf_path = tmp_pdf.name
 
-            # Run pdftotext command
-            # - (dash) means use STDIN, but we use a file for better compatibility on Windows
-            # -nopgbrk: don't insert page breaks
-            # -q: quiet mode
-            # - (dash) at the end means output to STDOUT
             result = subprocess.run(
                 ["pdftotext", "-nopgbrk", "-q", tmp_pdf_path, "-"],
                 capture_output=True,
                 text=True,
+                errors="ignore",
             )
 
             # Delete the temporary file
             if os.path.exists(tmp_pdf_path):
                 os.remove(tmp_pdf_path)
 
-            if result.returncode == 0:
+            if result.returncode == 0 and result.stdout.strip() != "":
                 if vverbose():
                     write(
                         colored(
@@ -865,25 +892,125 @@ def pdf_to_text(pdf_content):
             if vverbose():
                 writerr(colored("ERROR pdf_to_text (pdftotext): " + str(e), "red"))
 
-    # Fallback to pypdf
-    if pypdfInstalled:
+    # Fallback to pypdf if pdftotext wasn't installed
+    if not pdftotextInstalled and pypdfInstalled:
         try:
             reader = pypdf.PdfReader(io.BytesIO(pdf_content))
-            text = ""
             for page in reader.pages:
                 text += page.extract_text() + "\n"
-            if vverbose():
-                write(
-                    colored(
-                        "Successfully converted PDF to text using pypdf (run `sudo apt install -y poppler-utils` to use pdftotext instead for better results)",
-                        "green",
-                        attrs=["dark"],
+
+            if text.strip() != "":
+                if vverbose():
+                    write(
+                        colored(
+                            "Successfully converted PDF to text using pypdf (run `sudo apt install -y poppler-utils` to use pdftotext instead for better results)",
+                            "green",
+                            attrs=["dark"],
+                        )
                     )
-                )
-            return text
+                return text
         except Exception as e:
             if vverbose():
                 writerr(colored("ERROR pdf_to_text (pypdf): " + str(e), "red"))
+
+    # If we still have no text, try OCR fallback if ocrmypdf is installed
+    if ocrmypdfInstalled:
+        tmp_pdf_path = None
+        ocr_pdf_path = None
+        try:
+            if vverbose():
+                write(
+                    colored(
+                        "No text found in PDF, attempting OCR fallback with ocrmypdf...",
+                        "yellow",
+                        attrs=["dark"],
+                    )
+                )
+
+            with NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
+                tmp_pdf.write(pdf_content)
+                tmp_pdf_path = tmp_pdf.name
+
+            ocr_pdf_path = tmp_pdf_path.replace(".pdf", "_ocr.pdf")
+
+            # Run ocrmypdf
+            # --skip-text: Skip OCR on pages that already have text
+            # -q: quiet mode
+            subprocess.run(
+                ["ocrmypdf", "--skip-text", "-q", tmp_pdf_path, ocr_pdf_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=True,
+            )
+
+            # If OCR was successful, convert the new PDF to text
+            if os.path.exists(ocr_pdf_path):
+                with open(ocr_pdf_path, "rb") as f:
+                    ocr_pdf_content = f.read()
+
+                # Reuse logic to extract text from the NEW OCR'd PDF
+                ocr_text = ""
+                if pdftotextInstalled:
+                    with NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_ocr_pdf:
+                        tmp_ocr_pdf.write(ocr_pdf_content)
+                        tmp_ocr_path = tmp_ocr_pdf.name
+                    result = subprocess.run(
+                        ["pdftotext", "-nopgbrk", "-q", tmp_ocr_path, "-"],
+                        capture_output=True,
+                        text=True,
+                        errors="ignore",
+                    )
+                    if os.path.exists(tmp_ocr_path):
+                        os.remove(tmp_ocr_path)
+                    if result.returncode == 0:
+                        ocr_text = result.stdout
+
+                if ocr_text.strip() == "" and pypdfInstalled:
+                    reader = pypdf.PdfReader(io.BytesIO(ocr_pdf_content))
+                    for page in reader.pages:
+                        ocr_text += page.extract_text() + "\n"
+
+                if ocr_text.strip() != "":
+                    if vverbose():
+                        write(
+                            colored(
+                                "Successfully converted PDF to text using ocrmypdf",
+                                "green",
+                                attrs=["dark"],
+                            )
+                        )
+                    return ocr_text
+
+        except subprocess.CalledProcessError as e:
+            if vverbose():
+                if e.returncode == 15:
+                    write(
+                        colored(
+                            "OCR skipped: PDF contains no images to OCR",
+                            "yellow",
+                            attrs=["dark"],
+                        )
+                    )
+                else:
+                    write(
+                        colored(
+                            "OCR failed: ocrmypdf exit code " + str(e.returncode),
+                            "yellow",
+                            attrs=["dark"],
+                        )
+                    )
+        except Exception as e:
+            if vverbose():
+                writerr(colored("ERROR pdf_to_text (ocrmypdf): " + str(e), "red"))
+        finally:
+            # Final cleanup of temp files
+            try:
+                if tmp_pdf_path and os.path.exists(tmp_pdf_path):
+                    os.remove(tmp_pdf_path)
+                if ocr_pdf_path and os.path.exists(ocr_pdf_path):
+                    os.remove(ocr_pdf_path)
+            except Exception:
+                pass
 
     return ""
 
@@ -905,8 +1032,15 @@ def safe_regex_findall(pattern, string, timeout=DEFAULT_REGEX_TIMEOUT):
     (e.g., timeouts on 1,422 byte responses). Regex patterns already have bounded quantifiers
     to prevent catastrophic backtracking, and chunking provides additional protection.
     """
+    global stopProgram, shared_stopProgram
     try:
-        return [m.group(0) for m in re.finditer(pattern, string, re.IGNORECASE)]
+        results = []
+        for m in re.finditer(pattern, string, re.IGNORECASE):
+            # Check if Ctrl-C was pressed
+            if should_stop():
+                break
+            results.append(m.group(0))
+        return results
     except Exception:
         return []
 
@@ -929,6 +1063,10 @@ def safe_regex_findall_chunked(pattern, string, timeout=DEFAULT_REGEX_TIMEOUT):
         chunk_start = 0
 
         while chunk_start < content_length:
+            # Check if Ctrl-C was pressed
+            if should_stop():
+                break
+
             # Calculate chunk end with overlap
             chunk_end = min(chunk_start + CHUNK_SIZE, content_length)
             chunk = string[chunk_start:chunk_end]
@@ -993,7 +1131,12 @@ def getResponseLinks(response, url):
     """
     Get a list of links found
     """
-    global inScopePrefixDomains, burpFile, zapFile, caidoFile, harFile, dirPassed, COMMON_TLDS, fileContent
+    global inScopePrefixDomains, burpFile, zapFile, caidoFile, harFile, dirPassed, COMMON_TLDS, fileContent, stopProgram, shared_stopProgram
+
+    # Early exit if Ctrl-C was pressed
+    if should_stop():
+        return
+
     try:
 
         # if the --include argument is True then add the input links to the output too (unless the input was a directory)
@@ -1117,49 +1260,59 @@ def getResponseLinks(response, url):
                 # - suffix is 'js' and domain is NOT 'map'
                 # - IF the --all-tlds arg was passed, make sure the suffix is in the COMMON_TLDS list
                 COMMON_TLDS_LIST = COMMON_TLDS.split(",")
-                valid_extra_keys = [
-                    f"//{key}"
-                    for key in extra_keys
-                    if tldextract.extract(key).suffix
-                    and tldextract.extract(key).suffix.lower()
-                    not in ("call", "skin", "menu", "style", "rest", "next", "top")
-                    and len(tldextract.extract(key).domain) > 2
-                    and not tldextract.extract(key).domain.startswith("_")
-                    and tldextract.extract(key).domain.lower()
-                    not in (
-                        "this",
-                        "self",
-                        "target",
-                        "value",
-                        "values",
-                        "prop",
-                        "properties",
-                        "proparray",
-                        "useragent",
-                        "rect",
-                        "paddiing",
-                        "style",
-                        "rule",
-                        "bound",
-                        "child",
-                        "global",
-                        "element",
-                        "div",
-                        "prototype",
-                        "event",
-                        "feature",
-                        "path",
-                    )
-                    and not (
-                        tldextract.extract(key).suffix.lower() == "map"
-                        and tldextract.extract(key).domain.lower() != "js"
-                    )
-                    and (
-                        args.all_tlds
-                        or ("." + tldextract.extract(key).suffix.lower())
-                        in [("." + suffix) for suffix in COMMON_TLDS_LIST]
-                    )
-                ]
+                COMMON_TLDS_SET = set("." + suffix for suffix in COMMON_TLDS_LIST)
+                EXCLUDED_SUFFIXES = {
+                    "call",
+                    "skin",
+                    "menu",
+                    "style",
+                    "rest",
+                    "next",
+                    "top",
+                }
+                EXCLUDED_DOMAINS = {
+                    "this",
+                    "self",
+                    "target",
+                    "value",
+                    "values",
+                    "prop",
+                    "properties",
+                    "proparray",
+                    "useragent",
+                    "rect",
+                    "paddiing",
+                    "style",
+                    "rule",
+                    "bound",
+                    "child",
+                    "global",
+                    "element",
+                    "div",
+                    "prototype",
+                    "event",
+                    "feature",
+                    "path",
+                }
+                valid_extra_keys = []
+                for key in extra_keys:
+                    # Check if Ctrl-C was pressed
+                    if should_stop():
+                        break
+                    # Cache tldextract result (was being called 7+ times per key!)
+                    extracted = tldextract.extract(key)
+                    suffix_lower = extracted.suffix.lower() if extracted.suffix else ""
+                    domain_lower = extracted.domain.lower() if extracted.domain else ""
+                    if (
+                        extracted.suffix
+                        and suffix_lower not in EXCLUDED_SUFFIXES
+                        and len(extracted.domain) > 2
+                        and not extracted.domain.startswith("_")
+                        and domain_lower not in EXCLUDED_DOMAINS
+                        and not (suffix_lower == "map" and domain_lower != "js")
+                        and (args.all_tlds or ("." + suffix_lower) in COMMON_TLDS_SET)
+                    ):
+                        valid_extra_keys.append(f"//{key}")
 
                 # Add extra keys
                 if not isinstance(link_keys, list):
@@ -1172,6 +1325,10 @@ def getResponseLinks(response, url):
                 link_keys = list(set(link_keys))
 
                 for key in link_keys:
+
+                    # Check if Ctrl-C was pressed
+                    if should_stop():
+                        break
 
                     if key is not None and key.strip() != "" and len(key.strip()) > 2:
                         link = key.strip()
@@ -1375,14 +1532,21 @@ def handler(signal_received, frame):
     This function is called if Ctrl-C is called by the user
     An attempt will be made to try and clean up properly
     """
-    global stopProgram, stopProgramCount
+    global stopProgram, stopProgramCount, shared_stopProgram, active_pool
 
     # Check if this is the main process
     is_main = mp.current_process().name == "MainProcess"
 
-    if stopProgram is not None:
+    if should_stop():
         stopProgramCount = stopProgramCount + 1
         if is_main:
+            # If there is an active Pool, terminate it
+            if active_pool is not None:
+                try:
+                    active_pool.terminate()
+                except Exception:
+                    pass
+
             if stopProgramCount == 1:
                 writerr(
                     colored(
@@ -1411,6 +1575,20 @@ def handler(signal_received, frame):
                 sys.exit()
     else:
         stopProgram = StopProgram.SIGINT
+        if shared_stopProgram is not None:
+            try:
+                shared_stopProgram.value = StopProgram.SIGINT.value
+            except Exception:
+                pass  # Manager may be in bad state
+
+        # If there is an active Pool, terminate it and wait for workers to finish
+        if active_pool is not None:
+            try:
+                active_pool.terminate()
+                active_pool.join()  # Wait for workers to actually die
+            except Exception:
+                pass
+
         if is_main:
             writerr(
                 colored(
@@ -1426,6 +1604,58 @@ def handler(signal_received, frame):
                     "red",
                 )
             )
+            # Save whatever data we have collected
+            try:
+                processOutput()
+            except Exception:
+                pass
+
+            # Kill all child processes to prevent orphaned workers
+            try:
+                import os as os_module
+                import signal as sig_module
+
+                current_pid = os_module.getpid()
+                # Try to use psutil to kill children
+                try:
+                    import psutil
+
+                    parent = psutil.Process(current_pid)
+                    children = parent.children(recursive=True)
+                    for child in children:
+                        try:
+                            child.terminate()
+                        except Exception:
+                            pass
+                    # Wait briefly for them to die
+                    psutil.wait_procs(children, timeout=2)
+                    # Force kill any remaining
+                    for child in children:
+                        try:
+                            if child.is_running():
+                                child.kill()
+                        except Exception:
+                            pass
+                except ImportError:
+                    # psutil not available, try SIGTERM to process group
+                    try:
+                        os_module.killpg(
+                            os_module.getpgid(current_pid), sig_module.SIGTERM
+                        )
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            writerr(
+                colored(
+                    "✅ Want to buy me a coffee? ☕ https://ko-fi.com/xnlh4ck3r 🤘",
+                    "green",
+                )
+            )
+            import os
+
+            os._exit(0)
 
 
 def enforceRateLimit():
@@ -1559,11 +1789,19 @@ def init_worker(
     shared_params=None,
     shared_failed=None,
     shared_visited=None,
+    shared_stop=None,
 ):
     """
     Initialize a persistent session for the worker process and set up shared state.
     """
-    global persistence_session, shared_linksFound, shared_oosLinksFound, shared_paramsFound, shared_failedPrefixLinks, shared_linksVisited
+    global persistence_session, shared_linksFound, shared_oosLinksFound, shared_paramsFound, shared_failedPrefixLinks, shared_linksVisited, shared_stopProgram
+
+    # Make workers ignore SIGINT - the main process will handle termination
+    # This prevents BrokenPipeError spam when main process exits
+    import signal
+
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
     persistence_session = requests.Session()
 
     # Set shared state if provided (for multiprocessing)
@@ -1577,11 +1815,18 @@ def init_worker(
         shared_failedPrefixLinks = shared_failed
     if shared_visited is not None:
         shared_linksVisited = shared_visited
+    if shared_stop is not None:
+        shared_stopProgram = shared_stop
 
 
 def processUrl(url):
 
-    global burpFile, zapFile, caidoFile, totalRequests, skippedRequests, failedRequests, userAgent, requestHeaders, tooManyRequests, tooManyForbidden, tooManyTimeouts, tooManyConnectionErrors, stopProgram, waymoreMode, stopProgram, failedPrefixLinks, currentDepth
+    global burpFile, zapFile, caidoFile, totalRequests, skippedRequests, failedRequests, userAgent, requestHeaders, tooManyRequests, tooManyForbidden, tooManyTimeouts, tooManyConnectionErrors, stopProgram, waymoreMode, failedPrefixLinks, currentDepth, shared_stopProgram
+
+    if stopProgram is not None or (
+        shared_stopProgram is not None and shared_stopProgram.value != 0
+    ):
+        return
 
     # If a custom user agent string was passed then use that in the header, else
     # Choose a random user agent string to use from the current group
@@ -1708,6 +1953,12 @@ def processUrl(url):
                         proxies=proxies,
                     )
 
+                    # Check if Ctrl-C was pressed during the request
+                    if stopProgram is not None or (
+                        shared_stopProgram is not None and shared_stopProgram.value != 0
+                    ):
+                        return
+
                     # Get content length
                     if args.content_length:
                         cl = resp.headers.get("Content-Length")
@@ -1810,6 +2061,10 @@ def processUrl(url):
                                     tooManyRequests / totalRequests * 100
                                 ) > 95 and totalRequests > 10:
                                     stopProgram = StopProgram.TOO_MANY_REQUESTS
+                                    if shared_stopProgram is not None:
+                                        shared_stopProgram.value = (
+                                            StopProgram.TOO_MANY_REQUESTS.value
+                                        )
                             except Exception:
                                 pass
                         # If argument -s403 was passed, keep a count of "403 Forbidden" and stop the program if > 95% of responses have status 403, but only if at least 10 requests have already been made
@@ -1820,6 +2075,10 @@ def processUrl(url):
                                     tooManyForbidden / totalRequests * 100
                                 ) > 95 and totalRequests > 10:
                                     stopProgram = StopProgram.TOO_MANY_FORBIDDEN
+                                    if shared_stopProgram is not None:
+                                        shared_stopProgram.value = (
+                                            StopProgram.TOO_MANY_FORBIDDEN.value
+                                        )
                             except Exception:
                                 pass
 
@@ -1833,10 +2092,11 @@ def processUrl(url):
                     else:
                         # If the response is a PDF, convert it to text before processing
                         contentType = resp.headers.get("Content-Type", "").lower()
-                        is_pdf = "application/pdf" in contentType or url.lower().split(
-                            "?"
-                        )[0].endswith(".pdf")
-
+                        is_pdf = (
+                            "application/pdf" in contentType
+                            or url.lower().split("?")[0].endswith(".pdf")
+                            or resp.content.startswith(b"%PDF-")
+                        )
                         if is_pdf:
                             pdf_text = pdf_to_text(resp.content)
                             if pdf_text:
@@ -1844,14 +2104,16 @@ def processUrl(url):
                                 # Get potential parameters from the response
                                 getResponseParams(pdf_text, url)
                             else:
-                                if verbose():
+                                if vverbose():
                                     write(
                                         colored(
                                             "No text could be extracted from PDF: "
                                             + url,
                                             "yellow",
+                                            attrs=["dark"],
                                         )
                                     )
+                            totalRequests = totalRequests + 1
                         else:
                             # Get potential links from the response
                             getResponseLinks(resp, url)
@@ -1881,6 +2143,10 @@ def processUrl(url):
                                         tooManyTimeouts / totalRequests * 100
                                     ) > 95 and totalRequests > 10:
                                         stopProgram = StopProgram.TOO_MANY_TIMEOUTS
+                                        if shared_stopProgram is not None:
+                                            shared_stopProgram.value = (
+                                                StopProgram.TOO_MANY_TIMEOUTS.value
+                                            )
                                 except Exception:
                                     pass
                         else:
@@ -1927,6 +2193,10 @@ def processUrl(url):
                                 tooManyConnectionErrors / totalRequests * 100
                             ) > 95 and totalRequests > 10:
                                 stopProgram = StopProgram.TOO_MANY_CONNECTION_ERRORS
+                                if shared_stopProgram is not None:
+                                    shared_stopProgram.value = (
+                                        StopProgram.TOO_MANY_CONNECTION_ERRORS.value
+                                    )
                         except Exception:
                             pass
                 except requests.exceptions.TooManyRedirects:
@@ -2806,14 +3076,16 @@ def printProgressBar(
 
 
 def processDepth():
-    global stopProgram, failedPrefixLinks, currentDepth, linksFound
+    global stopProgram, failedPrefixLinks, currentDepth, linksFound, shared_stopProgram, active_pool
+    if should_stop():
+        return
     try:
         # If the -d (--depth) argument was passed then do another search
         # This is only used for URL, std file of URLs, or multiple URLs passed in STDIN
         if (urlPassed or stdFile or stdinFile) and args.depth > 1:
             for d in range(args.depth - 1):
                 currentDepth = d
-                if stopProgram is not None:
+                if should_stop():
                     break
 
                 # Get the current number of Links found last time
@@ -2835,6 +3107,7 @@ def processDepth():
                 shared_params = manager.list()
                 shared_failed = manager.list()
                 shared_visited = manager.list()
+                shared_stop = manager.Value("i", 0)
 
                 p = mp.Pool(
                     args.processes,
@@ -2845,18 +3118,29 @@ def processDepth():
                         shared_params,
                         shared_failed,
                         shared_visited,
+                        shared_stop,
                     ),
                 )
-                p.map(processUrl, oldList)
-                p.close()
-                p.join()
+                active_pool = p
+                try:
+                    p.map(processUrl, oldList)
+                except Exception:
+                    pass  # Pool was terminated
+                finally:
+                    try:
+                        p.close()
+                        p.join()
+                    except Exception:
+                        pass
+                    active_pool = None
 
-                # Merge shared results back into global sets
-                linksFound.update(shared_links)
-                oosLinksFound.update(shared_oos)
-                paramsFound.update(shared_params)
-                failedPrefixLinks.update(shared_failed)
-                linksVisited.update(shared_visited)
+                # Merge shared results back into global sets (skip if terminated)
+                if not should_stop():
+                    linksFound.update(shared_links)
+                    oosLinksFound.update(shared_oos)
+                    paramsFound.update(shared_params)
+                    failedPrefixLinks.update(shared_failed)
+                    linksVisited.update(shared_visited)
 
                 # If -spkf wasn't passed and there are any failed prefixed links, remove them from linksFound
                 if not args.scope_prefix_keep_failed and failedPrefixLinks is not None:
@@ -3407,7 +3691,10 @@ def getScopeDomains():
 
 
 def processFileContent(filepath, responseCount=1):
-    global stdinFile
+    global stopProgram, shared_stopProgram, stdinFile
+
+    if should_stop():
+        return
     try:
         # If file was piped in...
         if filepath == "<stdin>":
@@ -3419,9 +3706,20 @@ def processFileContent(filepath, responseCount=1):
             # Set the request to the name of the file
             request = os.path.join(filepath)
 
-            # Set the response as the contents of the file
-            with open(request, "r", encoding="utf-8", errors="ignore") as file:
-                response = file.read()
+            # If it's a PDF file, convert to text
+            if filepath.lower().endswith(".pdf"):
+                try:
+                    with open(request, "rb") as file:
+                        pdf_content = file.read()
+                    response = pdf_to_text(pdf_content)
+                except Exception as e:
+                    if vverbose():
+                        writerr(colored("ERROR processFileContent 3: " + str(e), "red"))
+                    response = ""
+            else:
+                # Set the response as the contents of the file
+                with open(request, "r", encoding="utf-8", errors="ignore") as file:
+                    response = file.read()
 
         try:
             # Get potential links
@@ -3446,7 +3744,10 @@ def processFileContent(filepath, responseCount=1):
 
 # Get links from all files in a specified directory
 def processDirectory():
-    global totalResponses, waymoreMode, waymoreFiles
+    global stopProgram, shared_stopProgram, totalResponses, waymoreMode, waymoreFiles
+
+    if should_stop():
+        return
 
     dirPath = args.input
     request = ""
@@ -3565,7 +3866,10 @@ def processDirectory():
                 length=getProgressBarLength(),
             )
             # Iterate directory and sub directories
+            stop_loop = False
             for path, subdirs, files in os.walk(dirPath):
+                if stop_loop:
+                    break
                 for filename in files:
 
                     # If waymore mode and the file is waymore.txt, waymore.new, waymore.txt.new, waymore.old, waymore.txt.old, waymore_index.txt or index.txt then save them for later
@@ -3618,7 +3922,8 @@ def processDirectory():
                         )
                     ):
 
-                        if stopProgram is not None:
+                        if should_stop():
+                            stop_loop = True
                             break
 
                         # Show progress bar
@@ -4348,7 +4653,7 @@ def processHarFile():
 
                 responseCount = 0
                 for entry in entries:
-                    if stopProgram is not None:
+                    if should_stop():
                         break
 
                     responseCount += 1
@@ -4374,10 +4679,12 @@ def processEachInput(input):
     """
     Process the input, whether its from -i or <stdin>
     """
-    global burpFile, zapFile, caidoFile, harFile, urlPassed, stdFile, stdinFile, dirPassed, stdinMultiple, linksFound, linksVisited, totalRequests, skippedRequests, failedRequests, paramsFound, waymoreMode, stopProgram, contentTypesProcessed, oosLinksFound, lstPathWords, wordsFound, fileContent
+    global burpFile, zapFile, caidoFile, harFile, urlPassed, stdFile, stdinFile, dirPassed, stdinMultiple, linksFound, linksVisited, totalRequests, skippedRequests, failedRequests, paramsFound, waymoreMode, stopProgram, contentTypesProcessed, oosLinksFound, lstPathWords, wordsFound, fileContent, shared_stopProgram, active_pool
 
-    if stopProgram is None:
-        checkMaxTimeLimit()
+    if should_stop():
+        return
+
+    checkMaxTimeLimit()
 
     # Set the -i / --input to the current input
     args.input = input
@@ -4535,6 +4842,7 @@ def processEachInput(input):
                                         shared_params = manager.list()
                                         shared_failed = manager.list()
                                         shared_visited = manager.list()
+                                        shared_stop = manager.Value("i", 0)
 
                                         p = mp.Pool(
                                             args.processes,
@@ -4545,18 +4853,29 @@ def processEachInput(input):
                                                 shared_params,
                                                 shared_failed,
                                                 shared_visited,
+                                                shared_stop,
                                             ),
                                         )
-                                        p.map(processUrl, f)
-                                        p.close()
-                                        p.join()
+                                        active_pool = p
+                                        try:
+                                            p.map(processUrl, f)
+                                        except Exception:
+                                            pass  # Pool was terminated
+                                        finally:
+                                            try:
+                                                p.close()
+                                                p.join()
+                                            except Exception:
+                                                pass
+                                            active_pool = None
 
-                                        # Merge shared results back into global sets
-                                        linksFound.update(shared_links)
-                                        oosLinksFound.update(shared_oos)
-                                        paramsFound.update(shared_params)
-                                        failedPrefixLinks.update(shared_failed)
-                                        linksVisited.update(shared_visited)
+                                        # Merge shared results back into global sets (skip if terminated)
+                                        if not should_stop():
+                                            linksFound.update(shared_links)
+                                            oosLinksFound.update(shared_oos)
+                                            paramsFound.update(shared_params)
+                                            failedPrefixLinks.update(shared_failed)
+                                            linksVisited.update(shared_visited)
                             else:
                                 fileContent = True
                                 processFileContent(input)
@@ -4575,6 +4894,7 @@ def processEachInput(input):
                                     shared_params = manager.list()
                                     shared_failed = manager.list()
                                     shared_visited = manager.list()
+                                    shared_stop = manager.Value("i", 0)
 
                                     p = mp.Pool(
                                         args.processes,
@@ -4585,18 +4905,29 @@ def processEachInput(input):
                                             shared_params,
                                             shared_failed,
                                             shared_visited,
+                                            shared_stop,
                                         ),
                                     )
-                                    p.map(processUrl, stdinFile)
-                                    p.close()
-                                    p.join()
+                                    active_pool = p
+                                    try:
+                                        p.map(processUrl, stdinFile)
+                                    except Exception:
+                                        pass  # Pool was terminated
+                                    finally:
+                                        try:
+                                            p.close()
+                                            p.join()
+                                        except Exception:
+                                            pass
+                                        active_pool = None
 
-                                    # Merge shared results back into global sets
-                                    linksFound.update(shared_links)
-                                    oosLinksFound.update(shared_oos)
-                                    paramsFound.update(shared_params)
-                                    failedPrefixLinks.update(shared_failed)
-                                    linksVisited.update(shared_visited)
+                                    # Merge shared results back into global sets (skip if terminated)
+                                    if not should_stop():
+                                        linksFound.update(shared_links)
+                                        oosLinksFound.update(shared_oos)
+                                        paramsFound.update(shared_params)
+                                        failedPrefixLinks.update(shared_failed)
+                                        linksVisited.update(shared_visited)
                             else:
                                 fileContent = True
                                 processFileContent("<stdin>")

@@ -87,9 +87,16 @@ else:
         + "/config.yml has been created.\n\033[0m"
     )
 
-# If the OS is linux and pdftotext is not installed, then suggest it
-if os.name == "posix" and shutil.which("pdftotext") is None:
-    print(
-        "\n\033[33mNOTE: If you want better results for extracting links from PDF files, it is recommended to install poppler-utils:\n"
-        "sudo apt install -y poppler-utils\033[0m"
-    )
+# If the OS is linux and pdftotext or ocrmypdf is not installed, then suggest it
+if os.name == "posix":
+    if shutil.which("pdftotext") is None or shutil.which("ocrmypdf") is None:
+        print(
+            "\n\033[33mNOTE: To get the best results for extracting links from PDF files:"
+        )
+        if shutil.which("pdftotext") is None:
+            print("- Install poppler-utils: sudo apt install -y poppler-utils")
+        if shutil.which("ocrmypdf") is None:
+            print(
+                "- Install ocrmypdf for OCR fallback on scanned PDFs: sudo apt install -y ocrmypdf"
+            )
+        print("\033[0m")

@@ -1,5 +1,24 @@
 ## Changelog
 
+- v7.15
+
+  - New
+
+    - Added an OCR fallback for PDF files. If `pdftotext` and `pypdf` fail to extract any text (common for scanned/image-only PDFs), `xnLinkFinder` will now attempt to use `ocrmypdf` if it's installed on the system.
+    - Added recommendations for installing `ocrmypdf` in `setup.py` and `README.md` to help users process scanned PDFs.
+
+  - Changed
+
+    - Improved PDF detection logic by adding a check for PDF magic bytes (`%PDF-`). This allows the tool to correctly identify and process PDF content even when the URL doesn't have a `.pdf` extension or the server provides a generic `application/octet-stream` content-type.
+    - Added support for PDF extraction when a directory or single `.pdf` file is passed as input.
+    - BUG FIX: Fixed a bug where `totalRequests` was not being incremented when a PDF response was processed.
+    - BUG FIX: Fixed an issue where Ctrl-C did not reliably stop the program when using multiple processes. The fix includes:
+      - Added `should_stop()` helper function for safe stop-state checking across processes
+      - Added stop checks in all critical loops (regex processing, link extraction, directory traversal)
+      - Improved worker process cleanup using `psutil` to kill orphaned child processes
+      - Workers now ignore SIGINT to prevent BrokenPipeError spam on exit
+      - Optimized `tldextract` calls in `getResponseLinks` (was being called 7+ times per key)
+
 - v7.14
 
   - New
