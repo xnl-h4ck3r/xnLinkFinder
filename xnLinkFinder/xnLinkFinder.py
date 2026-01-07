@@ -1127,6 +1127,34 @@ def stripLinkFromUnbalancedBrackets(link):
         return ""
 
 
+def extract_readable_html_text(body):
+    """
+    Extract only human-readable text from HTML content using BeautifulSoup.
+    Removes script, style, noscript, and template tags and extracts visible text.
+    """
+    try:
+        # Use lxml if available, otherwise html5lib, otherwise html.parser
+        if lxmlInstalled:
+            soup = BeautifulSoup(body, "lxml")
+        elif html5libInstalled:
+            soup = BeautifulSoup(body, "html5lib")
+        else:
+            soup = BeautifulSoup(body, "html.parser")
+
+        # Remove script, style, noscript, and template tags
+        for tag in soup(["script", "style", "noscript", "template"]):
+            tag.decompose()
+
+        # Get visible text with stripped whitespace
+        text = soup.get_text(separator=" ", strip=True)
+        return text
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR extract_readable_html_text 1: " + str(e), "red"))
+        # On failure, return original body
+        return body
+
+
 def getResponseLinks(response, url):
     """
     Get a list of links found
@@ -1178,6 +1206,41 @@ def getResponseLinks(response, url):
         # Truncate any lines in the body before using
         body = clean_body(body)
 
+        # GET THE READ ONLY VERSION OF THE BODY
+        try:
+            # Remove the headers
+            if "\r\n\r\n" in body:
+                readonly_body = body.split("\r\n\r\n")[1]
+            else:
+                readonly_body = body
+            # Check if content appears to be HTML
+            readonlybody_lower = (
+                readonly_body[:1000].lower()
+                if len(readonly_body) > 1000
+                else readonly_body.lower()
+            )
+            if (
+                "<html" in readonlybody_lower
+                or "<!doctype" in readonlybody_lower
+                or "<body" in readonlybody_lower
+            ):
+                readonly_body = extract_readable_html_text(readonly_body)
+            else:
+                readonly_body = ""
+        except Exception as e:
+            if vverbose():
+                writerr(
+                    colored(getSPACER("ERROR getResponseLinks 7: " + str(e)), "red")
+                )
+            readonly_body = ""
+
+        # If --readable-only is passed and content appears to be HTML, extract only readable text, else add the read only text to the body so that it gets searched too
+        if readonly_body != "":
+            if args.readable_only:
+                body = readonly_body
+            else:
+                body = body + "\n" + readonly_body
+
         # Some URLs may be displayed in the body within strings that have different encodings of / and : so replace these
         body = REGEX_LINKSSLASH.sub("/", body)
         body = REGEX_LINKSCOLON.sub(":", body)
@@ -1208,6 +1271,7 @@ def getResponseLinks(response, url):
                 # Initialize link_keys before try block
                 link_keys = []
                 try:
+                    """OLD REGEX
                     reString = (
                         r"(?:^|\"|'|\\n|\\r|\n|\r|\s)(((?:[a-zA-Z]{1,10}:\/\/|\/\/)([^\"'\/\s]{1,255}\.[a-zA-Z]{2,24}|localhost)[^\"'\n\s]{0,255})|((?:#?\/|\.\.\/|\.\/)[^\"'><,;| *()(%%$^\/\\\[\]][^\"'><,;|()\s]{1,255})|([a-zA-Z0-9_\-\/]{1,}\/[a-zA-Z0-9_\-\/\.]{1,255}\.(?:[a-zA-Z]{1,4}"
                         + LINK_REGEX_NONSTANDARD_FILES
@@ -1215,7 +1279,14 @@ def getResponseLinks(response, url):
                         + LINK_REGEX_FILES
                         + r")(?:\?[^\"|^']{0,255}|)))(?:\"|'|\\n|\\r|\n|\r|\s|$)|(?<=^Disallow:\s)[^\$\n]{0,500}|(?<=^Allow:\s)[^\$\n]{0,500}|(?<= Domain\=)[^\";']{0,500}|(?<=\<)https?:\/\/[^>\n]{0,1000}|(\"|\')([A-Za-z0-9_-]+\/)+[A-Za-z0-9_-]+(\.[A-Za-z0-9]{2,}|\/?(\?|\#)[A-Za-z0-9_\-&=\[\]]{0,500})(\"|\')|(?<=\<Key\>)[^\<]{1,500}\<\/Key\>"
                     )
-
+                    """
+                    reString = (
+                        r"(?:(?<=^)|(?<=\"|'|\n|\r|\s))(((?:[a-zA-Z]{1,10}:\/\/|\/\/)([^\"'\/\s]{1,255}\.[a-zA-Z]{2,24}|localhost)[^\"'\n\s]{0,255})|((?:#?\/|\.\.\/|\.\/)[^\"'><,;| *()(%%$^\/\\\[\]][^\"'><,;|()\s]{1,255})|([a-zA-Z0-9_\-\/]{1,}\/[a-zA-Z0-9_\-\/\.]{1,255}\.(?:[a-zA-Z]{1,4}"
+                        + LINK_REGEX_NONSTANDARD_FILES
+                        + r")(?:[\?|\/][^\"|']{0,1000}|))|([a-zA-Z0-9_\-\.]{1,255}\.(?:"
+                        + LINK_REGEX_FILES
+                        + r")(?:\?[^\"|^']{0,255}|)))(?=$|\"|'|\n|\r|\s)|(?<=^Disallow:\s)[^\$\n]{0,500}|(?<=^Allow:\s)[^\$\n]{0,500}|(?<= Domain\=)[^\";']{0,500}|(?<=\<)https?:\/\/[^>\n]{0,1000}|(\"|\')([A-Za-z0-9_-]+\/)+[A-Za-z0-9_-]+(\.[A-Za-z0-9]{2,}|\/?(\?|\#)[A-Za-z0-9_\-&=\[\]]{0,500})(\"|\')|(?<=\<Key\>)[^\<]{1,500}\<\/Key\>"
+                    )
                     # Replace different encodings of " before searching to maximise finds
                     body = (
                         body.replace("&#34;", '"')
@@ -3569,6 +3640,15 @@ def showOptions():
                 colored("--all-tlds: True", "magenta")
                 + colored(
                     " All links found will be returned, even if the TLD is not common. This can result in a number of false positives where variable names, etc. may also be a possible genuine domain.",
+                    "white",
+                )
+            )
+
+        if args.readable_only:
+            write(
+                colored("-ro: True", "magenta")
+                + colored(
+                    " Only human-readable text will be extracted from HTML before searching for links.",
                     "white",
                 )
             )
@@ -5997,6 +6077,13 @@ def main():
         "--heap",
         action="store_true",
         help="Whether to take a heap snapshot of visited URLs and extract links from browser memory. This will take longer but could discover dynamically generated links that standard static analysis might miss (Requires Playwright to be installed).",
+        default=False,
+    )
+    parser.add_argument(
+        "-ro",
+        "--readable-only",
+        action="store_true",
+        help="If passed, only human-readable text will be extracted from HTML responses/files using BeautifulSoup before searching for links. This excludes content from script, style, noscript, and template tags.",
         default=False,
     )
     parser.add_argument(

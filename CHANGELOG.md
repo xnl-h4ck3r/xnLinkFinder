@@ -1,5 +1,16 @@
 ## Changelog
 
+- v7.16
+
+  - New
+
+    - Get the readable version of HTML pages using the BeautifulSoup library (this removes content from `<script>`, `<style>`, `<noscript>`, and `<template>` tags) and also search that for links. This can get more as the library can convert some links that are encoded in different ways.
+    - Added `-ro`/`--readable-only` argument. If passed, only human-readable text will be extracted from HTML responses/files.This is useful when you only want to find links in visible page content rather than in JavaScript code or CSS, e.g. when you are searching a blog for links of a specific domain, and don't want any links releating to the blog site itself.
+
+  - Changed
+
+    - Updated `inflect` dependency in `setup.py` to `>=7.3.0` to resolve `argument "text" (str) is not an instance of inflect.Word` error caused by older versions of the library.
+
 - v7.15
 
   - New

@@ -63,7 +63,7 @@ setup(
         "html5lib",
         "urllib3",
         "tldextract",
-        "inflect",
+        "inflect>=7.3.0",
         "playwright",
         "pypdf",
     ],
