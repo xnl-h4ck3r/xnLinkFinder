@@ -5293,9 +5293,14 @@ def processPlural(originalWord):
         plural = _inflect_engine.plural(word)
         return _preserve_case(originalWord, plural)
 
-    except Exception as e:
+    except Exception:
         if vverbose():
-            writerr(colored("ERROR processPlural 1: " + str(e), "red"))
+            writerr(
+                colored(
+                    "Unable to create singular/plural variation of word: " + word,
+                    "yellow",
+                )
+            )
         return ""
 
 

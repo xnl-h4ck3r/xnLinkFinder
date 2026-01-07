@@ -1,5 +1,11 @@
 ## Changelog
 
+- v7.17
+
+  - Changed
+
+    - BUG FIX: The error `ERROR processPlural 1: argument "text" (str) is not an instance of inflect.Word` was being raied, e.g. when word ended with an underscore character. The error wouldn't cause any problems, but has changed to nicer warning showing the word.
+     
 - v7.16
 
   - New
