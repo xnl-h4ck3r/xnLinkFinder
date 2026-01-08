@@ -31,34 +31,20 @@ from bs4 import BeautifulSoup, Comment
 import csv
 import json
 import urllib
-import tldextract
 from pathlib import Path
 import time
 import threading
-import inflect
-
-try:
-    from playwright.sync_api import sync_playwright
-
-    playwrightInstalled = True
-except ImportError:
-    playwrightInstalled = False
 
 import io
 import shutil
 
-try:
-    import pypdf
-
-    pypdfInstalled = True
-except ImportError:
-    pypdfInstalled = False
-
-# Check if pdftotext is available
-pdftotextInstalled = shutil.which("pdftotext") is not None
-
-# Check if ocrmypdf is available
-ocrmypdfInstalled = shutil.which("ocrmypdf") is not None
+# Lazy-loaded module references (initialized on first use)
+_tldextract = None
+_inflect_engine = None
+_pdftotextInstalled = None
+_ocrmypdfInstalled = None
+_pypdfInstalled = None
+_pypdf = None
 
 try:
     from . import __version__
@@ -82,8 +68,65 @@ try:
 except Exception:
     html5libInstalled = False
 
-# Initialize inflect engine for pluralization/singularization
-_inflect_engine = inflect.engine()
+
+# Lazy-loading helper functions
+def get_tldextract():
+    """Lazy-load tldextract module."""
+    global _tldextract
+    if _tldextract is None:
+        import tldextract
+
+        _tldextract = tldextract
+    return _tldextract
+
+
+def get_inflect_engine():
+    """Lazy-load inflect engine."""
+    global _inflect_engine
+    if _inflect_engine is None:
+        import inflect
+
+        _inflect_engine = inflect.engine()
+    return _inflect_engine
+
+
+def is_pdftotext_installed():
+    """Lazy-check if pdftotext is available."""
+    global _pdftotextInstalled
+    if _pdftotextInstalled is None:
+        _pdftotextInstalled = shutil.which("pdftotext") is not None
+    return _pdftotextInstalled
+
+
+def is_ocrmypdf_installed():
+    """Lazy-check if ocrmypdf is available."""
+    global _ocrmypdfInstalled
+    if _ocrmypdfInstalled is None:
+        _ocrmypdfInstalled = shutil.which("ocrmypdf") is not None
+    return _ocrmypdfInstalled
+
+
+def is_pypdf_installed():
+    """Lazy-load pypdf and check if available."""
+    global _pypdfInstalled, _pypdf
+    if _pypdfInstalled is None:
+        try:
+            import pypdf
+
+            _pypdf = pypdf
+            _pypdfInstalled = True
+        except ImportError:
+            _pypdfInstalled = False
+    return _pypdfInstalled
+
+
+def get_pypdf():
+    """Get the pypdf module (lazy-loaded)."""
+    global _pypdf
+    if not is_pypdf_installed():
+        return None
+    return _pypdf
+
 
 warnings.filterwarnings("ignore", category=UserWarning, module="bs4")
 
@@ -203,6 +246,20 @@ LARGE_RESPONSE_THRESHOLD = (
 )
 CHUNK_SIZE = 40000  # 40KB chunks (smaller chunks for better reliability)
 CHUNK_OVERLAP = 5000  # 5KB overlap to catch patterns spanning chunk boundaries
+
+# Default maximum response size to download (in bytes) - skip responses larger than this
+DEFAULT_MAX_RESPONSE_SIZE = 100 * 1024 * 1024  # 100MB
+
+
+def get_max_response_size():
+    """Get the max response size in bytes, using args value if set, otherwise default."""
+    try:
+        if args.max_response_size is not None and args.max_response_size > 0:
+            return args.max_response_size * 1024 * 1024  # Convert MB to bytes
+    except Exception:
+        pass
+    return DEFAULT_MAX_RESPONSE_SIZE
+
 
 # Yaml config values
 LINK_EXCLUSIONS = ""
@@ -647,7 +704,9 @@ def includeFile(fileOrUrl):
             try:
                 if fileOrUrl.endswith(exc.lower()):
                     # If PDF extraction is supported, don't exclude .pdf
-                    if exc.lower() == ".pdf" and (pdftotextInstalled or pypdfInstalled):
+                    if exc.lower() == ".pdf" and (
+                        is_pdftotext_installed() or is_pypdf_installed()
+                    ):
                         continue
                     include = False
             except Exception as e:
@@ -708,7 +767,7 @@ def includeContentType(header, url):
                 if contentType.lower() == excludeContentType.lower():
                     # If PDF extraction is supported, don't exclude application/pdf
                     if contentType.lower() == "application/pdf" and (
-                        pdftotextInstalled or pypdfInstalled
+                        is_pdftotext_installed() or is_pypdf_installed()
                     ):
                         continue
                     include = False
@@ -852,8 +911,6 @@ def pdf_to_text(pdf_content):
     Convert PDF bytes to text using pdftotext command or pypdf library as fallback.
     If no text is found, try OCR fallback with ocrmypdf.
     """
-    global pdftotextInstalled, pypdfInstalled, ocrmypdfInstalled
-
     # Verify if it has the PDF magic header
     if not pdf_content.startswith(b"%PDF-"):
         return ""
@@ -861,7 +918,7 @@ def pdf_to_text(pdf_content):
     text = ""
 
     # 1. Primary: pdftotext (Fastest and most accurate for text-based PDFs)
-    if pdftotextInstalled:
+    if is_pdftotext_installed():
         try:
             with NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
                 tmp_pdf.write(pdf_content)
@@ -893,8 +950,9 @@ def pdf_to_text(pdf_content):
                 writerr(colored("ERROR pdf_to_text (pdftotext): " + str(e), "red"))
 
     # Fallback to pypdf if pdftotext wasn't installed
-    if not pdftotextInstalled and pypdfInstalled:
+    if not is_pdftotext_installed() and is_pypdf_installed():
         try:
+            pypdf = get_pypdf()
             reader = pypdf.PdfReader(io.BytesIO(pdf_content))
             for page in reader.pages:
                 text += page.extract_text() + "\n"
@@ -914,7 +972,7 @@ def pdf_to_text(pdf_content):
                 writerr(colored("ERROR pdf_to_text (pypdf): " + str(e), "red"))
 
     # If we still have no text, try OCR fallback if ocrmypdf is installed
-    if ocrmypdfInstalled:
+    if is_ocrmypdf_installed():
         tmp_pdf_path = None
         ocr_pdf_path = None
         try:
@@ -950,7 +1008,7 @@ def pdf_to_text(pdf_content):
 
                 # Reuse logic to extract text from the NEW OCR'd PDF
                 ocr_text = ""
-                if pdftotextInstalled:
+                if is_pdftotext_installed():
                     with NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_ocr_pdf:
                         tmp_ocr_pdf.write(ocr_pdf_content)
                         tmp_ocr_path = tmp_ocr_pdf.name
@@ -965,7 +1023,8 @@ def pdf_to_text(pdf_content):
                     if result.returncode == 0:
                         ocr_text = result.stdout
 
-                if ocr_text.strip() == "" and pypdfInstalled:
+                if ocr_text.strip() == "" and is_pypdf_installed():
+                    pypdf = get_pypdf()
                     reader = pypdf.PdfReader(io.BytesIO(ocr_pdf_content))
                     for page in reader.pages:
                         ocr_text += page.extract_text() + "\n"
@@ -1371,7 +1430,7 @@ def getResponseLinks(response, url):
                     if should_stop():
                         break
                     # Cache tldextract result (was being called 7+ times per key!)
-                    extracted = tldextract.extract(key)
+                    extracted = get_tldextract().extract(key)
                     suffix_lower = extracted.suffix.lower() if extracted.suffix else ""
                     domain_lower = extracted.domain.lower() if extracted.domain else ""
                     if (
@@ -1790,10 +1849,10 @@ def shouldMakeRequest(url):
         and not (waymoreMode and args.depth == 0)
     ):
         try:
-            tldExtract = tldextract.extract(url)
+            tldExtract = get_tldextract().extract(url)
             tld = tldExtract.suffix
         except Exception:
-            tld = tldExtract.suffix
+            tld = ""
         if url.startswith("//") or url.startswith("http") or tld != "":
             makeRequest = True
 
@@ -1804,7 +1863,10 @@ def get_heap_snapshot_links(url):
     """
     Take a heap snapshot of a visited URL and return links found in it
     """
-    if not playwrightInstalled:
+    # Lazy-load playwright to avoid slow startup time
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
         if verbose():
             writerr(
                 colored(
@@ -2015,6 +2077,7 @@ def processUrl(url):
                         session.mount("http://", adapter)
                         session.mount("https://", adapter)
 
+                    # Use streaming to check headers before downloading the full body
                     resp = session.get(
                         requestUrl,
                         headers=requestHeaders,
@@ -2022,19 +2085,129 @@ def processUrl(url):
                         allow_redirects=True,
                         verify=verify,
                         proxies=proxies,
+                        stream=True,
                     )
 
                     # Check if Ctrl-C was pressed during the request
                     if stopProgram is not None or (
                         shared_stopProgram is not None and shared_stopProgram.value != 0
                     ):
+                        resp.close()
                         return
 
-                    # Get content length
+                    # Check Content-Length - skip responses larger than args.max_response_size
+                    content_length_header = resp.headers.get("Content-Length")
+                    if content_length_header:
+                        try:
+                            if int(content_length_header) > get_max_response_size():
+                                if verbose():
+                                    writerr(
+                                        colored(
+                                            f"Skipping {url} - response too large ({int(content_length_header) // (1024*1024)}MB)",
+                                            "yellow",
+                                        )
+                                    )
+                                resp.close()
+                                skippedRequests += 1
+                                return
+                        except ValueError:
+                            pass
+
+                    # Check Content-Type - skip binary content types that we can't process
+                    content_type = (
+                        resp.headers.get("Content-Type", "")
+                        .split(";")[0]
+                        .lower()
+                        .strip()
+                    )
+                    binary_types = [
+                        "application/octet-stream",
+                        "application/x-msdownload",
+                        "application/x-executable",
+                        "application/x-binary",
+                        "application/x-sharedlib",
+                        "application/vnd.android.package-archive",
+                        "application/x-tar",
+                        "application/gzip",
+                        "application/x-gzip",
+                        "application/x-bzip2",
+                        "application/x-7z-compressed",
+                        "application/x-rar-compressed",
+                    ]
+                    # Also check if URL ends with known binary extensions
+                    binary_extensions = [
+                        ".pth",
+                        ".bin",
+                        ".exe",
+                        ".dll",
+                        ".so",
+                        ".dylib",
+                        ".tar",
+                        ".gz",
+                        ".zip",
+                        ".rar",
+                        ".7z",
+                        ".iso",
+                        ".dmg",
+                        ".deb",
+                        ".rpm",
+                        ".apk",
+                        ".ipa",
+                    ]
+                    is_binary = any(bt in content_type for bt in binary_types)
+                    is_binary_ext = any(
+                        requestUrl.lower().split("?")[0].endswith(ext)
+                        for ext in binary_extensions
+                    )
+
+                    if is_binary or is_binary_ext:
+                        if verbose():
+                            reason = (
+                                f"binary content-type: {content_type}"
+                                if is_binary
+                                else "binary file extension"
+                            )
+                            writerr(
+                                colored(
+                                    f"Skipping {url} - {reason}",
+                                    "yellow",
+                                )
+                            )
+                        resp.close()
+                        skippedRequests += 1
+                        return
+
+                    # Now read the actual content (for non-binary, reasonably sized files)
+                    # Read content in chunks with a size limit
+                    resp_content = b""
+                    for chunk in resp.iter_content(chunk_size=8192):
+                        if should_stop():
+                            resp.close()
+                            return
+                        resp_content += chunk
+                        if len(resp_content) > get_max_response_size():
+                            if verbose():
+                                writerr(
+                                    colored(
+                                        f"Skipping {url} - response exceeded size limit during download",
+                                        "yellow",
+                                    )
+                                )
+                            resp.close()
+                            skippedRequests += 1
+                            return
+
+                    # Decode the content as text
+                    try:
+                        resp._content = resp_content
+                    except Exception:
+                        pass
+
+                    # Get content length for display
                     if args.content_length:
-                        cl = resp.headers.get("Content-Length")
+                        cl = content_length_header
                         if cl is None:
-                            cl = str(len(resp.text))
+                            cl = str(len(resp_content))
                         content_length = "  [" + cl + "]"
                     else:
                         content_length = ""
@@ -3507,6 +3680,14 @@ def showOptions():
                     "white",
                 )
             )
+            if args.max_response_size is not None:
+                write(
+                    colored("-mrs: " + str(args.max_response_size) + " MB", "magenta")
+                    + colored(
+                        " Maximum response size to download. Responses larger than this will be skipped.",
+                        "white",
+                    )
+                )
             write(
                 colored("-inc: " + str(args.include), "magenta")
                 + colored(" Include input (-i) links in the output.", "white")
@@ -4779,55 +4960,79 @@ def processEachInput(input):
         # if the value passed is not a valid file, or a directory, then assume it is an individual URL:
         if not stdinMultiple:
             if os.path.isfile(input):
-                try:
-                    inputFile = open(input, "r")
-                    firstLine = inputFile.readline()
+                # Check if it's a PDF file first (by extension or magic bytes)
+                # PDFs should be processed as file content, not as a text file
+                isPdfFile = False
+                if input.lower().endswith(".pdf"):
+                    isPdfFile = True
+                else:
+                    # Check for PDF magic bytes
+                    try:
+                        with open(input, "rb") as f:
+                            magic = f.read(5)
+                            if magic == b"%PDF-":
+                                isPdfFile = True
+                    except Exception:
+                        pass
 
-                    # Check if the file passed is a Burp file
-                    burpFile = firstLine.lower().startswith("<?xml")
+                if isPdfFile:
+                    # Treat single PDF file like directory mode (file content processing)
+                    dirPassed = True
+                    fileContent = True
+                else:
+                    try:
+                        inputFile = open(input, "r", encoding="utf-8", errors="ignore")
+                        firstLine = inputFile.readline()
 
-                    # If not a Burp file, check if it is an ZAP file
-                    if not burpFile:
-                        match = re.search(r"={3,4}\s?[0-9]+\s={10}", firstLine)
-                        if match is not None:
-                            zapFile = True
+                        # Check if the file passed is a Burp file
+                        burpFile = firstLine.lower().startswith("<?xml")
 
-                        # If it's not a Burp or ZAP file, check if it is a Caido file
-                        if not zapFile:
-                            caidoFile = firstLine.lower().startswith("id,host,method")
+                        # If not a Burp file, check if it is an ZAP file
+                        if not burpFile:
+                            match = re.search(r"={3,4}\s?[0-9]+\s={10}", firstLine)
+                            if match is not None:
+                                zapFile = True
 
-                            # If it's not a Burp, ZAP or Caido file, check if it is a HAR file
-                            if not caidoFile:
-                                try:
-                                    if input.endswith(".har"):
-                                        harFile = True
-                                    elif (
-                                        firstLine.strip().startswith("{")
-                                        and firstLine.find('"log"') > 0
-                                    ):
-                                        harFile = True
-                                    else:
-                                        # If the first line didn't have "log", maybe it's on the second line?
-                                        # But let's check correctly for JSON structure slightly deeper if first line is just {
-                                        if firstLine.strip() == "{":
-                                            nextLine = inputFile.readline()
-                                            if nextLine.find('"log"') > 0:
-                                                harFile = True
-                                except Exception:
-                                    pass
+                            # If it's not a Burp or ZAP file, check if it is a Caido file
+                            if not zapFile:
+                                caidoFile = firstLine.lower().startswith(
+                                    "id,host,method"
+                                )
 
-                                # If it's not a Burp, ZAP, Caido or HAR file then assume it is a standard file or URLs
-                                if not harFile:
-                                    stdFile = True
+                                # If it's not a Burp, ZAP or Caido file, check if it is a HAR file
+                                if not caidoFile:
+                                    try:
+                                        if input.endswith(".har"):
+                                            harFile = True
+                                        elif (
+                                            firstLine.strip().startswith("{")
+                                            and firstLine.find('"log"') > 0
+                                        ):
+                                            harFile = True
+                                        else:
+                                            # If the first line didn't have "log", maybe it's on the second line?
+                                            # But let's check correctly for JSON structure slightly deeper if first line is just {
+                                            if firstLine.strip() == "{":
+                                                nextLine = inputFile.readline()
+                                                if nextLine.find('"log"') > 0:
+                                                    harFile = True
+                                    except Exception:
+                                        pass
 
-                    # Close the file after determining type - it will be reopened by processing functions
-                    inputFile.close()
+                                    # If it's not a Burp, ZAP, Caido or HAR file then assume it is a standard file or URLs
+                                    if not harFile:
+                                        stdFile = True
 
-                except Exception as e:
-                    writerr(
-                        colored("Cannot read input file " + input + ":" + str(e), "red")
-                    )
-                    sys.exit()
+                        # Close the file after determining type - it will be reopened by processing functions
+                        inputFile.close()
+
+                    except Exception as e:
+                        writerr(
+                            colored(
+                                "Cannot read input file " + input + ":" + str(e), "red"
+                            )
+                        )
+                        sys.exit()
             elif os.path.isdir(input):
                 dirPassed = True
                 if input[-1] != "/":
@@ -5272,25 +5477,25 @@ def processPlural(originalWord):
             last_part_lower = last_part.lower()
 
             # Try singular
-            singular = _inflect_engine.singular_noun(last_part_lower)
+            singular = get_inflect_engine().singular_noun(last_part_lower)
             if singular:
                 new_last_part = _preserve_case(last_part, singular)
                 return f"{prefix}{sep}{new_last_part}"
 
             # Otherwise plural
-            plural = _inflect_engine.plural(last_part_lower)
+            plural = get_inflect_engine().plural(last_part_lower)
             new_last_part = _preserve_case(last_part, plural)
             return f"{prefix}{sep}{new_last_part}"
 
         # Handle non-hyphenated words
         # Try to get singular form (returns False if already singular)
-        singular = _inflect_engine.singular_noun(word)
+        singular = get_inflect_engine().singular_noun(word)
         if singular:
             # Word was plural, return singular with original casing
             return _preserve_case(originalWord, singular)
 
         # Word was singular, return plural with original casing
-        plural = _inflect_engine.plural(word)
+        plural = get_inflect_engine().plural(word)
         return _preserve_case(originalWord, plural)
 
     except Exception:
@@ -5762,6 +5967,16 @@ def argcheckRetries(value):
     return ivalue
 
 
+# For validating -mrs / --max-response-size argument
+def argcheckMaxResponseSize(value):
+    ivalue = int(value)
+    if ivalue <= 0:
+        raise argparse.ArgumentTypeError(
+            "Max response size must be a positive integer (in MB)."
+        )
+    return ivalue
+
+
 # For validating -swf / --stopwords-file argument
 def argcheckStopwordsFile(filename):
     global extraStopWords
@@ -5996,6 +6211,17 @@ def main():
         default=0,
         type=argcheckRetries,
         metavar="<integer>",
+    )
+    parser.add_argument(
+        "-mrs",
+        "--max-response-size",
+        help="Maximum response size in MB to download. Responses larger than this will be skipped (default: "
+        + str(DEFAULT_MAX_RESPONSE_SIZE // (1024 * 1024))
+        + " MB).",
+        action="store",
+        default=None,
+        type=argcheckMaxResponseSize,
+        metavar="<MB>",
     )
     parser.add_argument(
         "-inc",

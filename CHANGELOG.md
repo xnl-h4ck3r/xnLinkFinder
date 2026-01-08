@@ -1,5 +1,21 @@
 ## Changelog
 
+- v7.18
+
+  - New
+
+    - Add `-mrs` / `--max-response-size` argument to configure maximum response size in MB (default: 100 MB). Responses larger than this will be skipped.
+
+  - Changed
+
+    - Improved startup time by lazy-loading heavy imports and deferring expensive checks:
+      - `playwright` - Only loaded when `--heap` argument is used
+      - `tldextract` - Only loaded when processing links
+      - `inflect` - Only loaded when generating wordlists
+      - `pypdf`, `pdftotext`, `ocrmypdf` checks - Only performed when processing PDFs
+    - HTTP requests now use streaming to check Content-Length and Content-Type headers before downloading the response body. This prevents the tool from freezing when URLs point to large binary files (e.g., `.pth`, `.bin`, `.exe`, archives). Files larger than the max response size or with binary content types are automatically skipped.
+    - BUG FIX: Fixed error when passing a PDF file as input. PDFs are now detected by extension or magic bytes before attempting to read as text, preventing UTF-8 decode errors.
+
 - v7.17
 
   - Changed
