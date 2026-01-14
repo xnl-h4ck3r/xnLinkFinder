@@ -1,5 +1,23 @@
 ## Changelog
 
+- v8.0
+
+  - New
+
+    - Added `-os` / `--output-secrets` argument to specify a file to write any secrets found in responses or files. Secrets are output in **JSON format** with each unique secret grouped by type and value, showing an array of all sources where it was found and a count. Detected secrets include:
+      - AWS Keys (`AKIA...`)
+      - Generic API Tokens (high entropy strings with context)
+      - JWTs (`eyJ...`)
+      - GitHub Tokens (`ghp_`, `gho_`, `ghu_`, `ghs_`, `github_pat_`)
+      - Google API Keys (`AIza...`)
+      - Cloud Provider Keys (Azure, DigitalOcean, Heroku, etc.)
+      - OAuth / Bearer Tokens
+      - Private Keys (RSA, DSA, EC, OpenSSH, PGP)
+      - Slack Webhooks
+      - Stripe Keys (`sk_live_`, `rk_live_`)
+      - Database Connection Strings (MongoDB, PostgreSQL, MySQL)
+      - Generic Secrets (passwords, secrets in config patterns)
+
 - v7.18
 
   - New

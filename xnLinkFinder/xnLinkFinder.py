@@ -148,6 +148,7 @@ failedPrefixLinks = set()
 linksVisited = set()
 paramsFound = set()
 wordsFound = set()
+secretsFound = {}  # Dict mapping (type, value) -> set of sources
 lstStopWords = {}
 lstPathWords = set()
 extraStopWords = ""
@@ -191,6 +192,7 @@ shared_oosLinksFound = None
 shared_paramsFound = None
 shared_failedPrefixLinks = None
 shared_linksVisited = None
+shared_secretsFound = None
 
 # Try to import psutil to show memory usage
 try:
@@ -438,6 +440,112 @@ REGEX_LINKSEQUAL = re.compile(
 # REGEX_LINKSEARCH2 = re.compile(r"^[^{}]*\}+$")
 # REGEX_LINKSEARCH3 = re.compile(r"^[^\[]]*\]+$")
 REGEX_LINKSEARCH4 = re.compile(r"<\/")
+
+# Regex patterns for secret detection
+# These are compiled for performance and used when -os/--output-secrets is passed
+SECRET_PATTERNS = {
+    "AWS Access Key": re.compile(
+        r"(?:^|[^A-Za-z0-9/+=])(AKIA[0-9A-Z]{16})(?:[^A-Za-z0-9/+=]|$)"
+    ),
+    "AWS Secret Key": re.compile(
+        r"(?:aws_secret_access_key|aws_secret_key|secret_access_key|secretaccesskey)['\"]?\s*[:=]\s*['\"]?([A-Za-z0-9/+=]{40})(?:[^A-Za-z0-9/+=]|$)",
+        re.IGNORECASE,
+    ),
+    "GitHub Token": re.compile(
+        r"(?:^|[^A-Za-z0-9_])(ghp_[A-Za-z0-9]{36}|gho_[A-Za-z0-9]{36}|ghu_[A-Za-z0-9]{36}|ghs_[A-Za-z0-9]{36}|ghr_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9]{22}_[A-Za-z0-9]{59})(?:[^A-Za-z0-9_]|$)"
+    ),
+    "Google API Key": re.compile(
+        r"(?:^|[^A-Za-z0-9_-])(AIza[A-Za-z0-9_-]{35})(?:[^A-Za-z0-9_-]|$)"
+    ),
+    "Google OAuth": re.compile(
+        r"(?:^|[^A-Za-z0-9_.-])([0-9]+-[A-Za-z0-9_]{32}\.apps\.googleusercontent\.com)(?:[^A-Za-z0-9_.-]|$)"
+    ),
+    "JWT": re.compile(
+        r"(?:^|[^A-Za-z0-9_.-])(eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})(?:[^A-Za-z0-9_.-]|$)"
+    ),
+    "Bearer Token": re.compile(
+        r"(?:bearer|authorization)['\"]?\s*[:=]\s*['\"]?(?:bearer\s+)?([A-Za-z0-9_-]{20,})(?:['\"\s,;]|$)",
+        re.IGNORECASE,
+    ),
+    "Private Key": re.compile(
+        r"-----BEGIN\s+(?:RSA|DSA|EC|OPENSSH|PGP)?\s*PRIVATE KEY(?:\s+BLOCK)?-----"
+    ),
+    "Slack Webhook": re.compile(
+        r"https://hooks\.slack\.com/services/T[A-Za-z0-9]{8,}/B[A-Za-z0-9]{8,}/[A-Za-z0-9]{24}"
+    ),
+    "Slack Token": re.compile(
+        r"(?:^|[^A-Za-z0-9_-])(xox[baprs]-[A-Za-z0-9-]{10,})(?:[^A-Za-z0-9_-]|$)"
+    ),
+    "Stripe Secret Key": re.compile(
+        r"(?:^|[^A-Za-z0-9_])(sk_live_[A-Za-z0-9]{24,})(?:[^A-Za-z0-9_]|$)"
+    ),
+    "Stripe Restricted Key": re.compile(
+        r"(?:^|[^A-Za-z0-9_])(rk_live_[A-Za-z0-9]{24,})(?:[^A-Za-z0-9_]|$)"
+    ),
+    "Heroku API Key": re.compile(
+        r"(?:heroku[_-]?api[_-]?key|heroku[_-]?secret)['\"]?\s*[:=]\s*['\"]?([A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12})(?:['\"\s,;]|$)",
+        re.IGNORECASE,
+    ),
+    "Azure Storage Key": re.compile(
+        r"(?:DefaultEndpointsProtocol=https;AccountName=)([A-Za-z0-9]{3,24});AccountKey=([A-Za-z0-9+/=]{88})"
+    ),
+    "DigitalOcean Token": re.compile(
+        r"(?:^|[^A-Za-z0-9_])(dop_v1_[A-Fa-f0-9]{64})(?:[^A-Za-z0-9_]|$)"
+    ),
+    "DigitalOcean OAuth": re.compile(
+        r"(?:^|[^A-Za-z0-9_])(doo_v1_[A-Fa-f0-9]{64})(?:[^A-Za-z0-9_]|$)"
+    ),
+    "MongoDB Connection": re.compile(
+        r"mongodb(?:\+srv)?://[A-Za-z0-9_:%-]+@[A-Za-z0-9.-]+(?::[0-9]+)?(?:/[A-Za-z0-9_-]*)?(?:\?[A-Za-z0-9_=&-]+)?"
+    ),
+    "PostgreSQL Connection": re.compile(
+        r"postgres(?:ql)?://[A-Za-z0-9_:%-]+@[A-Za-z0-9.-]+(?::[0-9]+)?/[A-Za-z0-9_-]+"
+    ),
+    "MySQL Connection": re.compile(
+        r"mysql://[A-Za-z0-9_:%-]+@[A-Za-z0-9.-]+(?::[0-9]+)?/[A-Za-z0-9_-]+"
+    ),
+    "Twilio API Key": re.compile(
+        r"(?:^|[^A-Za-z0-9])(SK[A-Fa-f0-9]{32})(?:[^A-Za-z0-9]|$)"
+    ),
+    "Twilio Account SID": re.compile(
+        r"(?:^|[^A-Za-z0-9])(AC[A-Fa-f0-9]{32})(?:[^A-Za-z0-9]|$)"
+    ),
+    "SendGrid API Key": re.compile(
+        r"(?:^|[^A-Za-z0-9._-])(SG\.[A-Za-z0-9_-]{22,}\.[A-Za-z0-9_-]{22,})(?:[^A-Za-z0-9._-]|$)"
+    ),
+    "Mailchimp API Key": re.compile(
+        r"(?:^|[^A-Za-z0-9-])([A-Fa-f0-9]{32}-us[0-9]{1,2})(?:[^A-Za-z0-9-]|$)"
+    ),
+    "Square Access Token": re.compile(
+        r"(?:^|[^A-Za-z0-9_-])(sq0atp-[A-Za-z0-9_-]{22})(?:[^A-Za-z0-9_-]|$)"
+    ),
+    "Square OAuth Secret": re.compile(
+        r"(?:^|[^A-Za-z0-9_-])(sq0csp-[A-Za-z0-9_-]{43})(?:[^A-Za-z0-9_-]|$)"
+    ),
+    "Shopify Token": re.compile(
+        r"(?:^|[^A-Za-z0-9_])(shpat_[A-Fa-f0-9]{32}|shpca_[A-Fa-f0-9]{32}|shppa_[A-Fa-f0-9]{32})(?:[^A-Za-z0-9_]|$)"
+    ),
+    "Discord Webhook": re.compile(
+        r"https://(?:ptb\.|canary\.)?discord(?:app)?\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]+"
+    ),
+    "Discord Bot Token": re.compile(
+        r"(?:^|[^A-Za-z0-9._-])([MN][A-Za-z0-9]{23,}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,})(?:[^A-Za-z0-9._-]|$)"
+    ),
+    "NPM Token": re.compile(
+        r"(?:^|[^A-Za-z0-9_-])(npm_[A-Za-z0-9]{36})(?:[^A-Za-z0-9_-]|$)"
+    ),
+    "PyPI Token": re.compile(
+        r"(?:^|[^A-Za-z0-9_-])(pypi-AgEIcHlwaS5vcmc[A-Za-z0-9_-]{50,})(?:[^A-Za-z0-9_-]|$)"
+    ),
+    "Generic API Key": re.compile(
+        r"(?:api[_-]?key|apikey|api[_-]?secret|api[_-]?token)['\"]?\s*[:=]\s*['\"]?([A-Za-z0-9_-]{16,64})(?:['\"\s,;]|$)",
+        re.IGNORECASE,
+    ),
+    "Generic Secret": re.compile(
+        r"(?:secret|password|passwd|pwd|token|credential)['\"]?\s*[:=]\s*['\"]?([A-Za-z0-9_!@#$%^&*()+=/-]{8,64})(?:['\"\s,;]|$)",
+        re.IGNORECASE,
+    ),
+}
 
 
 def write(text="", pipe=False):
@@ -1923,11 +2031,12 @@ def init_worker(
     shared_failed=None,
     shared_visited=None,
     shared_stop=None,
+    shared_secrets=None,
 ):
     """
     Initialize a persistent session for the worker process and set up shared state.
     """
-    global persistence_session, shared_linksFound, shared_oosLinksFound, shared_paramsFound, shared_failedPrefixLinks, shared_linksVisited, shared_stopProgram
+    global persistence_session, shared_linksFound, shared_oosLinksFound, shared_paramsFound, shared_failedPrefixLinks, shared_linksVisited, shared_stopProgram, shared_secretsFound
 
     # Make workers ignore SIGINT - the main process will handle termination
     # This prevents BrokenPipeError spam when main process exits
@@ -1950,6 +2059,8 @@ def init_worker(
         shared_linksVisited = shared_visited
     if shared_stop is not None:
         shared_stopProgram = shared_stop
+    if shared_secrets is not None:
+        shared_secretsFound = shared_secrets
 
 
 def processUrl(url):
@@ -2347,6 +2458,8 @@ def processUrl(url):
                                 getResponseLinks(pdf_text, url)
                                 # Get potential parameters from the response
                                 getResponseParams(pdf_text, url)
+                                # Get potential secrets from the response
+                                getResponseSecrets(pdf_text, url)
                             else:
                                 if vverbose():
                                     write(
@@ -2365,6 +2478,9 @@ def processUrl(url):
 
                             # Get potential parameters from the response
                             getResponseParams(resp, url)
+
+                            # Get potential secrets from the response
+                            getResponseSecrets(resp, url)
 
                 except requests.exceptions.ProxyError:
                     writerr(
@@ -2818,6 +2934,121 @@ def processParamOutput():
             writerr(colored("ERROR processParamOutput 1: " + str(e), "red"))
 
 
+# Process the output of any secrets found
+def processSecretOutput():
+    global secretsFound
+
+    # Early exit if -os argument wasn't passed
+    try:
+        if args.output_secrets is None or args.output_secrets == "":
+            return
+    except Exception:
+        return
+
+    try:
+        secretsCount = len(secretsFound)
+        write(
+            colored("Unique secrets found for " + args.input + ": ", "cyan")
+            + colored(str(secretsCount) + " 🔐\n", "white")
+        )
+
+        # If the -ow / --output_overwrite argument was NOT passed and the file exists already,
+        # load and merge existing JSON data
+        appendedSecrets = False
+        if not args.output_overwrite:
+            try:
+                with open(
+                    os.path.expanduser(args.output_secrets), "r", encoding="utf-8"
+                ) as existingFile:
+                    import json
+
+                    existing_data = json.load(existingFile)
+                    # Merge existing secrets into secretsFound
+                    for item in existing_data:
+                        secret_key = (item.get("type", ""), item.get("value", ""))
+                        if secret_key not in secretsFound:
+                            secretsFound[secret_key] = set()
+                        for source in item.get("sources", []):
+                            secretsFound[secret_key].add(source)
+                    appendedSecrets = True
+            except FileNotFoundError:
+                pass
+            except Exception as e:
+                if vverbose():
+                    writerr(
+                        colored(
+                            "ERROR processSecretOutput 6 (loading existing): " + str(e),
+                            "red",
+                        )
+                    )
+
+        # Build the JSON output structure
+        import json
+
+        output_data = []
+        for (secret_type, secret_value), sources in sorted(secretsFound.items()):
+            output_data.append(
+                {
+                    "type": secret_type,
+                    "value": secret_value,
+                    "sources": sorted(list(sources)),
+                    "count": len(sources),
+                }
+            )
+
+        # Output to file
+        try:
+            # Create directories if necessary
+            try:
+                f = os.path.basename(args.output_secrets)
+                p = args.output_secrets[: -(len(f)) - 1]
+                if p != "" and not os.path.exists(p):
+                    os.makedirs(p)
+            except Exception as e:
+                if verbose():
+                    writerr(colored("ERROR processSecretOutput 5: " + str(e), "red"))
+
+            # Write JSON to file
+            with open(
+                os.path.expanduser(args.output_secrets), "w", encoding="utf-8"
+            ) as outFile:
+                json.dump(output_data, outFile, indent=2)
+        except Exception as e:
+            if vverbose():
+                writerr(colored("ERROR processSecretOutput 2: " + str(e), "red"))
+
+        if verbose():
+            if secretsCount == 0:
+                write(
+                    colored(
+                        "No secrets were found so nothing written to file.\n",
+                        "cyan",
+                    )
+                )
+            else:
+                if appendedSecrets:
+                    write(
+                        colored(
+                            "Secrets successfully merged and written to file ", "cyan"
+                        )
+                        + colored(args.output_secrets, "white")
+                        + colored(" (JSON format).\n", "cyan")
+                    )
+                else:
+                    write(
+                        colored("Secrets successfully written to file ", "cyan")
+                        + colored(args.output_secrets, "white")
+                        + colored(" (JSON format).\n", "cyan")
+                    )
+
+        # Clean up
+        secretsFound = None
+
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR processSecretOutput 1: " + str(e), "red"))
+
+
 # Add certain words found in the passed list to the target specific wordlist. This is called for parameters and path words
 def addItemsToWordlist(inputList):
     global wordsFound, lstStopWords
@@ -3016,6 +3247,9 @@ def processOutput():
 
         # Process output of the found parameters
         processParamOutput()
+
+        # Process output of the found secrets
+        processSecretOutput()
 
         # Process output of oos domains
         if args.output_oos != "":
@@ -3481,6 +3715,11 @@ def showOptions():
                 + colored(
                     " Where the target specific wordlist output will be sent.", "white"
                 )
+            )
+        if args.output_secrets != "":
+            write(
+                colored("-os: " + args.output_secrets, "magenta")
+                + colored(" Where the secrets output will be sent.", "white")
             )
         write(
             colored("-ow: " + str(args.output_overwrite), "magenta")
@@ -3987,6 +4226,8 @@ def processFileContent(filepath, responseCount=1):
             getResponseLinks(response, request)
             # Get potential parameters from the response
             getResponseParams(response, request)
+            # Get potential secrets from the response
+            getResponseSecrets(response, request)
         except Exception as e:
             if vverbose():
                 writerr(
@@ -4286,6 +4527,10 @@ def processCaidoMessage(requestUrl, requestFull, response, responseCount):
         getResponseParams(response, requestUrl)
         getResponseParams(requestFull, requestUrl)
 
+        # Get potential secrets from the response
+        getResponseSecrets(response, requestUrl)
+        getResponseSecrets(requestFull, requestUrl)
+
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR processCaidoMessage 1: " + str(e), "red"))
@@ -4440,6 +4685,10 @@ def processZapMessage(zapMessage, responseCount):
         # Get potential parameters from the response
         getResponseParams(response, requestUrl)
         getResponseParams(requestFull, requestUrl)
+
+        # Get potential secrets from the response
+        getResponseSecrets(response, requestUrl)
+        getResponseSecrets(requestFull, requestUrl)
 
     except Exception as e:
         if vverbose():
@@ -4712,6 +4961,8 @@ def processBurpFile():
                     getResponseLinks(response, requestUrl)
                     # Get potential parameters from the response
                     getResponseParams(response, requestUrl)
+                    # Get potential secrets from the response
+                    getResponseSecrets(response, requestUrl)
 
                     response = ""
                 except Exception as e:
@@ -4738,6 +4989,8 @@ def processBurpFile():
                     getResponseLinks(requestFull, requestUrl)
                     # Get potential parameters from the response
                     getResponseParams(requestFull, requestUrl)
+                    # Get potential secrets from the response
+                    getResponseSecrets(requestFull, requestUrl)
 
                     requestFull = ""
                 except Exception as e:
@@ -4871,6 +5124,12 @@ def processHarMessage(entry, responseCount):
             getResponseParams(response, requestUrl)
         if requestFull != "":
             getResponseParams(requestFull, requestUrl)
+
+        # Get potential secrets from the response
+        if response != "":
+            getResponseSecrets(response, requestUrl)
+        if requestFull != "":
+            getResponseSecrets(requestFull, requestUrl)
 
     except Exception as e:
         if vverbose():
@@ -5128,6 +5387,7 @@ def processEachInput(input):
                                         shared_failed = manager.list()
                                         shared_visited = manager.list()
                                         shared_stop = manager.Value("i", 0)
+                                        shared_secrets = manager.list()
 
                                         p = mp.Pool(
                                             args.processes,
@@ -5139,6 +5399,7 @@ def processEachInput(input):
                                                 shared_failed,
                                                 shared_visited,
                                                 shared_stop,
+                                                shared_secrets,
                                             ),
                                         )
                                         active_pool = p
@@ -5161,6 +5422,16 @@ def processEachInput(input):
                                             paramsFound.update(shared_params)
                                             failedPrefixLinks.update(shared_failed)
                                             linksVisited.update(shared_visited)
+                                            # Merge shared secrets (list of tuples) into dict
+                                            for (
+                                                secret_type,
+                                                secret_value,
+                                                source,
+                                            ) in shared_secrets:
+                                                secret_key = (secret_type, secret_value)
+                                                if secret_key not in secretsFound:
+                                                    secretsFound[secret_key] = set()
+                                                secretsFound[secret_key].add(source)
                             else:
                                 fileContent = True
                                 processFileContent(input)
@@ -5180,6 +5451,7 @@ def processEachInput(input):
                                     shared_failed = manager.list()
                                     shared_visited = manager.list()
                                     shared_stop = manager.Value("i", 0)
+                                    shared_secrets = manager.list()
 
                                     p = mp.Pool(
                                         args.processes,
@@ -5191,6 +5463,7 @@ def processEachInput(input):
                                             shared_failed,
                                             shared_visited,
                                             shared_stop,
+                                            shared_secrets,
                                         ),
                                     )
                                     active_pool = p
@@ -5213,6 +5486,16 @@ def processEachInput(input):
                                         paramsFound.update(shared_params)
                                         failedPrefixLinks.update(shared_failed)
                                         linksVisited.update(shared_visited)
+                                        # Merge shared secrets (list of tuples) into dict
+                                        for (
+                                            secret_type,
+                                            secret_value,
+                                            source,
+                                        ) in shared_secrets:
+                                            secret_key = (secret_type, secret_value)
+                                            if secret_key not in secretsFound:
+                                                secretsFound[secret_key] = set()
+                                            secretsFound[secret_key].add(source)
                             else:
                                 fileContent = True
                                 processFileContent("<stdin>")
@@ -5938,6 +6221,99 @@ def getResponseParams(response, request):
             writerr(colored("ERROR getResponseParams 1: " + str(e), "red"))
 
 
+def getResponseSecrets(response, request):
+    """
+    Search the response for secrets and store them in secretsFound dict.
+    Secrets are grouped by (type, value) with sources tracked in a set.
+    Only runs if -os/--output-secrets argument was passed.
+    """
+    global secretsFound, shared_secretsFound, burpFile, zapFile, caidoFile, harFile, dirPassed, fileContent
+
+    # Early exit if -os argument wasn't passed or if Ctrl-C was pressed
+    try:
+        if args.output_secrets is None or args.output_secrets == "":
+            return
+    except Exception:
+        return
+
+    if should_stop():
+        return
+
+    try:
+        # Get the body from the response
+        if burpFile or zapFile or caidoFile or harFile:
+            # Ensure response is a string for file-based inputs
+            if not isinstance(response, str):
+                response = str(response)
+            # \r\n\r\n or \n\n separates the header and body
+            if burpFile:
+                bodyHeaderDivide = response.find("\r\n\r\n")
+            else:
+                bodyHeaderDivide = response.find("\n\n")
+            if bodyHeaderDivide == 0:
+                bodyHeaderDivide = len(response)
+            body = response[bodyHeaderDivide:]
+        else:
+            if dirPassed or fileContent or isinstance(response, str):
+                if not isinstance(response, str):
+                    response = str(response)
+                body = response
+            else:
+                body = str(response.headers) + "\r\n\r\n" + response.text
+
+        # Determine source identifier
+        source = str(request) if request else "unknown"
+
+        # Search for each type of secret
+        for secret_type, pattern in SECRET_PATTERNS.items():
+            if should_stop():
+                break
+            try:
+                # Use chunked regex for large responses
+                matches = safe_regex_findall_chunked(pattern.pattern, body)
+                for match in matches:
+                    if match:
+                        # For patterns with capturing groups, the match may be a tuple
+                        if isinstance(match, tuple):
+                            secret_value = " | ".join(
+                                str(m).strip() for m in match if m
+                            )
+                        else:
+                            secret_value = str(match).strip()
+
+                        if not secret_value:
+                            continue
+
+                        # Create key for grouping: (type, value)
+                        secret_key = (secret_type, secret_value)
+
+                        # Add to secretsFound dict with source
+                        if secret_key not in secretsFound:
+                            secretsFound[secret_key] = set()
+                        secretsFound[secret_key].add(source)
+
+                        # Also add to shared list for multiprocessing (as tuple)
+                        if shared_secretsFound is not None:
+                            try:
+                                shared_secretsFound.append(
+                                    (secret_type, secret_value, source)
+                                )
+                            except Exception:
+                                pass
+            except Exception as e:
+                if vverbose():
+                    writerr(
+                        colored(
+                            f"ERROR getResponseSecrets 2 ({secret_type}): " + str(e),
+                            "red",
+                        )
+                    )
+
+    except Exception as e:
+        if vverbose():
+            writerr(colored("ERROR getResponseSecrets 1: " + str(e), "red"))
+
+
 # For validating -m / --memory-threshold argument
 def argcheckPercent(value):
     ivalue = int(value)
@@ -6088,6 +6464,13 @@ def main():
         "--output-oos",
         action="store",
         help='The file to save Out Of Scope links to, including path if necessary (default: No OOS output). If set to "cli" then output is only written to STDOUT (but not piped to another program). If the file already exist it will just be appended to (and de-duplicated) unless option -ow is passed.',
+        default="",
+    )
+    parser.add_argument(
+        "-os",
+        "--output-secrets",
+        action="store",
+        help='The file to save any secrets found in responses to, including path if necessary (default: No secrets output). If set to "cli" then output is only written to STDOUT. If the file already exist it will just be appended to (and de-duplicated) unless option -ow is passed. Secrets include: AWS keys, GitHub tokens, JWTs, Google API keys, private keys, database connection strings, and more.',
         default="",
     )
     parser.add_argument(
