@@ -176,6 +176,17 @@ waymoreMode = False
 waymoreFiles = set()
 currentDepth = 1
 fileContent = False
+selectedProxy = ""
+
+# Forward proxy variables (for sending found links to Burp/Caido)
+forward_proxy_queue = None
+forward_proxy_thread = None
+forward_proxy_session = None
+forward_proxy_sent_links = set()
+forward_proxy_actually_sent = 0  # Counter for links actually sent to proxy
+shared_forward_proxy_queue = (
+    None  # For multiprocessing - shared across worker processes
+)
 
 startDateTime = datetime.now()
 
@@ -218,6 +229,7 @@ class StopProgram(enum.Enum):
 stopProgram = None
 shared_stopProgram = None
 active_pool = None
+outputProcessed = False  # Flag to track if output has already been processed
 
 
 def should_stop():
@@ -609,6 +621,294 @@ def showVersion():
         pass
 
 
+def isValidProxyFormat(proxy):
+    """
+    Check if the proxy string has a valid scheme (http, https, socks4, socks5)
+    """
+    valid_schemes = (
+        "http://",
+        "https://",
+        "socks4://",
+        "socks5://",
+        "socks4a://",
+        "socks5h://",
+    )
+    return proxy.lower().startswith(valid_schemes)
+
+
+def selectRequestProxy(proxy_input):
+    """
+    Handle request proxy selection - either from file or direct value
+    """
+    try:
+        if os.path.isfile(os.path.expanduser(proxy_input)):
+            with open(os.path.expanduser(proxy_input), "r") as f:
+                proxies = [line.strip() for line in f if line.strip()]
+            if proxies:
+                selected_proxy = random.choice(proxies)
+                # Validate the proxy format
+                if not isValidProxyFormat(selected_proxy):
+                    writerr(
+                        colored(
+                            f"ERROR: Invalid proxy format '{selected_proxy}' from file. Proxy must start with http://, https://, socks4://, or socks5://",
+                            "red",
+                        )
+                    )
+                    return None
+                return selected_proxy
+            else:
+                writerr(colored("ERROR: Request proxy file is empty", "red"))
+                return None
+        else:
+            # Validate the proxy format for direct value
+            if not isValidProxyFormat(proxy_input):
+                writerr(
+                    colored(
+                        f"ERROR: Invalid proxy format '{proxy_input}'. Proxy must start with http://, https://, socks4://, or socks5://",
+                        "red",
+                    )
+                )
+                return None
+            return proxy_input
+    except Exception as e:
+        writerr(colored(f"ERROR selectRequestProxy: {str(e)}", "red"))
+        return None
+
+
+def forward_proxy_worker():
+    """
+    Worker thread function to send found links to forward proxy (e.g., Burp/Caido)
+    """
+    global forward_proxy_queue, forward_proxy_session, stopProgram, forward_proxy_actually_sent
+
+    q = forward_proxy_queue
+    sent_links = (
+        set()
+    )  # Track already-sent links to avoid duplicates from multiprocessing
+    while stopProgram is None:
+        try:
+            # Get link from queue with timeout (multiprocessing.Queue uses same Empty exception)
+            try:
+                link = q.get(timeout=1)
+            except Exception:
+                # Timeout or empty queue
+                continue
+
+            if link is None:  # Sentinel value to stop thread
+                break
+
+            # Skip if already sent (deduplication for multiprocessing mode)
+            if link in sent_links:
+                continue
+            sent_links.add(link)
+
+            try:
+                # Send to proxy
+                forward_proxy_session.get(
+                    link,
+                    allow_redirects=True,
+                    verify=False,
+                    headers={"User-Agent": "xnLinkFinder by @xnl-h4ck3r"},
+                    timeout=10,
+                )
+                forward_proxy_actually_sent += 1
+                if vverbose():
+                    writerr(
+                        colored(
+                            f"[ Forward Proxy ] Sent {link}",
+                            "green",
+                            attrs=["dark"],
+                        )
+                    )
+
+            except Exception as e:
+                # Only show errors that aren't common protocol issues
+                error_str = str(e)
+                if (
+                    vverbose()
+                    and "HTTP/2" not in error_str
+                    and "UnknownProtocol" not in error_str
+                ):
+                    writerr(
+                        colored(
+                            f"[ Forward Proxy ] Failed to send {link}: {error_str}",
+                            "yellow",
+                            attrs=["dark"],
+                        )
+                    )
+
+        except Exception as e:
+            if verbose():
+                writerr(
+                    colored(
+                        f"[ Forward Proxy ] Worker error: {str(e)}",
+                        "red",
+                        attrs=["dark"],
+                    )
+                )
+            break
+
+
+def start_forward_proxy_thread():
+    """
+    Initialize and start the forward proxy forwarding thread
+    """
+    global forward_proxy_queue, forward_proxy_thread, forward_proxy_session, shared_forward_proxy_queue
+
+    if not args.forward_proxy or (
+        forward_proxy_thread and forward_proxy_thread.is_alive()
+    ):
+        return
+
+    try:
+        # Initialize queue (use multiprocessing.Queue for cross-process support)
+        import multiprocessing as mp_queue
+
+        forward_proxy_queue = mp_queue.Queue()
+        shared_forward_proxy_queue = forward_proxy_queue  # Share for worker processes
+
+        forward_proxy_session = requests.Session()
+        forward_proxy_session.proxies = {
+            "http": args.forward_proxy,
+            "https": args.forward_proxy,
+        }
+        requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
+
+        # Start worker thread
+        forward_proxy_thread = threading.Thread(
+            target=forward_proxy_worker, daemon=True
+        )
+        forward_proxy_thread.start()
+
+        if verbose():
+            writerr(
+                colored(
+                    f"[ Forward Proxy ] Started background thread for {args.forward_proxy}\n",
+                    "cyan",
+                    attrs=["dark"],
+                )
+            )
+
+    except Exception as e:
+        writerr(colored(f"ERROR start_forward_proxy_thread: {str(e)}", "red"))
+
+
+def stop_forward_proxy_thread():
+    """
+    Stop the forward proxy forwarding thread gracefully
+    """
+    global forward_proxy_queue, forward_proxy_thread, forward_proxy_sent_links
+
+    if forward_proxy_queue and forward_proxy_thread:
+        try:
+            # Wait for queue to drain (multiprocessing.Queue doesn't have join())
+            if stopProgram is None:
+                try:
+                    import time
+
+                    # Use the unique link count, not queue size (which may have duplicates from multiprocessing)
+                    unique_count = len(forward_proxy_sent_links)
+                    # Calculate how many are still waiting to be sent
+                    remaining_count = unique_count - forward_proxy_actually_sent
+                    if remaining_count > 0:
+                        if forward_proxy_actually_sent == 0:
+                            writerr(
+                                colored(
+                                    f"[ Forward Proxy ] Waiting for {remaining_count} full links to be sent...",
+                                    "cyan",
+                                    attrs=["dark"],
+                                )
+                            )
+                        else:
+                            writerr(
+                                colored(
+                                    f"[ Forward Proxy ] Waiting for {remaining_count} more full links to be sent...",
+                                    "cyan",
+                                    attrs=["dark"],
+                                )
+                            )
+
+                    # Wait until queue is empty (no timeout - wait for all links to be sent)
+                    # Also break if Ctrl-C is pressed
+                    while forward_proxy_queue.qsize() > 0 and stopProgram is None:
+                        time.sleep(0.5)
+                except Exception:
+                    pass  # qsize() may not be reliable on all platforms
+
+            # Send sentinel value to stop worker
+            forward_proxy_queue.put(None)
+            # Wait for thread to finish with timeout
+            forward_proxy_thread.join(timeout=5)
+
+            sent_count = len(forward_proxy_sent_links)
+            if sent_count > 0:
+                if stopProgram is not None:
+                    # Cancelled - show partial progress
+                    writerr(
+                        colored(
+                            f"[ Forward Proxy ] Sent {forward_proxy_actually_sent} of {sent_count} unique links to proxy before cancelled",
+                            "yellow",
+                            attrs=["dark"],
+                        )
+                    )
+                else:
+                    writerr(
+                        colored(
+                            f"[ Forward Proxy ] Sent {sent_count} unique links to proxy",
+                            "cyan",
+                            attrs=["dark"],
+                        )
+                    )
+        except Exception as e:
+            if verbose():
+                writerr(colored(f"ERROR stop_forward_proxy_thread: {str(e)}", "red"))
+
+
+def send_to_forward_proxy(link):
+    """
+    Add link to forward proxy queue for background processing (with deduplication)
+    """
+    global forward_proxy_queue, forward_proxy_sent_links
+
+    if forward_proxy_queue and args.forward_proxy:
+        try:
+            # Only send if we haven't sent this link before
+            if link not in forward_proxy_sent_links:
+                forward_proxy_sent_links.add(link)
+                forward_proxy_queue.put(link)
+        except Exception as e:
+            if verbose():
+                writerr(colored(f"ERROR send_to_forward_proxy: {str(e)}", "red"))
+
+
+def send_all_links_to_forward_proxy():
+    """
+    Send all collected links to forward proxy after processing completes.
+    This serves as a safety net for any links that might have been missed.
+    Most links are sent immediately as they're found or after multiprocessing merge.
+    """
+    global linksFound
+
+    if not args.forward_proxy or forward_proxy_queue is None:
+        return
+
+    try:
+        # Send all found links that start with http (deduplication happens in send_to_forward_proxy)
+        for link in linksFound:
+            # Extract the actual URL (remove origin suffix and prefixed tag if present)
+            actual_link = link
+            if args.origin and "  [" in actual_link:
+                actual_link = actual_link.split("  [")[0]
+            actual_link = actual_link.replace(" (PREFIXED)", "")
+
+            if actual_link.startswith("http"):
+                send_to_forward_proxy(actual_link)
+
+    except Exception as e:
+        if verbose():
+            writerr(colored(f"ERROR send_all_links_to_forward_proxy: {str(e)}", "red"))
+
+
 def showBanner():
     write("")
     write(colored(r"           o           o    o--o           o         ", "red"))
@@ -921,8 +1221,17 @@ def addLink(link, url, prefixed=False):
         # Use shared list if available (for multiprocessing), otherwise use local set
         if shared_linksFound is not None:
             shared_linksFound.append(linkDetail)
+            # Send to shared forward proxy queue when in multiprocessing mode
+            if link.startswith("http") and shared_forward_proxy_queue is not None:
+                try:
+                    shared_forward_proxy_queue.put_nowait(link)
+                except Exception:
+                    pass  # Queue full or error, skip
         else:
             linksFound.add(linkDetail)
+            # Send to forward proxy immediately when not in multiprocessing mode
+            if link.startswith("http"):
+                send_to_forward_proxy(link)
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR addLink 1: " + str(e), "red"))
@@ -1770,7 +2079,7 @@ def handler(signal_received, frame):
     This function is called if Ctrl-C is called by the user
     An attempt will be made to try and clean up properly
     """
-    global stopProgram, stopProgramCount, shared_stopProgram, active_pool
+    global stopProgram, stopProgramCount, shared_stopProgram, active_pool, outputProcessed
 
     # Check if this is the main process
     is_main = mp.current_process().name == "MainProcess"
@@ -1827,6 +2136,10 @@ def handler(signal_received, frame):
             except Exception:
                 pass
 
+        # Stop forward proxy thread and show partial progress
+        if is_main:
+            stop_forward_proxy_thread()
+
         if is_main:
             writerr(
                 colored(
@@ -1842,11 +2155,12 @@ def handler(signal_received, frame):
                     "red",
                 )
             )
-            # Save whatever data we have collected
-            try:
-                processOutput()
-            except Exception:
-                pass
+            # Save whatever data we have collected (only if not already processed)
+            if not outputProcessed:
+                try:
+                    processOutput()
+                except Exception:
+                    pass
 
             # Kill all child processes to prevent orphaned workers
             try:
@@ -2032,11 +2346,12 @@ def init_worker(
     shared_visited=None,
     shared_stop=None,
     shared_secrets=None,
+    shared_fp_queue=None,
 ):
     """
     Initialize a persistent session for the worker process and set up shared state.
     """
-    global persistence_session, shared_linksFound, shared_oosLinksFound, shared_paramsFound, shared_failedPrefixLinks, shared_linksVisited, shared_stopProgram, shared_secretsFound
+    global persistence_session, shared_linksFound, shared_oosLinksFound, shared_paramsFound, shared_failedPrefixLinks, shared_linksVisited, shared_stopProgram, shared_secretsFound, shared_forward_proxy_queue
 
     # Make workers ignore SIGINT - the main process will handle termination
     # This prevents BrokenPipeError spam when main process exits
@@ -2061,6 +2376,8 @@ def init_worker(
         shared_stopProgram = shared_stop
     if shared_secrets is not None:
         shared_secretsFound = shared_secrets
+    if shared_fp_queue is not None:
+        shared_forward_proxy_queue = shared_fp_queue
 
 
 def processUrl(url):
@@ -2150,18 +2467,24 @@ def processUrl(url):
                         if heap_strings != "":
                             getResponseLinks(heap_strings, requestUrl + " [HEAP]")
 
-                    # If the --forward-proxy argument was passed, try to use it
-                    if args.forward_proxy != "":
-                        if not args.forward_proxy.lower().startswith("http"):
-                            args.forward_proxy = "http://" + args.forward_proxy
-                        proxies = {
-                            "http": args.forward_proxy,
-                            "https": args.forward_proxy,
-                        }
-                        verify = False
-                    else:
-                        proxies = {}
-                        verify = not args.insecure
+                    # Set up proxies - only request_proxy is used for HTTP requests
+                    # forward_proxy sends found links via background thread (see send_to_forward_proxy)
+                    proxies = {}
+                    verify = not args.insecure
+
+                    # If the --request-proxy argument was passed, use it for HTTP requests
+                    # (used for general proxying, SOCKS5, rotating proxies, etc.)
+                    if args.request_proxy != "":
+                        selected_proxy = selectRequestProxy(args.request_proxy)
+                        if selected_proxy:
+                            # Ensure proxy has a scheme
+                            if not selected_proxy.lower().startswith(("http", "socks")):
+                                selected_proxy = "http://" + selected_proxy
+                            proxies = {
+                                "http": selected_proxy,
+                                "https": selected_proxy,
+                            }
+                            verify = False
 
                     # Suppress insecure request warnings if using insecure mode
                     if not verify:
@@ -3597,6 +3920,8 @@ def processDepth():
                         shared_failed,
                         shared_visited,
                         shared_stop,
+                        None,  # shared_secrets (not used in depth)
+                        shared_forward_proxy_queue,
                     ),
                 )
                 active_pool = p
@@ -3998,6 +4323,13 @@ def showOptions():
                 colored("-fp: " + proxy, "magenta")
                 + colored(" Forward requests using this proxy.", "white")
             )
+            if args.request_proxy:
+                write(
+                    colored("-rp: " + str(args.request_proxy), "magenta")
+                    + colored(
+                        " The request proxy being used for HTTP(S) requests.", "white"
+                    )
+                )
 
         if dirPassed:
             write(
@@ -5326,6 +5658,57 @@ def processEachInput(input):
         if vverbose() and not waymoreMode:
             showOptions()
 
+        # Handle request proxy selection (file vs direct proxy)
+        if args.request_proxy:
+            selected_proxy = selectRequestProxy(args.request_proxy)
+            if selected_proxy:
+                args.request_proxy = selected_proxy
+
+                # Check if this looks like an intercepting proxy and warn user
+                common_intercept_ports = [
+                    "8080",
+                    "8081",
+                    "8082",
+                    "9090",
+                    "3128",
+                ]
+                proxy_port = None
+                if ":" in args.request_proxy:
+                    try:
+                        proxy_port = args.request_proxy.split(":")[-1]
+                    except Exception:
+                        pass
+
+                if proxy_port in common_intercept_ports:
+                    writerr(
+                        colored(
+                            "⚠️  WARNING: You're using --request-proxy with what appears to be an intercepting proxy port.",
+                            "yellow",
+                        )
+                    )
+                    writerr(
+                        colored(
+                            "   This routes ALL browser traffic through the proxy.",
+                            "white",
+                        )
+                    )
+                    writerr(
+                        colored(
+                            "   If you want to send discovered endpoints to the proxy instead, use:",
+                            "white",
+                        )
+                    )
+                    writerr(colored(f"   --forward-proxy {args.request_proxy}", "cyan"))
+                    writerr("")
+            else:
+                writerr(
+                    colored(
+                        "ERROR: Failed to select request proxy, continuing without proxy",
+                        "red",
+                    )
+                )
+                args.request_proxy = ""
+
         # Process the correct input type...
         if burpFile:
             # If it's an Burp file
@@ -5464,6 +5847,7 @@ def processEachInput(input):
                                             shared_visited,
                                             shared_stop,
                                             shared_secrets,
+                                            shared_forward_proxy_queue,
                                         ),
                                     )
                                     active_pool = p
@@ -5496,6 +5880,19 @@ def processEachInput(input):
                                             if secret_key not in secretsFound:
                                                 secretsFound[secret_key] = set()
                                             secretsFound[secret_key].add(source)
+                                        # Send newly merged links to forward proxy immediately
+                                        if args.forward_proxy:
+                                            for link in shared_links:
+                                                actual_link = link
+                                                if args.origin and "  [" in actual_link:
+                                                    actual_link = actual_link.split(
+                                                        "  ["
+                                                    )[0]
+                                                actual_link = actual_link.replace(
+                                                    " (PREFIXED)", ""
+                                                )
+                                                if actual_link.startswith("http"):
+                                                    send_to_forward_proxy(actual_link)
                             else:
                                 fileContent = True
                                 processFileContent("<stdin>")
@@ -5513,8 +5910,13 @@ def processEachInput(input):
                 processDepth()
 
         if not waymoreMode:
+            # Send all collected links to forward proxy if configured
+            send_all_links_to_forward_proxy()
+
             # Once all data has been found, process the output
+            global outputProcessed
             processOutput()
+            outputProcessed = True
 
             # Reset the variables
             linksFound = set()
@@ -6418,7 +6820,7 @@ def checkTruncateLimit(value):
 
 # Run xnLinkFinder
 def main():
-    global args, userAgents, stopProgram, burpFile, zapFile, caidoFile, dirPassed, waymoreMode, currentUAGroup, waymoreFiles, linksVisited, maxMemoryPercent, linksFound, paramsFound, contentTypesProcessed, totalRequests, skippedRequests, failedRequests, oosLinksFound, lstPathWords, wordsFound, LINK_REGEX_FILES
+    global args, userAgents, stopProgram, burpFile, zapFile, caidoFile, dirPassed, waymoreMode, currentUAGroup, waymoreFiles, linksVisited, maxMemoryPercent, linksFound, paramsFound, contentTypesProcessed, totalRequests, skippedRequests, failedRequests, oosLinksFound, lstPathWords, wordsFound, LINK_REGEX_FILES, outputProcessed
 
     # Tell Python to run the handler() function when SIGINT is received
     signal(SIGINT, handler)
@@ -6688,6 +7090,13 @@ def main():
         default="",
     )
     parser.add_argument(
+        "-rp",
+        "--request-proxy",
+        action="store",
+        help="Request proxy to use. Can be a proxy string (e.g. http://user:pass@1.2.3.4:8000, socks5://host:port) or a file containing proxy list (one per line, random selection)",
+        default="",
+    )
+    parser.add_argument(
         "--heap",
         action="store_true",
         help="Whether to take a heap snapshot of visited URLs and extract links from browser memory. This will take longer but could discover dynamically generated links that standard static analysis might miss (Requires Playwright to be installed).",
@@ -6842,6 +7251,10 @@ def main():
 
             currentUAGroup = i
 
+            # Start forward proxy thread if configured (for sending found links to Burp/Caido)
+            if i == 0:  # Only start once
+                start_forward_proxy_thread()
+
             # Process the input given on -i (--input) and get all links
             processInput()
 
@@ -6879,9 +7292,13 @@ def main():
                     processEachInput(wf)
                 linksVisited = set()
 
+            # Send all collected links to forward proxy if configured
+            send_all_links_to_forward_proxy()
+
             # Once all data has been found, process the output
             args.input = originalInput
             processOutput()
+            outputProcessed = True
 
             # Reset the variables
             linksFound = set()
@@ -6945,6 +7362,9 @@ def main():
     except Exception as e:
         if vverbose():
             writerr(colored("ERROR main 1: " + str(e), "red"))
+
+    # Stop forward proxy thread gracefully
+    stop_forward_proxy_thread()
 
     try:
         if sys.stdout.isatty():

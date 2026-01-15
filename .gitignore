@@ -2,6 +2,9 @@ output.txt
 parameters.txt
 wordlist.txt
 oos.txt
+secrets.json
+*.har
+*.burp
 xnLinkFinder.egg-info
 xnlinkfinder.egg-info
 dist/

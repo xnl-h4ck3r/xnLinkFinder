@@ -1,5 +1,17 @@
 ## Changelog
 
+- v8.1
+
+  - New
+
+    - Add `-rp`/`--request-proxy` argument for request proxying. Can be a proxy string (e.g. `http://user:pass@1.2.3.4:8000`, `socks5://host:port`) or a file containing proxy list (one per line, random selection).
+    - Added validation for `-rp`/`--request-proxy` to ensure the proxy value has a valid scheme (`http://`, `https://`, `socks4://`, `socks5://`, etc.). 
+    - Added `secrets.json`, `.har` and `.burp` files to the `.gitignore` file.
+
+  - Changed
+
+    - If `-fp`/`--forward-proxy` is used, it will now start a background thread to handle the proxying. This allows the tool to continue processing links while the proxy is active. It will also proxy ALL full links found, not just the requests made.
+
 - v8.0
 
   - New
